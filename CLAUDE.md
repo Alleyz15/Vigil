@@ -44,12 +44,14 @@ The LLM appears in **exactly two** places:
 explanation degrades, into a structured flag list. Never let an LLM decide accept/reject.
 If a change would make a verdict depend on model output, the change is wrong.
 
-This is **enforced, not just asserted**. Every rule in `lib/engine/` is a pure function of its
-arguments — the caller assembles `EngineInput`, the rules do arithmetic on it — and
-`lib/engine/purity.test.ts` reads the engine's own source and fails the build if any module on
-the verdict path reaches a file, a socket, a database, `process.env`, `Math.random`, or the
-wall clock. A future session that "just needs to look one thing up" inside a rule is stopped
-there, with a message saying why. Thresholds arrive as an argument for the same reason.
+This is **enforced, not just asserted**. Every rule in `lib/engine/`, `lib/pattern/` and
+`lib/gate/` is a pure function of its arguments — the caller assembles the input, the rules do
+arithmetic on it — and
+`lib/purity.test.ts` reads the source of all three pure trees (`engine`, `pattern`, `gate`) and
+fails the build if any module on the verdict path reaches a file, a socket, a database,
+`process.env`, `Math.random`, or the wall clock. A future session that "just needs to look one
+thing up" inside a rule is stopped there, with a message saying why. Thresholds arrive as an
+argument for the same reason.
 
 ### 2. The two axes are separate, and load-bearing
 
@@ -77,6 +79,25 @@ Collapsing the axes into one number makes row 2 unreachable and deletes the diff
 The node ordering exists to make this structural rather than merely intended: axis 1 is
 produced at `verify`, axis 2 at `fetch_history`, and they are combined nowhere but `gate`.
 
+**This is enforced by `lib/purity.test.ts`**, which reads every source file under `lib/` and
+fails on arithmetic joining an inconsistency-shaped term to a pattern-shaped one, and on any
+module outside `lib/gate` reading both scores together (bar a short allowlist that stores or
+reports them separately). Same category as the I/O ban: the architectural claim is verifiable
+by running the test suite, not by reading a document.
+
+The clearest statement of why is a test — *"cannot be expressed by any single combined
+number"* in `lib/gate/gate.test.ts`. Three couriers whose axis scores sum to **exactly 80**
+need three different actions:
+
+| single | pattern | sum | action | because |
+|---:|---:|---:|---|---|
+| 0 | 80 | 80 | **escalate** | investigate the courier |
+| 80 | 0 | 80 | **flag** | re-check the event |
+| 40 | 40 | 80 | **freeze** | stop the scope |
+
+No function of `single + pattern` can tell these apart. The sum discards *which axis* the risk
+came from, and that is precisely what decides what an operator should do next.
+
 ### 3. Approval is constitutive, not decorative
 
 Operator approval is **not** `approved = true` in a table. A high-risk handoff requires a
@@ -85,6 +106,25 @@ token co-signed by the courier's key **and** the operator's key. The courier's h
 answer is: without it, the credential does not verify.
 
 Shift limits are a hard stop **even with a valid co-sign**.
+
+### 3a. When the machine cannot judge, the signature becomes constitutive
+
+**This is what the co-sign primitive is FOR**, and the cold-start case is where it earns its
+keep. A courier with too little history has no pattern score. The gate does **not** invent a
+low one on their behalf — it accepts the handoff and makes an operator's signature part of the
+credential (`basis: "single_event_only"`, `requiresCosign: true`).
+
+**A future session must not "simplify" cold start into a default-low score.** Doing so
+silently certifies handoffs on no evidence, which is the exact failure mode this whole project
+argues against — and it would do it to every new hire, invisibly, at the moment they are least
+established. The two tests that hold this line sit next to each other in
+`lib/gate/gate.test.ts`: *the signature case* and *the cold-start case*. Together they are the
+argument that the system neither over-flags newcomers nor certifies on no evidence.
+
+This converts a stated blind spot into designed behaviour. **It is a pitch line:** the honest
+answer to "what about a brand-new courier you have no baseline for?" is not a shrug about cold
+start — it is that the system knows it cannot judge, says so in the record, and requires a
+human to put their name on it.
 
 ### 4. Missing evidence is not clean evidence
 
@@ -111,6 +151,35 @@ is `not_evaluated`, never `clear`. Treating silence as approval is how attestati
 **"8 of 14 checks evaluable"** next to the score. This is intended UI, not debug output. A
 score of 0 from 12 evaluated checks and a score of 0 from 2 evaluated checks are different
 claims, and an operator who cannot tell them apart is being misled by their own dashboard.
+
+### 4b. Every rule is a contradiction between signals, not a lone heuristic
+
+This is the shape every rule in the system takes, on both axes. A lone heuristic measures one
+thing and guesses; a contradiction needs two independent sources to disagree, which is far
+harder to forge and far less likely to fire on honest work.
+
+**P4 is the clearest illustration.** "Deliveries are clustered" is a lone heuristic, and it
+flags any courier working a single condo tower — they have done nothing wrong. The rule instead
+asks whether the **scan points** are clustered *while the **recipient addresses** are spread*:
+two signals disagreeing. Clustered scans **and** clustered addresses is a building. Clustered
+scans against spread addresses is batch-scanning from the van.
+
+`P3` follows the same shape (a distribution disagreeing with what environmental noise produces),
+as does every I-rule. Write new rules to it. If a proposed rule reads one signal and thresholds
+it, look for the second signal it should be contradicting.
+
+### 4c. P3's trap: the cleanest courier has the tightest distribution
+
+A courier scoring `0, 0, 0, 0, 0` has a standard deviation of **zero** — the tightest
+distribution available. A naive low-variance rule flags the best courier in the fleet.
+
+That would be the single worst false positive this system can produce, and it would invalidate
+the S0 baseline outright: the honest courier is exactly the one whose scores do not vary.
+
+**P3 therefore requires low variance around a NON-ZERO mean** (`mean >= p3MinMeanScore &&
+stdev < p3MaxStdDev`). Someone consistently at 25±1 is hugging a threshold; someone
+consistently at 0 is doing their job. **Never relax the mean condition.** Two tests guard it:
+a perfectly clean courier over 40 handoffs, and a well-behaved courier with ordinary noise.
 
 ### 4a. Every rule that applies to a subset of bizSteps must state its gate
 
@@ -229,9 +298,18 @@ lib/
     inconsistency.ts     I1-I14 (score) + the rule registry
     engine.ts            hard checks -> scoring -> clamp -> coverage
     fixtures.ts          shared test fixtures; never imported by a rule
-    purity.test.ts       fails the build if a rule reaches I/O
+  pattern/               AXIS 2 ONLY. Pure functions, no I/O.
+    thresholds.ts        axis-2 numbers, one source comment each
+    types.ts             PatternInput, PastHandoff, PatternOutcome
+    rules.ts             P1-P5 + the rule registry
+    pattern.ts           cold-start gate, runs rules, coverage
+  gate/                  THE ONLY PLACE THE TWO AXES MEET. Pure.
+    thresholds.ts        axis cut points, severity order
+    types.ts             GateInput, GateResult, ShiftContext
+    gate.ts              the matrix (incl. absence cells), then limits/cooldown
   mandate/
     schema.ts            CourierMandate zod. Shape only — no crypto yet.
+  purity.test.ts         guards the I/O ban AND the never-summed rule
   agent/
     context.ts           AgentContext, the closed ToolName enum
     nodes.ts             the eight node implementations
@@ -266,7 +344,7 @@ npm run dev          # Next dev server
 npm test             # vitest, all lib/ tests
 npm run typecheck    # tsc --noEmit  (run `npm run build` first: Next generates route types)
 npm run lint
-npm run test:coverage # engine coverage; must stay at 100% branch
+npm run test:coverage # engine + pattern + gate; must stay at 100% branch
 npm run db:generate  # regenerate migrations after editing lib/db/schema.ts
 npm run db:migrate
 ```
@@ -343,16 +421,63 @@ data generation (`@turf/turf`, `seedrandom` not yet installed); Open-Meteo; SSE 
 **Not wired in yet.** `lib/agent/nodes.ts` `verify` still returns the session-1 stub. Connecting
 the engine to the agent is deliberately a separate step, so the engine was proven standalone first.
 
-### Session 3 — wiring, then axis 2 (next)
+### Session 3 — axis 2 and the orthogonal gate (complete)
 
-1. Wire `runInconsistencyEngine` into the agent's `verify` node, with the caller assembling
-   `EngineInput` from the DB (this is where `previous` and `referenceSites` get populated).
-2. Then P1–P5 pattern scoring at `fetch_history`.
+272 tests passing. **`lib/engine/`, `lib/pattern/` and `lib/gate/` all at 100% statement,
+branch, function and line coverage.** `tsc --noEmit` clean, eslint clean, `next build` succeeds.
 
-Still untouched: the gate matrix, Ed25519 co-sign, liveness/timeout paths, synthetic data
-generation, SSE, all UI.
+The `gate` stub flagged in session 1 as "real enough to produce data while being wrong" is
+**replaced**. Evaluation numbers may now be quoted, subject to the reservation below.
+
+**Real — implemented and tested:**
+
+| Area | What works |
+|---|---|
+| `pattern/rules.ts` | P1 burst (densest-window scan, not just the first), P2 dispute rate vs queue baseline, P3 low variance around a non-zero mean, P4 clustered scans vs spread addresses, P5 recurring contradiction |
+| `pattern/pattern.ts` | Cold-start gate, rule registry, coverage. Cold start is a distinct outcome, never a low score |
+| `gate/gate.ts` | The 4 quadrants, all 5 absence cells, hard-abort short circuit, mandate limits L1–L4, cooldown, co-sign conditions |
+| `gate/thresholds.ts` | Both axis cut points, severity order, `moreSevere` |
+| `purity.test.ts` | Now covers all three trees, **plus** the never-summed check |
+
+**Design decisions worth not re-litigating:**
+
+- **Limit breaches combine monotonically.** `max(matrix, limits)` on `accept < flag < escalate
+  < freeze`. A limit check can raise a decision, never lower one. L1 (shift ceiling) → freeze
+  and a co-sign does not lift it; L2/L3 (value caps) → escalate; L4 (cooldown) → flag.
+- **`P1` finds the densest window**, not the first. A calm morning followed by a burst must
+  still be caught.
+- **`P5` counts a flag once per handoff**, not once per occurrence within one.
+- **`P2` refuses to compute a rate from fewer than 3 disputes.** One unhappy customer is not
+  a rate, and reporting it as one would flag a courier for a single lost parcel.
+- **Ledger `Verdict` gained `basis` and `requiresCosign`.** Confirmed free: **no committed
+  ledger data exists** — the `.jsonl` files are gitignored dev state, so no hash chain was
+  invalidated. Any further change to that shape is no longer free.
+
+**Not wired in yet.** `lib/agent/nodes.ts` still has the session-1 stubs at `verify`,
+`fetch_history` and `gate`. All three pure modules were proven standalone first.
+
+### Session 4 — wiring (next)
+
+Wire all three into the agent: `verify` → `runInconsistencyEngine`, `fetch_history` →
+`runPatternEngine`, `gate` → `runGate`. The work is in the **callers**, which assemble
+`EngineInput` (`previous`, `referenceSites`), `PatternInput` (the rolling window, the queue
+baseline) and `GateInput` (`ShiftContext`, `ParcelValue`) from the database.
+
+Still untouched: Ed25519 co-sign, liveness/timeout paths, synthetic data generation, Open-Meteo,
+SSE, all UI.
 
 ---
+
+## Open reservations (decided, but revisit)
+
+**H1 → freeze is a known over-refusal.** A custody-chain jump can be a data-quality problem —
+a missed scan upstream, a hub that batches its uploads — rather than fraud, and `freeze` is the
+harshest outcome available. It is mapped that way for consistency with the other hard checks
+and because a void handoff should not be waved through.
+
+**Measure it in experiment 3 (false-positive rate), broken out by abort code.** If H1 dominates
+the false positives, revisit before submission — most likely by softening H1 alone rather than
+by inventing a fifth outcome. Do not add a fifth outcome to work around this.
 
 ## Known limitations (test these, don't claim them)
 

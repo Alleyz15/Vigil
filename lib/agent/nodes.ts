@@ -222,6 +222,9 @@ export const gate: NodeFn = (ctx, deps) => {
     decision: ctx.decision,
     inconsistencyScore: ctx.inconsistency.score,
     patternScore: ctx.pattern.score,
+    // STUB: lib/gate produces these for real. The agent is wired up next session.
+    basis: "both_axes",
+    requiresCosign: ctx.requiresCosign,
     flags: [...ctx.inconsistency.flags, ...ctx.pattern.flags].map((f) => f.id),
     ...(ctx.inconsistency.abortCode ? { abortCode: ctx.inconsistency.abortCode } : {}),
   };

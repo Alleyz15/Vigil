@@ -24,6 +24,8 @@ const verdict = (over: Partial<Verdict> = {}): Verdict => ({
   decision: "accept",
   inconsistencyScore: 0,
   patternScore: 0,
+  basis: "both_axes",
+  requiresCosign: false,
   flags: [],
   ...over,
 });
