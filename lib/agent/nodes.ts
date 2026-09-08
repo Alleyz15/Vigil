@@ -1,19 +1,34 @@
-import { eq, and } from "drizzle-orm";
-import { EpcisEvent, epcsOf, vigilSignalsOf } from "@/lib/epcis";
-import { couriers, mandates, parcels } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { EpcisEvent, epcsOf } from "@/lib/epcis";
+import { couriers, parcels } from "@/lib/db/schema";
 import type { VigilDb } from "@/lib/db/client";
 import type { NonceLedger } from "@/lib/ledger";
+import type { Verdict } from "@/lib/ledger/types";
+import { runInconsistencyEngine } from "@/lib/engine";
+import { runPatternEngine } from "@/lib/pattern";
+import { runGate } from "@/lib/gate";
+import {
+  assembleEngineInput,
+  assembleGateInput,
+  assemblePatternInput,
+  coverageLine,
+  loadActiveMandate,
+  mergeResolutions,
+} from "@/lib/assemble";
+import { persistEvent, persistVerdict } from "@/lib/assemble/persist";
 import type { AgentContext, Node } from "./context";
 
 /**
  * The eight node implementations.
  *
- * SESSION 1 SCOPE: `parse`, `lookup`, and the ledger check inside `verify` are
- * real. The rest are typed stubs that return placeholder values so the pipeline
- * runs end to end — a stub that returns the right SHAPE is worth more than an
- * unimplemented branch, because the wiring is what gets debugged later.
+ * WHERE THE I/O IS. Nodes read the database and write the ledger; the modules
+ * they call (lib/engine, lib/pattern, lib/gate) do not. Everything that reaches
+ * for a row happens here or in lib/assemble, which is what makes the verdict a
+ * pure function of assembled inputs rather than of whatever the database
+ * happened to contain at the moment a rule ran.
  *
- * Every stub is marked STUB. None of them silently invent a verdict.
+ * STILL STUBBED, deliberately: `plan` and `explain` (they arrive with the LLM),
+ * and `external_context` (weather arrives with Open-Meteo). Each is marked STUB.
  */
 
 export type NodeDeps = {
@@ -21,6 +36,22 @@ export type NodeDeps = {
   ledger: NonceLedger;
   /** Injected so tests are not at the mercy of the wall clock. */
   now: () => Date;
+  /**
+   * The LLM seam. Absent means no model is available, which is the normal case
+   * today. Whatever this returns, it CANNOT change a verdict — see the parity
+   * test in machine.test.ts. It shapes tool selection and prose only.
+   */
+  llm?: AgentLlm;
+  /** Window overrides, for experiments. */
+  windows?: { patternHours?: number; shiftHours?: number };
+};
+
+/** The only surface an LLM is ever given. Both methods are advisory. */
+export type AgentLlm = {
+  /** Choose 0-2 tools from the closed enum. Never consulted for a decision. */
+  planTools?: (ctx: AgentContext) => { tools: string[]; rationale?: string };
+  /** Write the operator's explanation, AFTER the verdict is sealed. */
+  explain?: (ctx: AgentContext) => string;
 };
 
 export type NodeFn = (ctx: AgentContext, deps: NodeDeps) => void;
@@ -79,6 +110,11 @@ export const lookup: NodeFn = (ctx, deps) => {
           known: true,
           recipientAddress: row.recipientAddress,
           declaredValueSen: row.declaredValueSen,
+          // Both coordinates or neither: half a point is not a location.
+          recipientPoint:
+            row.recipientLat !== null && row.recipientLng !== null
+              ? { latitude: row.recipientLat, longitude: row.recipientLng }
+              : undefined,
         }
       : { epc, known: false };
   }
@@ -96,15 +132,10 @@ export const lookup: NodeFn = (ctx, deps) => {
       : { courierId: claimedCourierId, known: false };
 
     if (row) {
-      const mandate = deps.db
-        .select()
-        .from(mandates)
-        .where(and(eq(mandates.courierId, row.courierId), eq(mandates.status, "active")))
-        .get();
-
-      ctx.mandate = mandate
-        ? { mandateId: mandate.mandateId, known: true, status: mandate.status }
-        : { mandateId: "", known: false };
+      // Unreadable authorisation is treated as NO authorisation. A mandate whose
+      // JSON will not parse must never become a permissive default.
+      const mandate = loadActiveMandate(deps.db, row.courierId, ctx.resolution);
+      ctx.mandate = { known: mandate !== undefined, value: mandate };
     }
   }
 
@@ -116,13 +147,21 @@ export const lookup: NodeFn = (ctx, deps) => {
 /**
  * 3. plan — STUB. Select 0-2 optional tools from the closed zod enum.
  *
- * This is one of exactly two places an LLM appears. When the LLM is absent,
- * errors, or lite mode is on, the identical deterministic heuristic runs
- * instead — which is why `planFromHeuristic` is recorded rather than hidden.
- * Tool selection can change what CONTEXT the operator is shown. It can never
- * change the verdict.
+ * One of exactly two places an LLM will appear. When the LLM is absent, errors,
+ * or lite mode is on, the identical deterministic heuristic runs instead — which
+ * is why `planFromHeuristic` is recorded rather than hidden. Tool selection can
+ * change what CONTEXT the operator is shown. It can never change the verdict.
  */
-export const plan: NodeFn = (ctx) => {
+export const plan: NodeFn = (ctx, deps) => {
+  if (deps.llm?.planTools) {
+    const proposed = deps.llm.planTools(ctx);
+    // STUB: the closed-enum validation lands with the LLM. The seam exists now
+    // so the parity test can prove a varying plan moves no verdict.
+    ctx.plan = { tools: [], rationale: proposed.rationale };
+    ctx.planFromHeuristic = false;
+    return;
+  }
+
   ctx.plan = { tools: [], rationale: "STUB: tool selection not implemented" };
   ctx.planFromHeuristic = true;
 };
@@ -130,11 +169,8 @@ export const plan: NodeFn = (ctx) => {
 /**
  * 4. verify — axis 1: single-event inconsistency (H1-H4, I1-I14).
  *
- * REAL THIS SESSION: the H4 replay check against the nonce ledger.
- * STUBBED: H1-H3 and I1-I14 scoring.
- *
- * The replay check runs first and short-circuits, because a replayed event must
- * not be re-scored — its verdict was decided the first time and replaying it is
+ * The replay check runs FIRST and short-circuits, because a replayed event must
+ * not be re-scored — its verdict was decided the first time, and replaying it is
  * how you would launder a second opinion out of the same evidence.
  */
 export const verify: NodeFn = (ctx, deps) => {
@@ -148,6 +184,7 @@ export const verify: NodeFn = (ctx, deps) => {
     ctx.ledger = { status: "noop", seq: checked.seq, verdict: checked.verdict };
     ctx.verdict = checked.verdict;
     ctx.decision = checked.verdict.decision;
+    ctx.requiresCosign = checked.verdict.requiresCosign;
     ctx.halted = { at: "verify", reason: "DUPLICATE_NO_OP" };
     return;
   }
@@ -172,22 +209,69 @@ export const verify: NodeFn = (ctx, deps) => {
     return;
   }
 
-  // STUB: H1-H3 and I1-I14 land in a later session. Touching the signals here
-  // only to keep the shape honest — no score is invented.
-  void vigilSignalsOf(event);
-  ctx.inconsistency = { score: 0, flags: [] };
+  const { input, resolution } = assembleEngineInput(deps.db, event, {
+    courier: ctx.courier?.known ? ctx.courier : undefined,
+    mandate: ctx.mandate?.value,
+  });
+  ctx.resolution = mergeResolutions(ctx.resolution, resolution);
+
+  const result = runInconsistencyEngine(input);
+
+  ctx.inconsistency = {
+    score: result.score,
+    // On an abort there are no I-flags; the hard failures are what happened.
+    flags: result.aborted ? result.hardFailures : result.flags,
+    abortCode: result.abortCode,
+  };
+  ctx.engineResult = result;
+  ctx.coverage = {
+    ...ctx.coverage,
+    inconsistency: { ...result.coverage, line: coverageLine(result.coverage) },
+  };
 };
 
 /**
- * 5. fetch_history — axis 2: per-courier rolling pattern (P1-P5). STUB.
+ * 5. fetch_history — axis 2: per-courier rolling pattern (P1-P5).
  *
- * This is a SEPARATE AXIS, not more evidence for axis 1. A courier whose every
- * single event is clean but whose distribution is wrong is the case no per-event
- * system can see, and it is the reason the two axes are never summed.
- * See CLAUDE.md before changing this.
+ * A SEPARATE AXIS, not more evidence for axis 1. A courier whose every single
+ * event is clean but whose distribution is wrong is the case no per-event system
+ * can see, and it is the reason the two axes are never summed. See CLAUDE.md.
  */
-export const fetchHistory: NodeFn = (ctx) => {
-  ctx.pattern = { score: 0, flags: [], sampleSize: 0 };
+export const fetchHistory: NodeFn = (ctx, deps) => {
+  const event = ctx.event;
+  const courierId = ctx.courier?.known ? ctx.courier.courierId : undefined;
+
+  if (!event || !courierId) {
+    // No identified courier means no courier to have a pattern. Cold start is
+    // the honest answer; a zero would read as evidence of good behaviour.
+    ctx.pattern = { score: 0, flags: [], sampleSize: 0 };
+    ctx.patternColdStart = true;
+    ctx.patternOutcome = {
+      coldStart: true,
+      coldStartReason: "no identified courier for this event",
+      flags: [],
+      rawScore: 0,
+      score: 0,
+      sampleSize: 0,
+      coverage: { evaluated: 0, total: 5, notEvaluated: [] },
+    };
+    return;
+  }
+
+  const { input, resolution } = assemblePatternInput(deps.db, courierId, event.eventTime, {
+    windowHours: deps.windows?.patternHours,
+  });
+  ctx.resolution = mergeResolutions(ctx.resolution, resolution);
+
+  const outcome = runPatternEngine(input);
+
+  ctx.pattern = { score: outcome.score, flags: outcome.flags, sampleSize: outcome.sampleSize };
+  ctx.patternColdStart = outcome.coldStart;
+  ctx.patternOutcome = outcome;
+  ctx.coverage = {
+    ...ctx.coverage,
+    pattern: { ...outcome.coverage, line: coverageLine(outcome.coverage) },
+  };
 };
 
 /**
@@ -205,45 +289,73 @@ export const externalContext: NodeFn = (ctx) => {
 /**
  * 7. gate — where the two axes meet, and the ONLY place a decision is produced.
  *
- * STUB: the orthogonal matrix and the mandate limit/cooldown/co-sign checks land
- * in a later session. It currently commits an `accept` with both scores at zero,
- * so the pipeline runs end to end and the ledger records a real, sealed entry.
- *
- * NEVER let an LLM produce this value.
+ * Seals the verdict to the append-only ledger FIRST, then projects it into the
+ * database for the console. The ledger is the record of truth; if the two ever
+ * disagree the ledger wins, so it must be the one written first.
  */
 export const gate: NodeFn = (ctx, deps) => {
   const event = ctx.event;
-  if (!event || !ctx.inconsistency || !ctx.pattern) return;
+  if (!event || !ctx.engineResult || !ctx.patternOutcome) return;
 
-  ctx.decision = "accept"; // STUB
-  ctx.requiresCosign = false; // STUB
+  const { input, resolution } = assembleGateInput(deps.db, {
+    inconsistency: ctx.engineResult,
+    pattern: ctx.patternOutcome,
+    courierId: ctx.courier?.known ? ctx.courier.courierId : undefined,
+    mandate: ctx.mandate?.value,
+    epc: ctx.parcel?.epc,
+    now: event.eventTime,
+    shiftWindowHours: deps.windows?.shiftHours,
+  });
+  ctx.resolution = mergeResolutions(ctx.resolution, resolution);
 
-  ctx.verdict = {
-    decision: ctx.decision,
-    inconsistencyScore: ctx.inconsistency.score,
-    patternScore: ctx.pattern.score,
-    // STUB: lib/gate produces these for real. The agent is wired up next session.
-    basis: "both_axes",
-    requiresCosign: ctx.requiresCosign,
-    flags: [...ctx.inconsistency.flags, ...ctx.pattern.flags].map((f) => f.id),
-    ...(ctx.inconsistency.abortCode ? { abortCode: ctx.inconsistency.abortCode } : {}),
+  const result = runGate(input);
+
+  ctx.gateResult = result;
+  ctx.decision = result.decision;
+  ctx.requiresCosign = result.requiresCosign;
+
+  const verdict: Verdict = {
+    decision: result.decision,
+    // Two separate fields, carried through to the sealed record unsummed.
+    inconsistencyScore: result.axis.inconsistencyScore,
+    patternScore: result.axis.patternScore,
+    basis: result.basis,
+    requiresCosign: result.requiresCosign,
+    flags: [
+      ...ctx.engineResult.hardFailures.map((f) => f.id),
+      ...ctx.engineResult.flags.map((f) => f.id),
+      ...ctx.patternOutcome.flags.map((f) => f.id),
+      ...result.limitFlags.map((f) => f.id),
+    ],
+    ...(ctx.engineResult.abortCode ? { abortCode: ctx.engineResult.abortCode } : {}),
   };
+  ctx.verdict = verdict;
 
-  const { seq } = deps.ledger.commit(event.eventID, event, ctx.verdict);
+  const { seq } = deps.ledger.commit(event.eventID, event, verdict);
   ctx.ledger = { status: "recorded", seq };
+
+  // Projection for the operator console. The ledger already holds the truth.
+  persistEvent(deps.db, event, ctx.courier?.known ? ctx.courier.courierId : undefined);
+  persistVerdict(deps.db, event.eventID, seq, verdict);
 };
 
 /**
  * 8. explain — STUB. The second and last place an LLM appears.
  *
- * When implemented, its output is schema-constrained to cite only evidence IDs
- * that were actually collected; a citation to an ID that does not exist fails
- * closed. The explanation is never an input to the verdict — it is written after
- * the decision is already sealed, and removing it changes nothing but readability.
+ * Its output is written AFTER the verdict is sealed and is never an input to it.
+ * When implemented, it is schema-constrained to cite only evidence ids that were
+ * actually collected; a citation to an id that does not exist fails closed.
  */
-export const explain: NodeFn = (ctx) => {
+export const explain: NodeFn = (ctx, deps) => {
   if (!ctx.verdict) return;
-  ctx.explanation = `STUB: ${ctx.verdict.decision} (inconsistency ${ctx.verdict.inconsistencyScore}, pattern ${ctx.verdict.patternScore})`;
+
+  if (deps.llm?.explain) {
+    ctx.explanation = deps.llm.explain(ctx);
+    return;
+  }
+
+  const coverage = ctx.coverage?.inconsistency?.line ?? "coverage unknown";
+  ctx.explanation = `STUB: ${ctx.verdict.decision} (inconsistency ${ctx.verdict.inconsistencyScore}, pattern ${ctx.verdict.patternScore}; ${coverage})`;
 };
 
 export const NODE_FNS: Record<Node, NodeFn> = {

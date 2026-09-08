@@ -97,6 +97,25 @@ describe.each(Object.entries(PURE_TREES))("lib/%s is pure", (tree, modules) => {
 });
 
 /**
+ * lib/assemble is where the I/O lives, and it must STAY out of the pure trees.
+ *
+ * The separation is the whole point: assemblers reach for rows, rules do
+ * arithmetic on what they are handed. Adding lib/assemble to PURE_TREES would
+ * either fail immediately or, worse, tempt someone to move a query into a rule
+ * to make the check pass.
+ */
+describe("lib/assemble is deliberately impure", () => {
+  it("is not listed as a pure tree", () => {
+    expect(Object.keys(PURE_TREES)).not.toContain("assemble");
+  });
+
+  it("really does reach the database, which is why it is excluded", () => {
+    const source = readFileSync(join(LIB, "assemble", "engine-input.ts"), "utf8");
+    expect(source).toMatch(/from "@\/lib\/db\/schema"/);
+  });
+});
+
+/**
  * THE AXES ARE NEVER SUMMED.
  *
  * Collapsing single-event inconsistency and per-courier pattern into one number
@@ -156,14 +175,16 @@ describe("the two axes are never combined into one number", () => {
       })
       .map(({ path }) => path);
 
-    // These four carry both fields as SEPARATE values and never combine them:
-    // the ledger Verdict and the DB schema store them in distinct columns,
-    // machine.ts reports each in its own SSE trace frame, and nodes.ts copies
-    // them across. The arithmetic check above is what proves they stay apart.
-    // Anything else reading both belongs in lib/gate.
+    // These carry both fields as SEPARATE values and never combine them: the
+    // ledger Verdict, the DB schema and persist.ts keep them in distinct
+    // columns, trace.ts declares them as distinct frame fields, and machine.ts
+    // and nodes.ts copy them across. The arithmetic check above is what proves
+    // they stay apart. Anything else reading both belongs in lib/gate.
     expect(readers.sort()).toEqual([
       "agent/machine.ts",
       "agent/nodes.ts",
+      "agent/trace.ts",
+      "assemble/persist.ts",
       "db/schema.ts",
       "ledger/types.ts",
     ]);

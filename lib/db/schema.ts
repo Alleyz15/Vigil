@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /**
- * SQLite schema: five tables — parcels, couriers, mandates, events, verdicts.
+ * SQLite schema: parcels, couriers, mandates, events, verdicts, reference_sites, disputes.
  *
  * WHAT IS NOT HERE, AND WHY
  * -------------------------
@@ -26,8 +26,12 @@ export const parcels = sqliteTable(
     recipientPhone: text("recipient_phone"),
     /** Destination address, and its coordinates for the I10/I11 distance checks. */
     recipientAddress: text("recipient_address").notNull(),
-    recipientLat: integer("recipient_lat", { mode: "number" }),
-    recipientLng: integer("recipient_lng", { mode: "number" }),
+    // REAL, not INTEGER. Coordinates are fractional; an integer column would
+    // declare 3.1595 to be a whole number. SQLite's dynamic typing meant this
+    // survived a round trip, so the error hid behind test fixtures that built
+    // coordinates by hand instead of reading them back through the schema.
+    recipientLat: real("recipient_lat"),
+    recipientLng: real("recipient_lng"),
     /** Declared value in sen (integer cents) — drives the co-sign threshold. */
     declaredValueSen: integer("declared_value_sen").notNull().default(0),
     codAmountSen: integer("cod_amount_sen").notNull().default(0),
@@ -156,6 +160,16 @@ export const verdicts = sqliteTable(
     flagsJson: text("flags_json").notNull(),
     /** Set when a hard check (H1-H4) aborted the event outright. */
     abortCode: text("abort_code"),
+    /**
+     * What the decision rests on. Mirrors the sealed ledger Verdict: without it,
+     * an accept made on a full picture and an accept made because the courier is
+     * new look identical in the console.
+     */
+    basis: text("basis", {
+      enum: ["both_axes", "single_event_only", "insufficient_evidence"],
+    })
+      .notNull()
+      .default("both_axes"),
 
     /** Co-sign state. Absent operator signature is a CRYPTOGRAPHIC gap, not a flag. */
     requiresCosign: integer("requires_cosign", { mode: "boolean" })
@@ -173,5 +187,55 @@ export const verdicts = sqliteTable(
   (t) => [
     uniqueIndex("verdicts_event_uidx").on(t.eventId),
     index("verdicts_triage_idx").on(t.decision, t.createdAt),
+  ],
+);
+
+/**
+ * Positioning sources whose real-world location we know independently of GPS.
+ *
+ * I1 needs these: a courier can choose what their GPS reports, but not where
+ * the tower they are connected to actually stands. Without this table I1 is
+ * permanently `not_evaluated` and S1 (spoofing) cannot be demonstrated at all.
+ */
+export const referenceSites = sqliteTable(
+  "reference_sites",
+  {
+    /** Cell id as observed ("mcc-mnc-lac-cellid"), or a WiFi BSSID. */
+    siteId: text("site_id").primaryKey(),
+    kind: text("kind", { enum: ["cell", "wifi"] }).notNull(),
+    lat: real("lat").notNull(),
+    lng: real("lng").notNull(),
+    /** Human-readable location, for the operator console. */
+    label: text("label"),
+  },
+  (t) => [index("reference_sites_kind_idx").on(t.kind)],
+);
+
+/**
+ * "Delivered, but the customer says it never arrived."
+ *
+ * The one input that is an outcome rather than a sensor reading: whatever the
+ * evidence said at the time, the recipient disagrees. P2 compares a courier's
+ * rate against the fleet's, and the fleet baseline is COMPUTED from this table
+ * rather than stored — a stored baseline is a number nobody can check.
+ */
+export const disputes = sqliteTable(
+  "disputes",
+  {
+    disputeId: text("dispute_id").primaryKey(),
+    /** The handoff being disputed. */
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.eventId),
+    epc: text("epc").notNull(),
+    raisedAt: text("raised_at").notNull(),
+    kind: text("kind", { enum: ["not_received", "damaged", "wrong_item"] })
+      .notNull()
+      .default("not_received"),
+    notes: text("notes"),
+  },
+  (t) => [
+    uniqueIndex("disputes_event_uidx").on(t.eventId),
+    index("disputes_raised_idx").on(t.raisedAt),
   ],
 );

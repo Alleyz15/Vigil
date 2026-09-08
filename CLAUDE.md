@@ -44,6 +44,19 @@ The LLM appears in **exactly two** places:
 explanation degrades, into a structured flag list. Never let an LLM decide accept/reject.
 If a change would make a verdict depend on model output, the change is wrong.
 
+**"Remove the LLM and the verdicts are identical" is not a promise. It is a test that runs.**
+
+`lib/agent/machine.test.ts` and `lib/agent/shipment.test.ts` seal verdicts three ways — with
+`llm: undefined`, with fake model A, and with fake model B — where A and B disagree with each
+other about which tools to select and about how to describe what happened. The sealed
+`Verdict` must be **byte-identical** across all three; only the prose may differ. The shipment
+version does it over a whole six-leg timeline and also compares the resulting ledger chains.
+
+**If a future session ever needs to relax this, the architecture has already broken** — the
+model has acquired influence over an outcome it must never touch. Fix the seam, not the test.
+This is a pitch line: the honest answer to "how do we know the LLM is not deciding?" is to run
+the suite.
+
 This is **enforced, not just asserted**. Every rule in `lib/engine/`, `lib/pattern/` and
 `lib/gate/` is a pure function of its arguments — the caller assembles the input, the rules do
 arithmetic on it — and
@@ -125,6 +138,16 @@ This converts a stated blind spot into designed behaviour. **It is a pitch line:
 answer to "what about a brand-new courier you have no baseline for?" is not a shrug about cold
 start — it is that the system knows it cannot judge, says so in the record, and requires a
 human to put their name on it.
+
+### 3b. Never fabricate a permissive default from unparseable data
+
+A mandate whose stored JSON will not parse, or does not satisfy the schema, yields **no
+mandate** — not a partially populated one, not a permissive one. `loadActiveMandate` returns
+`undefined` with a reason, H2 then refuses the handoff for want of an authorisation, and the
+decision is `freeze`.
+
+"We cannot read what this courier is permitted to do" must never be interpreted generously.
+The same rule applies anywhere authorisation data is read: **fail closed, and say why.**
 
 ### 4. Missing evidence is not clean evidence
 
@@ -310,10 +333,20 @@ lib/
   mandate/
     schema.ts            CourierMandate zod. Shape only — no crypto yet.
   purity.test.ts         guards the I/O ban AND the never-summed rule
+  assemble/              WHERE THE I/O IS. Deliberately NOT under the purity test.
+    types.ts             Resolution: what was found, what was missing, and why
+    mandate.ts           mandate row -> validated CourierMandate (fails closed)
+    engine-input.ts      event + mandate + previous + referenceSites
+    pattern-input.ts     the courier's window + stored scores + disputes
+    gate-input.ts        both axis results + shift context + parcel value
+    persist.ts           projects a sealed handoff into the console tables
   agent/
+    nodes-list.ts        the eight node names (kept apart from the context)
+    trace.ts             THE SSE CONTRACT. Frozen from session 4.
     context.ts           AgentContext, the closed ToolName enum
     nodes.ts             the eight node implementations
     machine.ts           the switch driver
+    fixtures.ts          a seeded world: real SQLite, real ledger, fake clock
 data/
   ledger/                nonce-ledger.jsonl (gitignored)
   db/                    vigil.db (gitignored)
@@ -336,6 +369,34 @@ A simulated attestation must never be indistinguishable from a real one **in our
 that is exactly the forgery we claim to detect.
 
 ---
+
+## The SSE trace contract
+
+**Frozen from session 4.** The operator console is built against this shape, so add optional
+fields if you must, but do not rename one, remove one, or change a frame's meaning.
+`lib/agent/trace.test.ts` is what stops it moving.
+
+Four frame types, zod-validated on the way out so a malformed frame fails in the server rather
+than in a browser:
+
+| type | carries |
+|---|---|
+| `tool_start` | `seq`, `node`, `at` |
+| `tool_end` | `seq`, `node`, `at`, `durationMs`, `summary?`, `error?` |
+| `thought` | `seq`, `node`, `at`, `text` — free text, **the only frame an LLM will ever author**, never read by the engine |
+| `result` | `seq`, `at`, `decision?`, `basis?`, `requiresCosign?`, `inconsistencyScore?`, `patternScore?`, `flags`, `halted?` |
+
+- `seq` is monotonic from 0 and is **the ordering authority**. SSE delivery order is not
+  something a client should have to trust.
+- `verify` and `fetch_history` carry their flag ids, axis score and coverage in `summary`.
+- Exactly one `result` frame, always last, emitted whether or not the run completed. A halted
+  run still produces one, naming where it stopped.
+- The result frame keeps the two axis scores as **separate fields**. There is no combined
+  field, and a client must never add them. A test asserts no `totalScore`/`riskScore` appears.
+- `toSseMessage()` is the wire format: `event: <type>
+data: <json>
+
+`.
 
 ## Commands
 
@@ -456,15 +517,45 @@ The `gate` stub flagged in session 1 as "real enough to produce data while being
 **Not wired in yet.** `lib/agent/nodes.ts` still has the session-1 stubs at `verify`,
 `fetch_history` and `gate`. All three pure modules were proven standalone first.
 
-### Session 4 — wiring (next)
+### Session 4 — wiring (complete)
 
-Wire all three into the agent: `verify` → `runInconsistencyEngine`, `fetch_history` →
-`runPatternEngine`, `gate` → `runGate`. The work is in the **callers**, which assemble
-`EngineInput` (`previous`, `referenceSites`), `PatternInput` (the rolling window, the queue
-baseline) and `GateInput` (`ShiftContext`, `ParcelValue`) from the database.
+332 tests passing. `lib/engine/`, `lib/pattern/` and `lib/gate/` still at 100% coverage.
+`tsc --noEmit` clean, eslint clean, `next build` succeeds.
 
-Still untouched: Ed25519 co-sign, liveness/timeout paths, synthetic data generation, Open-Meteo,
-SSE, all UI.
+**The agent is wired end to end.** `verify` runs lib/engine, `fetch_history` runs lib/pattern,
+`gate` runs lib/gate and seals the verdict to the ledger, then projects it to the console
+tables. A six-leg shipment runs collection → sortation → line-haul → out-for-delivery →
+delivery and is accepted at every leg, with the ledger chain intact.
+
+| Area | What works |
+|---|---|
+| `lib/assemble/` | All three inputs built from real rows; `Resolution` records what was missing and why |
+| `agent/verify` | H4 replay check, then the real axis-1 engine |
+| `agent/fetch_history` | The real axis-2 engine over the courier's rolling window |
+| `agent/gate` | The real orthogonal gate; ledger commit **then** DB projection |
+| `agent/trace.ts` | The frozen SSE contract |
+
+**Still stubbed, marked STUB:** `plan` and `explain` (the LLM seam exists and is exercised by
+the parity tests, but no model is called), and `external_context` (Open-Meteo).
+
+**Schema changes this session:** `parcels.recipient_lat/lng` `integer` → **`real`** (a real
+bug — coordinates in an integer column), plus new `reference_sites` and `disputes` tables and
+a `verdicts.basis` column. Migration `0001`.
+
+**A lesson worth keeping:** the lat/lng type error survived three sessions because the test
+fixtures built coordinates by hand instead of reading them back through the schema. SQLite's
+dynamic typing meant nothing ever complained. **Where practical, fixtures should round-trip
+through the schema** — `makeEvent` already parses through `EpcisEvent`, and `seedWorld` now
+writes and reads real rows. A fixture that bypasses the boundary cannot test the boundary.
+
+### Session 5 — the LLM (next)
+
+Put a real model behind `deps.llm`: `plan` selecting 0–2 tools from the closed `ToolName` zod
+enum, and `explain` writing the operator's prose with schema-enforced evidence citations that
+fail closed on an id that was never collected. **The parity tests must keep passing unchanged.**
+
+Then: Open-Meteo at `external_context` (the S6 beat), Ed25519 co-sign, liveness/timeout paths,
+synthetic data generation, the SSE endpoint, and the UI.
 
 ---
 
@@ -478,6 +569,17 @@ and because a void handoff should not be waved through.
 **Measure it in experiment 3 (false-positive rate), broken out by abort code.** If H1 dominates
 the false positives, revisit before submission — most likely by softening H1 alone rather than
 by inventing a fifth outcome. Do not add a fifth outcome to work around this.
+
+**The shift window is rolling, not rostered.** `DEFAULT_SHIFT_WINDOW_HOURS = 12` counts back
+from the event; a real fleet works rostered shifts that reset at a start time. The two diverge
+at the boundary, and the shift cap (L1) is a **hard stop** that a co-signature cannot lift — so
+a courier could be stopped early or late relative to their actual roster. **This belongs in the
+submission's Known Limitations**, not only in a code comment. Fixing it properly needs a
+`shifts` table and roster data we do not have.
+
+**The pattern window is 24h and the shift window is 12h**, both arbitrary. They are assembler
+config (`DEFAULT_PATTERN_WINDOW_HOURS`, `DEFAULT_SHIFT_WINDOW_HOURS`) and overridable per run
+via `deps.windows`, so experiment 6 can sweep them.
 
 ## Known limitations (test these, don't claim them)
 

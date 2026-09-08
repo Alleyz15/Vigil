@@ -1,6 +1,11 @@
 import { z } from "zod";
-import type { EpcisEvent } from "@/lib/epcis";
-import type { Flag } from "@/lib/engine/types";
+import type { EpcisEvent, GeoPoint } from "@/lib/epcis";
+import type { CourierMandate } from "@/lib/mandate/schema";
+import type { GateResult } from "@/lib/gate/types";
+import { type Resolution, emptyResolution } from "@/lib/assemble/types";
+import type { TraceFrame } from "./trace";
+import type { EngineResult, Flag } from "@/lib/engine/types";
+import type { PatternOutcome } from "@/lib/pattern/types";
 import type { Decision, Verdict } from "@/lib/ledger/types";
 
 /**
@@ -11,18 +16,12 @@ import type { Decision, Verdict } from "@/lib/ledger/types";
  * without removing one from the code.
  */
 
-/** The eight nodes, in execution order. */
-export const NODES = [
-  "parse",
-  "lookup",
-  "plan",
-  "verify",
-  "fetch_history",
-  "external_context",
-  "gate",
-  "explain",
-] as const;
-export type Node = (typeof NODES)[number];
+// Imported AND re-exported: a bare `export type { Node } from ...` does not
+// bring the name into this module's scope, and `Node` would silently resolve to
+// the DOM's global Node interface instead.
+import type { Node } from "./nodes-list";
+export { NODES } from "./nodes-list";
+export type { Node };
 
 /**
  * The closed set of optional tools the LLM may select at `plan`.
@@ -69,13 +68,11 @@ export type PatternResult = {
   sampleSize: number;
 };
 
-/** A frame emitted to the operator console over SSE. */
-export type AgentTrace = {
-  node: Node;
-  phase: "start" | "end" | "thought";
-  at: string;
-  detail?: unknown;
-};
+/**
+ * A frame emitted to the operator console over SSE.
+ * The contract lives in ./trace.ts and is frozen from session 4.
+ */
+export type { TraceFrame } from "./trace";
 
 /** Everything the machine accumulates. Nodes read it and write their own slice. */
 export type AgentContext = {
@@ -93,9 +90,21 @@ export type AgentContext = {
   recordTimeSuppliedByClient?: boolean;
 
   /** lookup */
-  parcel?: { epc: string; known: boolean; recipientAddress?: string; declaredValueSen?: number };
+  parcel?: {
+    epc: string;
+    known: boolean;
+    recipientAddress?: string;
+    declaredValueSen?: number;
+    recipientPoint?: GeoPoint;
+  };
   courier?: { courierId: string; known: boolean; boundDeviceId?: string | null };
-  mandate?: { mandateId: string; known: boolean; status?: string };
+  /**
+   * The courier's authorisation. `value` is the full validated object the
+   * engine and gate read; it is absent when no active mandate exists OR when
+   * the stored JSON could not be parsed. Unreadable authorisation is treated as
+   * no authorisation - see CLAUDE.md on failing closed.
+   */
+  mandate?: { known: boolean; value?: CourierMandate };
   /** Set when the parcel or courier is unrecognised. Unknown is high risk, not neutral. */
   unknownEntityRisk?: "high";
 
@@ -106,6 +115,8 @@ export type AgentContext = {
 
   /** verify - axis 1 */
   inconsistency?: InconsistencyResult;
+  /** The engine's full result, handed to the gate unchanged. */
+  engineResult?: EngineResult;
   /** Ledger outcome. An aborted or duplicated event short-circuits the run. */
   ledger?:
     | { status: "recorded"; seq: number }
@@ -114,6 +125,23 @@ export type AgentContext = {
 
   /** fetch_history - axis 2 */
   pattern?: PatternResult;
+  /** The pattern engine's full outcome, handed to the gate unchanged. */
+  patternOutcome?: PatternOutcome;
+  /**
+   * True when the courier has too little history for ANY pattern claim.
+   * Distinct from a low score: the gate must never read cold start as evidence
+   * of good behaviour. See CLAUDE.md.
+   */
+  patternColdStart?: boolean;
+
+  /**
+   * Evidence coverage per axis, as reported by the engines. Rendered for the
+   * operator as "8 of 14 checks evaluable".
+   */
+  coverage?: {
+    inconsistency?: { evaluated: number; total: number; line: string };
+    pattern?: { evaluated: number; total: number; line: string };
+  };
 
   /** external_context */
   externalContext?: { source: string; summary: string; raw?: unknown };
@@ -122,17 +150,24 @@ export type AgentContext = {
   decision?: Decision;
   requiresCosign?: boolean;
   verdict?: Verdict;
+  gateResult?: GateResult;
 
   /** explain */
   explanation?: string;
 
+  /**
+   * What the assemblers could and could not resolve. The single source for the
+   * operator's evidence-coverage line - see lib/assemble/types.ts.
+   */
+  resolution: Resolution;
+
   /** Trace of every node, for the SSE stream and the audit trail. */
-  trace: AgentTrace[];
+  trace: TraceFrame[];
   /** Set when the run ended early. */
   halted?: { at: Node; reason: string };
 };
 
 /** A fresh context for one event. */
 export function createContext(input: unknown): AgentContext {
-  return { input, trace: [] };
+  return { input, trace: [], resolution: emptyResolution() };
 }
