@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -333,9 +333,74 @@ describe("the two axes are never combined into one number", () => {
       "agent/nodes.ts",
       "agent/trace.ts",
       "assemble/persist.ts",
+      // The console's read model. Carries both as separate fields for the UI
+      // to display side by side, and never combines them.
+      "console/dataset.ts",
       "db/schema.ts",
       "ledger/types.ts",
     ]);
+  });
+
+  /**
+   * THE UI READS BOTH SCORES, AND THAT IS CORRECT.
+   *
+   * Every view shows the two axes side by side — that is the whole point of the
+   * gate explorer and half the point of the timeline. So the "only lib/gate
+   * reads both" rule does NOT apply to app/ and components/; the ARITHMETIC ban
+   * does, along with a ban on naming a variable as though the two were one
+   * number.
+   */
+  it("no view combines the two axes arithmetically or names them as one number", () => {
+    const UI_ROOTS = ["app", "components"];
+    const SINGLE_NUMBER_NAMES = [
+      "totalScore",
+      "riskScore",
+      "combinedScore",
+      "overallScore",
+      "aggregateScore",
+      "sumScore",
+    ];
+
+    function uiSources(dir: string): { path: string; source: string }[] {
+      const out: { path: string; source: string }[] = [];
+      const root = join(LIB, "..", dir);
+      if (!existsSync(root)) return out;
+
+      const walk = (current: string) => {
+        for (const entry of readdirSync(current, { withFileTypes: true })) {
+          const full = join(current, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith(".test.ts")) {
+            out.push({
+              path: `${dir}/${full.slice(root.length + 1).split(sep).join("/")}`,
+              source: readFileSync(full, "utf8"),
+            });
+          }
+        }
+      };
+      walk(root);
+      return out;
+    }
+
+    for (const root of UI_ROOTS) {
+      for (const { path, source } of uiSources(root)) {
+        const clean = stripComments(source);
+
+        for (const pattern of COMBINING) {
+          expect(
+            pattern.test(clean),
+            `${path} appears to combine the two axes arithmetically. Reading both scores is correct and expected — every view displays them side by side. ADDING them is not: it makes the low-single/high-pattern quadrant unreachable, which deletes the project's differentiator.`,
+          ).toBe(false);
+        }
+
+        for (const name of SINGLE_NUMBER_NAMES) {
+          expect(
+            clean.includes(name),
+            `${path} names a variable "${name}", as though the two axes were one number. They are two independent measurements and the UI must not imply otherwise — display them separately instead.`,
+          ).toBe(false);
+        }
+      }
+    }
   });
 
   it("catches a violation when one is introduced", () => {

@@ -229,6 +229,25 @@ decision is `freeze`.
 "We cannot read what this courier is permitted to do" must never be interpreted generously.
 The same rule applies anywhere authorisation data is read: **fail closed, and say why.**
 
+### 3e. The UI must not assert precision the data does not have
+
+Two ways the console could lie without a word of it being false, both banned:
+
+- **Plotting `not_evaluated` at the origin.** A null score means the axis could not be
+  evaluated. Drawing it at zero claims a measurement nobody made. The gate explorer puts those
+  points in **gutter bands outside the numeric scale**, hollow, with the reason on hover —
+  "the courier has four handoffs and the floor is ten" is a materially stronger statement than
+  "unknown".
+- **Mixing illustrative points into an observation series.** The same-sum trio — (0,80), (80,0),
+  (40,40) — is drawn in its own series, outlined, explicitly labelled as reference points.
+  **No real event in the dataset sits at (80,0) or (40,40)**: S1 scores 100 and the middle case
+  does not occur. Do not "fix" the annotation layer by hunting for real points that match — there
+  are none, and finding near-misses to stand in for them would be the invention this rule forbids.
+
+Both are the same class of error as collapsing the three-state `RuleResult` into a boolean
+(rule 4). The console displays what was measured, says what was not, and marks what is
+illustration.
+
 ### 4. Missing evidence is not clean evidence
 
 Every rule returns **three** states, never a boolean:
@@ -457,6 +476,9 @@ lib/
     keys.ts              env-var keys. The ONLY impure file here.
   mandate/
     schema.ts            CourierMandate zod. Shape only.
+  console/               THE CONSOLE'S READ MODEL. Server-side, memoised.
+    dataset.ts           runs the agent once, serves what it sealed
+    playback.ts          the timeline stepping machine (pure, no React)
   llm/                   THE MODEL SEAM. Two nodes, neither able to move a verdict.
     types.ts             LlmProvider, LlmTelemetry (counters, by reason)
     schemas.ts           PlanResponse / ExplainResponse — all-or-nothing
@@ -489,6 +511,14 @@ lib/
     nodes.ts             the eight node implementations
     machine.ts           the switch driver
     fixtures.ts          a seeded world: real SQLite, real ledger, fake clock
+app/
+  timeline/              view 1 — normal activity to a meaningful exception
+  stream/                view 2 — the eight nodes, live over SSE
+  gate/                  view 3 — the two axes and four actions
+  api/                   thin, read-only: scenarios, shipment, scatter, stream
+components/
+  console/               the three views + shared display primitives
+  ui/                    shadcn (Radix). NEVER wrapped in AnimatePresence.
 data/
   ledger/                nonce-ledger.jsonl (gitignored)
   db/                    vigil.db (gitignored)
@@ -539,6 +569,55 @@ than in a browser:
 data: <json>
 
 `.
+
+## Console conventions
+
+### Layout: three routes, not tabs
+
+`/timeline`, `/stream`, `/gate` under one shell. Deep links (`/timeline?scenario=S2`) go
+straight into the argument during a demo, and the stream view holds a live `EventSource` that a
+tab switch would either tear down or leave running invisibly. Desktop operator console; dense
+is fine, cramped is not.
+
+### Animation policy
+
+`motion` (Framer Motion) only. **No GSAP** — there is no scroll-driven narrative here and two
+animation libraries is pure overhead.
+
+**Where motion is used:** timeline leg entrance and play-through, layout transitions when a leg
+expands, verdict badge state changes.
+
+**Where animation is banned, and why:**
+
+| Surface | Rule | Why |
+|---|---|---|
+| Gate explorer recolour | `animation: false` on the ECharts option | Any easing reads as lag. The value of that view is "I drag, it changes NOW" |
+| SSE node sequence | CSS colour transition on the state change only | The stream already has genuine timing because the nodes really are executing. Added entrance animation makes it impossible to tell which delays are computation and which are decoration — which is the whole point of showing the reasoning |
+| Flag expansion | Radix `data-state` keyframes, no bounce | An operator clicks this dozens of times a shift |
+
+### NEVER wrap a Radix component in `AnimatePresence`
+
+shadcn components are Radix underneath and animate via `data-state` CSS keyframes
+(`tw-animate-css`). Wrapping one in `AnimatePresence` puts two unmount mechanisms in a fight and
+produces intermittent ghosting that is painful to debug — it reproduces unreliably and looks
+like a rendering bug rather than a structural one.
+
+**The split:** Radix components keep their own `data-state` animation. `motion` is for our own
+lists and cards only. `CollapsibleContent` in `timeline-view.tsx` is the reference case — it
+sits inside a `motion.li` but is not itself wrapped.
+
+### The verdict is never recomputed in the browser
+
+`lib/console/dataset.ts` runs the real agent server-side, once per process, and the routes read
+what it sealed. A browser that recomputed a score would be showing a second opinion nobody
+signed, and the two would drift the first time a threshold moved.
+
+### The SSE route needs a plain Node server
+
+`app/api/stream/route.ts` runs a real event through `runAgent` and streams the frames it emits.
+**It will not survive a serverless function timeout** — Vercel's free tier cuts off at 10
+seconds and preparing S2 alone takes longer. This is part of why the demo runs locally and is
+recorded rather than deployed.
 
 ## Commands
 
@@ -817,13 +896,40 @@ failure reaches the verdict as the bare id `C1` rather than a `Flag`. So a froze
 signature failed produced the fallback text *"No checks raised a concern."* — worse than terse,
 simply wrong. `structuredExplanation` now renders the credential result from its own source.
 
-### Session 8 — Open-Meteo and the SSE endpoint (next)
+### Session 8 — the operator console (complete)
 
-`external_context` currently sets a `STUB` placeholder when `plan` asks for weather. Wire
-Open-Meteo behind it: this is the S6 beat, where the agent gathers evidence and decides **not**
-to escalate. Then the SSE endpoint against the frozen trace contract.
+477 tests passing, 3 skipped. `tsc --noEmit` clean, eslint clean, `next build` succeeds. All
+three views verified in a browser, not just compiled.
 
-Still untouched: liveness/timeout paths, the operator console, the experiments.
+| View | What it demonstrates |
+|---|---|
+| `/timeline` | The brief's "normal activity to a meaningful exception", with a play control so a viewer watches it arrive rather than reading the end state |
+| `/stream` | The eight nodes executing live. Agentic-AI evidence, not decoration |
+| `/gate` | The two axes, four actions, and the same-sum trio annotated in place |
+
+**Design decisions worth not re-litigating:**
+
+- **Three routes, not tabs.** Deep links and the `EventSource` lifecycle. See Console conventions.
+- **`not_evaluated` gets gutter bands**, and the trio is a labelled reference layer. Rule 3e.
+- **The scatter reports few unevaluated points (1 of 76), and that is correct** — warm-up
+  history means almost every courier clears the cold-start floor. Do not manufacture cold-start
+  events to populate the gutter; the counts panel tells the truth about how empty it is.
+- **`TimelineView` is keyed on the scenario id** rather than resetting state in an effect. React
+  remounts it on a switch, which is both idiomatic and what the lint rule wants.
+- **The playback machine is a pure reducer outside React**, with its own tests. A demo spine
+  that can only be exercised by clicking a button in a browser is a spine nobody checks.
+- **The never-summed guard now covers `app/` and `components/`**, with a message that explains
+  the distinction: reading both scores is correct and expected, since every view displays them
+  side by side; combining them arithmetically or naming a variable as though they were one
+  number is not.
+
+### Session 9 — Open-Meteo, then the experiments (next)
+
+`external_context` still sets a `STUB` placeholder when `plan` asks for weather. Wire Open-Meteo
+behind it: this is the S6 beat, where the agent gathers evidence and decides **not** to escalate.
+
+Then the experiments, on the holdout split, with the generator's anti-circularity guard already
+in place. Still untouched: liveness/timeout paths, the map view.
 
 ---
 
