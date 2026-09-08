@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { VigilDb } from "@/lib/db/client";
 import { events, verdicts } from "@/lib/db/schema";
 import { type EpcisEvent, epcsOf } from "@/lib/epcis";
+import { eq } from "drizzle-orm";
 import { canonicalHash } from "@/lib/ledger/canonical";
 import type { Verdict } from "@/lib/ledger/types";
 
@@ -80,4 +81,16 @@ export function persistVerdict(
     })
     .onConflictDoNothing()
     .run();
+}
+
+/**
+ * Attach the operator's explanation to an already-sealed verdict.
+ *
+ * A separate write because the verdict seals at `gate` and the prose is written
+ * at `explain`, one node later. If the explanation never arrives, the row keeps
+ * a null here and the decision is entirely unaffected — which is the design
+ * working, not a gap.
+ */
+export function persistExplanation(db: VigilDb, eventId: string, explanation: string): void {
+  db.update(verdicts).set({ explanation }).where(eq(verdicts.eventId, eventId)).run();
 }

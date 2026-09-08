@@ -51,7 +51,7 @@ const assembleWithMandate = (db: World["deps"]["db"], event: ReturnType<typeof p
   });
 
 describe("loadActiveMandate", () => {
-  it("rebuilds the nested mandate from its flattened row", () => {
+  it("rebuilds the nested mandate from its flattened row", async () => {
     const resolution = emptyResolution();
     const mandate = loadActiveMandate(world.deps.db, COURIER_ID, resolution);
 
@@ -61,7 +61,7 @@ describe("loadActiveMandate", () => {
     expect(resolution.resolved).toContain("mandate MD-0001");
   });
 
-  it("returns undefined and says why when there is no active mandate", () => {
+  it("returns undefined and says why when there is no active mandate", async () => {
     world.deps.db.update(mandates).set({ status: "revoked" }).run();
 
     const resolution = emptyResolution();
@@ -69,7 +69,7 @@ describe("loadActiveMandate", () => {
     expect(resolution.missing[0].reason).toMatch(/no active mandate/);
   });
 
-  it("fails closed on malformed JSON rather than building a partial mandate", () => {
+  it("fails closed on malformed JSON rather than building a partial mandate", async () => {
     world.deps.db.update(mandates).set({ validityJson: "}{" }).run();
 
     const resolution = emptyResolution();
@@ -77,7 +77,7 @@ describe("loadActiveMandate", () => {
     expect(resolution.missing[0].reason).toMatch(/malformed JSON/);
   });
 
-  it("fails closed when the JSON parses but does not satisfy the schema", () => {
+  it("fails closed when the JSON parses but does not satisfy the schema", async () => {
     world.deps.db.update(mandates).set({ scopeJson: '{"epcPrefixes":"not-an-array"}' }).run();
 
     const resolution = emptyResolution();
@@ -87,7 +87,7 @@ describe("loadActiveMandate", () => {
 });
 
 describe("assembleEngineInput", () => {
-  it("resolves the parcel, its coordinates and the observed reference sites", () => {
+  it("resolves the parcel, its coordinates and the observed reference sites", async () => {
     const event = parseEvent(makeAgentEvent());
     const { input, resolution } = assembleEngineInput(world.deps.db, event);
 
@@ -97,7 +97,7 @@ describe("assembleEngineInput", () => {
     expect(resolution.resolved).toContain("recipientPoint");
   });
 
-  it("reports no previous event for the first scan in a timeline", () => {
+  it("reports no previous event for the first scan in a timeline", async () => {
     const event = parseEvent(makeAgentEvent());
     const { input, resolution } = assembleEngineInput(world.deps.db, event);
 
@@ -105,9 +105,9 @@ describe("assembleEngineInput", () => {
     expect(resolution.missing.map((m) => m.reason).join(" ")).toMatch(/first in its timeline/);
   });
 
-  it("finds the immediately preceding event once one has been stored", () => {
+  it("finds the immediately preceding event once one has been stored", async () => {
     const first = makeAgentEvent({ eventTime: "2026-09-08T09:45:00+08:00" });
-    runSigned(first, world);
+    await runSigned(first, world);
 
     const second = parseEvent(makeAgentEvent({ eventTime: "2026-09-08T10:15:00+08:00" }));
     const { input } = assembleEngineInput(world.deps.db, second);
@@ -123,7 +123,7 @@ describe("assembleEngineInput", () => {
    * `not_evaluated`, never as a fabricated site — inventing one would
    * manufacture the very contradiction I1 exists to detect.
    */
-  it("leaves referenceSites undefined when the region has none on file", () => {
+  it("leaves referenceSites undefined when the region has none on file", async () => {
     const bare = seedWorld({ withReferenceSites: false });
     try {
       const event = parseEvent(makeAgentEvent());
@@ -141,7 +141,7 @@ describe("assembleEngineInput", () => {
     }
   });
 
-  it("leaves recipientPoint undefined when the parcel has no coordinates", () => {
+  it("leaves recipientPoint undefined when the parcel has no coordinates", async () => {
     const noCoords = seedWorld({ recipientPoint: null });
     try {
       const event = parseEvent(makeAgentEvent());
@@ -157,7 +157,7 @@ describe("assembleEngineInput", () => {
     }
   });
 
-  it("reports a missing parcel rather than inventing one", () => {
+  it("reports a missing parcel rather than inventing one", async () => {
     const event = parseEvent(makeAgentEvent({ epcList: ["urn:epc:id:sgtin:0614141.107346.7777"] }));
     const { input, resolution } = assembleEngineInput(world.deps.db, event);
 
@@ -168,20 +168,20 @@ describe("assembleEngineInput", () => {
 
 describe("assemblePatternInput", () => {
   /** Seal `n` deliveries, five minutes apart, so they become past handoffs. */
-  function sealHandoffs(w: World, n: number, startAt = "2026-09-08T08:00:00+08:00") {
+  async function sealHandoffs(w: World, n: number, startAt = "2026-09-08T08:00:00+08:00") {
     const ids: string[] = [];
     const base = Date.parse(startAt);
     for (let i = 0; i < n; i++) {
       const eventTime = new Date(base + i * 5 * 60_000).toISOString().replace("Z", "+00:00");
       const event = makeAgentEvent({ eventTime, recordTime: eventTime });
-      const ctx = runSigned(event, w);
+      const ctx = await runSigned(event, w);
       if (ctx.event) ids.push(ctx.event.eventID);
     }
     return ids;
   }
 
-  it("returns the courier's sealed handoffs within the window", () => {
-    sealHandoffs(world, 4);
+  it("returns the courier's sealed handoffs within the window", async () => {
+    await sealHandoffs(world, 4);
 
     const { input } = assemblePatternInput(
       world.deps.db,
@@ -194,10 +194,10 @@ describe("assemblePatternInput", () => {
     expect(input.courierId).toBe(COURIER_ID);
   });
 
-  it("excludes events that have no sealed verdict rather than scoring them zero", () => {
+  it("excludes events that have no sealed verdict rather than scoring them zero", async () => {
     // P3 measures the SPREAD of axis-1 scores; substituting a zero for an
     // unscored event would fabricate the tightness P3 looks for.
-    sealHandoffs(world, 3);
+    await sealHandoffs(world, 3);
     // A stored event with no verdict row: ingested but never adjudicated.
     world.deps.db.delete(verdicts).where(eq(verdicts.ledgerSeq, 0)).run();
 
@@ -211,8 +211,8 @@ describe("assemblePatternInput", () => {
     expect(resolution.missing.map((m) => m.reason).join(" ")).toMatch(/no sealed verdict/);
   });
 
-  it("carries dispute records through to the pattern rules", () => {
-    const ids = sealHandoffs(world, 4);
+  it("carries dispute records through to the pattern rules", async () => {
+    const ids = await sealHandoffs(world, 4);
     seedDispute(world.deps.db, ids[0]);
 
     const { input } = assemblePatternInput(world.deps.db, COURIER_ID, "2026-09-08T12:00:00+08:00");
@@ -220,8 +220,8 @@ describe("assemblePatternInput", () => {
     expect(input.handoffs.filter((h) => h.disputed)).toHaveLength(1);
   });
 
-  it("computes the queue baseline from the same rows an auditor could recount", () => {
-    const ids = sealHandoffs(world, 4);
+  it("computes the queue baseline from the same rows an auditor could recount", async () => {
+    const ids = await sealHandoffs(world, 4);
     seedDispute(world.deps.db, ids[0]);
 
     const { input } = assemblePatternInput(world.deps.db, COURIER_ID, "2026-09-08T12:00:00+08:00");
@@ -230,7 +230,7 @@ describe("assemblePatternInput", () => {
     expect(input.queueBaseline?.disputeRate).toBeCloseTo(0.25, 5);
   });
 
-  it("reports no baseline when the fleet has no deliveries to compare against", () => {
+  it("reports no baseline when the fleet has no deliveries to compare against", async () => {
     const { input, resolution } = assemblePatternInput(
       world.deps.db,
       COURIER_ID,
@@ -245,8 +245,8 @@ describe("assemblePatternInput", () => {
     expect(outcome.coverage.notEvaluated.map((n) => n.id)).toContain("P2");
   });
 
-  it("reports cold start for a courier with too little history", () => {
-    sealHandoffs(world, 3);
+  it("reports cold start for a courier with too little history", async () => {
+    await sealHandoffs(world, 3);
 
     const { input } = assemblePatternInput(world.deps.db, COURIER_ID, "2026-09-08T12:00:00+08:00");
     const outcome = runPatternEngine(input);
@@ -256,8 +256,8 @@ describe("assemblePatternInput", () => {
     expect(outcome.coldStartReason).toMatch(/at least 10/);
   });
 
-  it("honours the window: events outside it are not in the sample", () => {
-    sealHandoffs(world, 4, "2026-09-06T08:00:00+08:00");
+  it("honours the window: events outside it are not in the sample", async () => {
+    await sealHandoffs(world, 4, "2026-09-06T08:00:00+08:00");
 
     const { input } = assemblePatternInput(world.deps.db, COURIER_ID, "2026-09-08T12:00:00+08:00", {
       windowHours: 24,
@@ -271,9 +271,9 @@ describe("assembleGateInput", () => {
   const emptyAxis1 = () =>
     runInconsistencyEngine(assembleWithMandate(world.deps.db, parseEvent(makeAgentEvent())).input);
 
-  it("counts handoffs this shift from the courier/time index", () => {
-    runSigned(makeAgentEvent({ eventTime: "2026-09-08T09:00:00+08:00" }), world);
-    runSigned(makeAgentEvent({ eventTime: "2026-09-08T09:30:00+08:00" }), world);
+  it("counts handoffs this shift from the courier/time index", async () => {
+    await runSigned(makeAgentEvent({ eventTime: "2026-09-08T09:00:00+08:00" }), world);
+    await runSigned(makeAgentEvent({ eventTime: "2026-09-08T09:30:00+08:00" }), world);
 
     const { input } = assembleGateInput(world.deps.db, {
       inconsistency: emptyAxis1(),
@@ -288,12 +288,12 @@ describe("assembleGateInput", () => {
     expect(input.shift?.handoffsThisShift).toBe(2);
   });
 
-  it("finds the last high-risk handoff for the cooldown check", () => {
+  it("finds the last high-risk handoff for the cooldown check", async () => {
     // A spoofed event scores high enough to be flagged.
     const spoofed = makeAgentEvent({ eventTime: "2026-09-08T09:00:00+08:00" });
     const signals = signalsOf(spoofed);
     (signals.gps as { mockLocationProvider: boolean }).mockLocationProvider = true;
-    const flagged = runSigned(spoofed, world);
+    const flagged = await runSigned(spoofed, world);
     expect(flagged.decision).not.toBe("accept");
 
     const { input } = assembleGateInput(world.deps.db, {
@@ -309,7 +309,7 @@ describe("assembleGateInput", () => {
     expect(input.shift?.lastHighRiskHandoffAt).toBe("2026-09-08T09:00:00+08:00");
   });
 
-  it("reads the parcel's value for the co-sign conditions", () => {
+  it("reads the parcel's value for the co-sign conditions", async () => {
     const { input } = assembleGateInput(world.deps.db, {
       inconsistency: emptyAxis1(),
       pattern: runPatternEngine(
@@ -324,7 +324,7 @@ describe("assembleGateInput", () => {
     expect(input.parcel?.recipientAddressInScope).toBe(true);
   });
 
-  it("reports a missing parcel rather than inventing a value of zero", () => {
+  it("reports a missing parcel rather than inventing a value of zero", async () => {
     const { input, resolution } = assembleGateInput(world.deps.db, {
       inconsistency: emptyAxis1(),
       pattern: runPatternEngine(
@@ -341,7 +341,7 @@ describe("assembleGateInput", () => {
 });
 
 describe("coverageLine", () => {
-  it("renders the operator's line from the engine's own counts", () => {
+  it("renders the operator's line from the engine's own counts", async () => {
     expect(coverageLine({ evaluated: 8, total: 14 })).toBe("8 of 14 checks evaluable");
   });
 });

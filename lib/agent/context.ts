@@ -119,6 +119,8 @@ export type AgentContext = {
   plan?: ToolPlan;
   /** True when the deterministic heuristic produced the plan (LLM off, failed, or lite mode). */
   planFromHeuristic?: boolean;
+  /** Why a model's plan was refused, when one was asked and refused. */
+  planRejection?: string;
 
   /** verify - axis 1 */
   inconsistency?: InconsistencyResult;
@@ -164,6 +166,12 @@ export type AgentContext = {
 
   /** explain */
   explanation?: string;
+  /** True when the structured flag list produced the explanation. */
+  explanationFromFallback?: boolean;
+  /** Why a model's explanation was refused, when one was asked and refused. */
+  explanationRejection?: string;
+  /** Evidence ids the model cited that this run never collected. */
+  hallucinatedCitations?: string[];
 
   /**
    * What the assemblers could and could not resolve. The single source for the

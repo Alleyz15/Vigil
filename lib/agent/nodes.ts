@@ -15,7 +15,9 @@ import {
   loadActiveMandate,
   mergeResolutions,
 } from "@/lib/assemble";
-import { persistEvent, persistVerdict } from "@/lib/assemble/persist";
+import { persistEvent, persistExplanation, persistVerdict } from "@/lib/assemble/persist";
+import { explainVerdict, planTools } from "@/lib/llm";
+import type { LlmProvider, LlmTelemetry } from "@/lib/llm";
 import { verificationKeys, verifyCredential } from "@/lib/credential";
 import type { Credential, VerificationResult } from "@/lib/credential";
 import type { AgentContext, Node } from "./context";
@@ -63,15 +65,32 @@ export type NodeDeps = {
   windows?: { patternHours?: number; shiftHours?: number };
 };
 
-/** The only surface an LLM is ever given. Both methods are advisory. */
+/**
+ * The only surface an LLM is ever given.
+ *
+ * A provider that returns text, and counters. Nothing here can reach a rule, a
+ * score or the ledger: `plan` chooses which optional context to gather and
+ * `explain` writes prose after the fact. Both are validated above the provider,
+ * so a new provider cannot widen what the agent accepts.
+ */
 export type AgentLlm = {
-  /** Choose 0-2 tools from the closed enum. Never consulted for a decision. */
-  planTools?: (ctx: AgentContext) => { tools: string[]; rationale?: string };
-  /** Write the operator's explanation, AFTER the verdict is sealed. */
-  explain?: (ctx: AgentContext) => string;
+  provider?: LlmProvider;
+  /** Accumulated across a whole experiment run, not reset per call. */
+  telemetry?: LlmTelemetry;
+  planTimeoutMs?: number;
+  explainTimeoutMs?: number;
 };
 
-export type NodeFn = (ctx: AgentContext, deps: NodeDeps) => void;
+/**
+ * A node.
+ *
+ * ASYNC BECAUSE TWO OF THEM HAVE TO BE. `plan` and `explain` call a model over
+ * the network, and `external_context` will call a weather API. Six of the eight
+ * are synchronous and stay that way; the signature is widened rather than a
+ * second, parallel synchronous pipeline being kept alongside this one. Two
+ * pipelines drift, and the one that drifts is always the one with the tests.
+ */
+export type NodeFn = (ctx: AgentContext, deps: NodeDeps) => void | Promise<void>;
 
 /**
  * 1. parse — raw input to a validated EPCIS event across the five dimensions.
@@ -175,18 +194,18 @@ export const lookup: NodeFn = (ctx, deps) => {
  * is why `planFromHeuristic` is recorded rather than hidden. Tool selection can
  * change what CONTEXT the operator is shown. It can never change the verdict.
  */
-export const plan: NodeFn = (ctx, deps) => {
-  if (deps.llm?.planTools) {
-    const proposed = deps.llm.planTools(ctx);
-    // STUB: the closed-enum validation lands with the LLM. The seam exists now
-    // so the parity test can prove a varying plan moves no verdict.
-    ctx.plan = { tools: [], rationale: proposed.rationale };
-    ctx.planFromHeuristic = false;
-    return;
-  }
+export const plan: NodeFn = async (ctx, deps) => {
+  const outcome = await planTools(ctx, {
+    provider: deps.llm?.provider,
+    telemetry: deps.llm?.telemetry,
+    timeoutMs: deps.llm?.planTimeoutMs,
+  });
 
-  ctx.plan = { tools: [], rationale: "STUB: tool selection not implemented" };
-  ctx.planFromHeuristic = true;
+  ctx.plan = outcome.plan;
+  ctx.planFromHeuristic = outcome.fromHeuristic;
+  // Recorded rather than hidden: an operator, and experiment 5, can tell a
+  // model-chosen context set from a deterministic one.
+  ctx.planRejection = outcome.rejection;
 };
 
 /**
@@ -487,16 +506,23 @@ function signaturesOf(credential: Credential | undefined) {
  * When implemented, it is schema-constrained to cite only evidence ids that were
  * actually collected; a citation to an id that does not exist fails closed.
  */
-export const explain: NodeFn = (ctx, deps) => {
+export const explain: NodeFn = async (ctx, deps) => {
   if (!ctx.verdict) return;
 
-  if (deps.llm?.explain) {
-    ctx.explanation = deps.llm.explain(ctx);
-    return;
-  }
+  const outcome = await explainVerdict(ctx, {
+    provider: deps.llm?.provider,
+    telemetry: deps.llm?.telemetry,
+    timeoutMs: deps.llm?.explainTimeoutMs,
+  });
 
-  const coverage = ctx.coverage?.inconsistency?.line ?? "coverage unknown";
-  ctx.explanation = `STUB: ${ctx.verdict.decision} (inconsistency ${ctx.verdict.inconsistencyScore}, pattern ${ctx.verdict.patternScore}; ${coverage})`;
+  ctx.explanation = outcome.explanation;
+  ctx.explanationFromFallback = outcome.fromFallback;
+  ctx.explanationRejection = outcome.rejection;
+  ctx.hallucinatedCitations = outcome.hallucinatedCitations;
+
+  // The verdict was sealed at `gate`. This only attaches prose to it, so a
+  // failure here leaves the sealed record and the ledger chain untouched.
+  persistExplanation(deps.db, ctx.event!.eventID, outcome.explanation);
 };
 
 export const NODE_FNS: Record<Node, NodeFn> = {

@@ -37,12 +37,12 @@ afterEach(() => rmSync(world.dir, { recursive: true, force: true }));
  * unapproved. There is no valid credential, and the courier cannot make one.
  */
 describe("courier-only credential is cryptographically invalid, not merely unapproved", () => {
-  it("refuses to seal a co-sign-required handoff presented with only the courier's signature", () => {
+  it("refuses to seal a co-sign-required handoff presented with only the courier's signature", async () => {
     const event = makeAgentEvent();
     // The courier signs correctly. Their signature is valid. It is not enough.
     const courierOnly = world.credentialFor(event, { cosign: false });
 
-    const ctx = runAgent(event, world.deps, { credential: courierOnly });
+    const ctx = await runAgent(event, world.deps, { credential: courierOnly });
 
     expect(ctx.requiresCosign).toBe(true);
     expect(ctx.halted).toEqual({ at: "gate", reason: "PENDING_COSIGNATURE" });
@@ -60,7 +60,7 @@ describe("courier-only credential is cryptographically invalid, not merely unapp
     expect(world.deps.db.select().from(verdicts).all()).toHaveLength(0);
   });
 
-  it("is a verification failure, not a policy flag: the same token verifies when no co-sign is required", () => {
+  it("is a verification failure, not a policy flag: the same token verifies when no co-sign is required", async () => {
     const event = makeAgentEvent();
     const courierOnly = world.credentialFor(event, { cosign: false });
 
@@ -85,11 +85,11 @@ describe("courier-only credential is cryptographically invalid, not merely unapp
 });
 
 describe("the two-phase flow", () => {
-  it("seals cleanly when the operator co-signs the same handoff", () => {
+  it("seals cleanly when the operator co-signs the same handoff", async () => {
     const event = makeAgentEvent();
 
     // Phase 1: courier submits. Nothing seals.
-    const pending = runAgent(event, world.deps, {
+    const pending = await runAgent(event, world.deps, {
       credential: world.credentialFor(event, { cosign: false }),
     });
     expect(pending.halted?.reason).toBe("PENDING_COSIGNATURE");
@@ -101,7 +101,7 @@ describe("the two-phase flow", () => {
       "OP-01",
       world.keys.operator.privateKey,
     );
-    const sealed = runAgent(event, world.deps, { credential: approved });
+    const sealed = await runAgent(event, world.deps, { credential: approved });
 
     expect(sealed.halted).toBeUndefined();
     expect(sealed.decision).toBe("accept");
@@ -117,11 +117,11 @@ describe("the two-phase flow", () => {
    * correctly abort it as EVENT_ID_REUSE — freezing the courier for the crime
    * of being co-signed. See CLAUDE.md.
    */
-  it("does not treat the co-signed resubmission as an event ID reuse", () => {
+  it("does not treat the co-signed resubmission as an event ID reuse", async () => {
     const event = makeAgentEvent();
 
-    runAgent(event, world.deps, { credential: world.credentialFor(event, { cosign: false }) });
-    const sealed = runSigned(event, world);
+    await runAgent(event, world.deps, { credential: world.credentialFor(event, { cosign: false }) });
+    const sealed = await runSigned(event, world);
 
     expect(sealed.ledger).toEqual({ status: "recorded", seq: 0 });
     expect(sealed.verdict?.abortCode).toBeUndefined();
@@ -129,13 +129,13 @@ describe("the two-phase flow", () => {
     expect(world.deps.ledger.readRecords().map((r) => r.kind)).toEqual(["verdict"]);
   });
 
-  it("replays the sealed verdict if the courier-only attempt arrives again afterwards", () => {
+  it("replays the sealed verdict if the courier-only attempt arrives again afterwards", async () => {
     const event = makeAgentEvent();
-    const sealed = runSigned(event, world);
+    const sealed = await runSigned(event, world);
 
     // The device retries its original courier-only submission. Same event, so
     // the ledger's NO-OP path answers before the credential is ever consulted.
-    const replay = runAgent(event, world.deps, {
+    const replay = await runAgent(event, world.deps, {
       credential: world.credentialFor(event, { cosign: false }),
     });
 
@@ -144,9 +144,9 @@ describe("the two-phase flow", () => {
     expect(world.deps.ledger.readRecords()).toHaveLength(1);
   });
 
-  it("records who approved the handoff on the console projection", () => {
+  it("records who approved the handoff on the console projection", async () => {
     const event = makeAgentEvent();
-    const ctx = runSigned(event, world);
+    const ctx = await runSigned(event, world);
 
     const row = world.deps.db
       .select()
@@ -168,9 +168,9 @@ describe("the two-phase flow", () => {
  * conflated.
  */
 describe("a forged signature is sealed as evidence", () => {
-  it("freezes and records a forged courier signature", () => {
+  it("freezes and records a forged courier signature", async () => {
     const event = makeAgentEvent();
-    const ctx = runSigned(event, world, { forgeCourier: true });
+    const ctx = await runSigned(event, world, { forgeCourier: true });
 
     expect(ctx.halted).toBeUndefined();
     expect(ctx.decision).toBe("freeze");
@@ -183,16 +183,16 @@ describe("a forged signature is sealed as evidence", () => {
     expect(world.deps.ledger.verifyChain()).toEqual({ valid: true, entries: 1 });
   });
 
-  it("freezes a co-signature from a key that is not the operator's", () => {
+  it("freezes a co-signature from a key that is not the operator's", async () => {
     const event = makeAgentEvent();
-    const ctx = runSigned(event, world, { forgeOperator: true });
+    const ctx = await runSigned(event, world, { forgeOperator: true });
 
     expect(ctx.decision).toBe("freeze");
     expect(ctx.credential?.invalidSignatures).toContain("operator");
     expect(world.deps.ledger.readRecords()).toHaveLength(1);
   });
 
-  it("freezes an operator approval lifted from another handoff", () => {
+  it("freezes an operator approval lifted from another handoff", async () => {
     const eventA = makeAgentEvent({ eventTime: "2026-09-08T09:00:00+08:00" });
     const eventB = makeAgentEvent({ eventTime: "2026-09-08T10:15:00+08:00" });
 
@@ -208,17 +208,17 @@ describe("a forged signature is sealed as evidence", () => {
       ],
     };
 
-    const ctx = runAgent(eventB, world.deps, { credential: forged });
+    const ctx = await runAgent(eventB, world.deps, { credential: forged });
 
     expect(ctx.decision).toBe("freeze");
     expect(ctx.credential?.invalidSignatures).toEqual(["operator"]);
   });
 
-  it("freezes a credential whose subject describes a different handoff", () => {
+  it("freezes a credential whose subject describes a different handoff", async () => {
     const eventA = makeAgentEvent({ eventTime: "2026-09-08T09:00:00+08:00" });
     const eventB = makeAgentEvent({ eventTime: "2026-09-08T10:15:00+08:00" });
 
-    const ctx = runAgent(eventB, world.deps, {
+    const ctx = await runAgent(eventB, world.deps, {
       credential: world.credentialFor(eventA, { cosign: true }),
     });
 
@@ -228,21 +228,21 @@ describe("a forged signature is sealed as evidence", () => {
 });
 
 describe("when no credential is presented at all", () => {
-  it("halts pending on a handoff that requires a co-signature", () => {
+  it("halts pending on a handoff that requires a co-signature", async () => {
     const event = makeAgentEvent();
-    const ctx = runAgent(event, world.deps);
+    const ctx = await runAgent(event, world.deps);
 
     expect(ctx.halted).toEqual({ at: "gate", reason: "PENDING_COSIGNATURE" });
     expect(world.deps.ledger.readRecords()).toHaveLength(0);
     expect(ctx.credential?.problems[0].detail).toMatch(/no credential was presented/);
   });
 
-  it("still seals a handoff that needs no co-signature", () => {
+  it("still seals a handoff that needs no co-signature", async () => {
     // A mandate with no co-sign conditions and an established courier would not
     // require one; here the fixture's cold start does, so the check is that the
     // gate's own threshold is what drives it - not the mere presence of a token.
     const event = makeAgentEvent();
-    const ctx = runAgent(event, world.deps);
+    const ctx = await runAgent(event, world.deps);
 
     expect(ctx.requiresCosign).toBe(true);
     expect(ctx.gateResult?.cosignReasons[0]).toMatch(/too little history/);
@@ -250,16 +250,16 @@ describe("when no credential is presented at all", () => {
 });
 
 describe("the credential never touches the event", () => {
-  it("leaves the sealed payload hash identical whether or not a credential rode along", () => {
+  it("leaves the sealed payload hash identical whether or not a credential rode along", async () => {
     const event = makeAgentEvent();
 
-    const withCredential = runSigned(event, world);
+    const withCredential = await runSigned(event, world);
     const hashWith = world.deps.ledger.readRecords()[0].payloadHash;
 
     // A second world, same event, sealed the same way.
     const other = seedWorld();
     try {
-      runSigned(event, other);
+      await runSigned(event, other);
       expect(other.deps.ledger.readRecords()[0].payloadHash).toBe(hashWith);
     } finally {
       rmSync(other.dir, { recursive: true, force: true });

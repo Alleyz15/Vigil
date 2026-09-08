@@ -99,11 +99,11 @@ export function createHarness(world: GeneratedWorld): IngestHarness {
  * courier's signature alone, and if the gate demands a co-signature, obtain one
  * and resubmit — which is what an operator console actually does.
  */
-export function ingestEvent(
+export async function ingestEvent(
   harness: IngestHarness,
   built: BuiltEvent,
   args: { courierPrivateKey: string; mandateId: string; withCosign?: boolean },
-): AgentContext {
+): Promise<AgentContext> {
   const event = built.event;
   const subject = {
     v: 1 as const,
@@ -136,18 +136,18 @@ export function ingestEvent(
  * co-signature gets one. A handoff that seals on the first pass never troubled
  * an operator, which is the thing S0 is meant to demonstrate.
  */
-export function ingestWithApproval(
+export async function ingestWithApproval(
   harness: IngestHarness,
   built: BuiltEvent,
   args: { courierPrivateKey: string; mandateId: string },
-): { ctx: AgentContext; neededCosign: boolean } {
-  const first = ingestEvent(harness, built, { ...args, withCosign: false });
+): Promise<{ ctx: AgentContext; neededCosign: boolean }> {
+  const first = await ingestEvent(harness, built, { ...args, withCosign: false });
 
   if (first.halted?.reason !== "PENDING_COSIGNATURE") {
     return { ctx: first, neededCosign: false };
   }
 
-  const approved = ingestEvent(harness, built, { ...args, withCosign: true });
+  const approved = await ingestEvent(harness, built, { ...args, withCosign: true });
   return { ctx: approved, neededCosign: true };
 }
 
@@ -165,10 +165,10 @@ export type IngestedScenario = {
 };
 
 /** Run a whole scenario: warm-up, then the timeline, then any replay. */
-export function ingestScenario(
+export async function ingestScenario(
   scenario: GeneratedScenario,
   harness: IngestHarness,
-): IngestedScenario {
+): Promise<IngestedScenario> {
   const args = {
     courierPrivateKey: scenario.courier.keys.privateKey,
     mandateId: scenario.courier.mandate.mandateId,
@@ -180,16 +180,19 @@ export function ingestScenario(
   // the world's original scattered addresses and I10 fires on every one.
   upsertParcels(harness, scenario);
 
-  const warmup = scenario.warmup.map(
-    (built) => ingestWithApproval(harness, built, args).ctx,
-  );
+  const warmup: AgentContext[] = [];
+  for (const built of scenario.warmup) {
+    // Sequential on purpose: each handoff builds the history the next is
+    // judged against, so running them concurrently would race the pattern axis.
+    warmup.push((await ingestWithApproval(harness, built, args)).ctx);
+  }
 
   const legs: AgentContext[] = [];
   const cosigned: boolean[] = [];
   const disputed = new Set(scenario.disputedEventIds);
 
   for (const built of scenario.timeline) {
-    const { ctx, neededCosign } = ingestWithApproval(harness, built, args);
+    const { ctx, neededCosign } = await ingestWithApproval(harness, built, args);
     legs.push(ctx);
     cosigned.push(neededCosign);
 
@@ -202,7 +205,7 @@ export function ingestScenario(
   }
 
   const replay = scenario.replay
-    ? ingestEvent(harness, scenario.replay.event, { ...args, withCosign: true })
+    ? await ingestEvent(harness, scenario.replay.event, { ...args, withCosign: true })
     : undefined;
 
   return { scenario, harness, warmup, legs, cosigned, replay };

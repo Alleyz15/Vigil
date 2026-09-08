@@ -28,7 +28,7 @@ function context(seed = SEED) {
 }
 
 /** Generate a scenario and run it through the real agent, fleet and all. */
-function run(id: ScenarioId, seed = SEED): IngestedScenario {
+async function run(id: ScenarioId, seed = SEED): Promise<IngestedScenario> {
   const ctx = context(seed);
   const scenario = buildScenario(id, ctx);
   const harness = createHarness(ctx.world);
@@ -39,7 +39,7 @@ function run(id: ScenarioId, seed = SEED): IngestedScenario {
     startMs: START_MS - 8 * 3_600_000,
   });
 
-  return ingestScenario(scenario, harness);
+  return await ingestScenario(scenario, harness);
 }
 
 const lastLeg = (r: IngestedScenario) => r.legs[r.legs.length - 1];
@@ -50,7 +50,7 @@ const flagsAt = (r: IngestedScenario, i: number) => r.legs[i].verdict?.flags ?? 
 /* -------------------------------------------------------------------------- */
 
 describe("the same seed produces the same dataset", () => {
-  it("generates byte-identical scenarios", () => {
+  it("generates byte-identical scenarios", async () => {
     const a = SCENARIO_IDS.map((id) => buildScenario(id, context()));
     const b = SCENARIO_IDS.map((id) => buildScenario(id, context()));
 
@@ -67,7 +67,7 @@ describe("the same seed produces the same dataset", () => {
     expect(JSON.stringify(a.map(strip))).toBe(JSON.stringify(b.map(strip)));
   });
 
-  it("generates a different dataset from a different seed", () => {
+  it("generates a different dataset from a different seed", async () => {
     const a = buildScenario("S0", context("seed-a"));
     const b = buildScenario("S0", context("seed-b"));
 
@@ -76,7 +76,7 @@ describe("the same seed produces the same dataset", () => {
     );
   });
 
-  it("draws every coordinate and time from the seeded stream, never the clock", () => {
+  it("draws every coordinate and time from the seeded stream, never the clock", async () => {
     // Built twice with a real delay between: identical output means nothing
     // was read from Date.now().
     const first = buildScenario("S1", context());
@@ -86,7 +86,7 @@ describe("the same seed produces the same dataset", () => {
     );
   });
 
-  it("uses addresses of recorded provenance", () => {
+  it("uses addresses of recorded provenance", async () => {
     const world = buildWorld(SEED);
     // The cache records where it came from, so data read from it is never of
     // unknown origin.
@@ -99,7 +99,7 @@ describe("the same seed produces the same dataset", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("every generated event goes through the EPCIS schema", () => {
-  it.each(SCENARIO_IDS)("%s validates", (id) => {
+  it.each(SCENARIO_IDS)("%s validates", async (id) => {
     const scenario = buildScenario(id, context());
 
     for (const built of [...scenario.warmup, ...scenario.timeline]) {
@@ -110,7 +110,7 @@ describe("every generated event goes through the EPCIS schema", () => {
     }
   });
 
-  it("carries the vigil: extension inside sensorElementList, per the spec", () => {
+  it("carries the vigil: extension inside sensorElementList, per the spec", async () => {
     const scenario = buildScenario("S0", context());
     const delivery = scenario.timeline[scenario.timeline.length - 1].event;
 
@@ -118,7 +118,7 @@ describe("every generated event goes through the EPCIS schema", () => {
     expect(delivery["vigil:courierId"]).toBe(scenario.courier.courierId);
   });
 
-  it("declares every attestation as mocked, never as if it were real", () => {
+  it("declares every attestation as mocked, never as if it were real", async () => {
     const scenario = buildScenario("S0", context());
     for (const built of scenario.timeline) {
       const signals = built.event.sensorElementList?.[0]["vigil:signals"];
@@ -132,8 +132,8 @@ describe("every generated event goes through the EPCIS schema", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("S0 — ordinary work is accepted", () => {
-  it("accepts every leg with no flags", () => {
-    const r = run("S0");
+  it("accepts every leg with no flags", async () => {
+    const r = await run("S0");
 
     expect(r.legs.map((c) => c.decision)).toEqual(Array(6).fill("accept"));
     expect(r.legs.flatMap((c) => c.verdict?.flags ?? [])).toEqual([]);
@@ -144,24 +144,24 @@ describe("S0 — ordinary work is accepted", () => {
    * A system that demands a co-signature on every handoff has not made approval
    * meaningful, it has made it noise.
    */
-  it("troubles no operator: not one leg needs a co-signature", () => {
-    const r = run("S0");
+  it("troubles no operator: not one leg needs a co-signature", async () => {
+    const r = await run("S0");
 
     expect(r.cosigned).toEqual(Array(6).fill(false));
     expect(r.legs.every((c) => c.requiresCosign === false)).toBe(true);
     expect(lastLeg(r).verdict?.basis).toBe("both_axes");
   });
 
-  it("clears the cold-start floor, so the pattern axis is genuinely evaluated", () => {
-    const r = run("S0");
+  it("clears the cold-start floor, so the pattern axis is genuinely evaluated", async () => {
+    const r = await run("S0");
     expect(lastLeg(r).patternColdStart).toBe(false);
     expect(lastLeg(r).pattern?.sampleSize).toBeGreaterThanOrEqual(10);
   });
 });
 
 describe("S1 — GPS spoofing", () => {
-  it("flags the delivery leg on axis 1 and leaves the courier alone", () => {
-    const r = run("S1");
+  it("flags the delivery leg on axis 1 and leaves the courier alone", async () => {
+    const r = await run("S1");
 
     expect(r.legs.slice(0, 5).map((c) => c.decision)).toEqual(Array(5).fill("accept"));
     expect(lastLeg(r).decision).toBe("flag");
@@ -171,12 +171,12 @@ describe("S1 — GPS spoofing", () => {
     expect(lastLeg(r).pattern?.score).toBe(0);
   });
 
-  it("catches the careless spoofer on the mock-location flag alone", () => {
+  it("catches the careless spoofer on the mock-location flag alone", async () => {
     const ctx = context();
     const scenario = buildS1AtCarefulness(ctx, 0);
     const harness = createHarness(ctx.world);
     harnesses.push(harness);
-    const r = ingestScenario(scenario, harness);
+    const r = await ingestScenario(scenario, harness);
 
     expect(flagsAt(r, 5)).toContain("I7");
   });
@@ -206,9 +206,9 @@ describe("S1 — GPS spoofing", () => {
  * CUSTOMER GOT IT. See CLAUDE.md.
  */
 describe("S2 and S6 diverge: same surface, opposite verdicts", () => {
-  it("escalates the batch scanner and accepts the tunnel, on clean events in both", () => {
-    const batch = run("S2");
-    const tunnel = run("S6");
+  it("escalates the batch scanner and accepts the tunnel, on clean events in both", async () => {
+    const batch = await run("S2");
+    const tunnel = await run("S6");
 
     // Neither has a single event that scores on axis 1.
     expect(batch.legs.every((c) => (c.inconsistency?.score ?? 0) === 0)).toBe(true);
@@ -226,8 +226,8 @@ describe("S2 and S6 diverge: same surface, opposite verdicts", () => {
     expect(lastLeg(tunnel).pattern?.score).toBe(0);
   });
 
-  it("catches the batch scanner on the shape alone: P1 and P2, no I-rule", () => {
-    const r = run("S2");
+  it("catches the batch scanner on the shape alone: P1 and P2, no I-rule", async () => {
+    const r = await run("S2");
     const flags = lastLeg(r).verdict?.flags ?? [];
 
     expect(flags).toContain("P1"); // a rate no one can walk
@@ -235,17 +235,17 @@ describe("S2 and S6 diverge: same surface, opposite verdicts", () => {
     expect(flags.filter((f) => /^I\d+$/.test(f))).toEqual([]);
   });
 
-  it("does not flag the tower for being a tower: P4 stays silent", () => {
-    const r = run("S2");
+  it("does not flag the tower for being a tower: P4 stays silent", async () => {
+    const r = await run("S2");
     // The clustered scans' own parcels are addressed to the same building, so
     // the cluster is a building, not a batch scan. An honest tower round must
     // not be punished for being a tower round.
     expect(lastLeg(r).verdict?.flags).not.toContain("P4");
   });
 
-  it("says how much evidence it had: the tunnel's coverage line drops", () => {
-    const clean = run("S0");
-    const tunnel = run("S6");
+  it("says how much evidence it had: the tunnel's coverage line drops", async () => {
+    const clean = await run("S0");
+    const tunnel = await run("S6");
 
     const cleanCoverage = lastLeg(clean).coverage?.inconsistency;
     const tunnelCoverage = lastLeg(tunnel).coverage?.inconsistency;
@@ -257,8 +257,8 @@ describe("S2 and S6 diverge: same surface, opposite verdicts", () => {
     expect(tunnelCoverage!.line).toMatch(/of 14 checks evaluable$/);
   });
 
-  it("does not escalate the tunnel, which is the whole false-positive argument", () => {
-    const r = run("S6");
+  it("does not escalate the tunnel, which is the whole false-positive argument", async () => {
+    const r = await run("S6");
     expect(r.legs.map((c) => c.decision)).toEqual(Array(6).fill("accept"));
     expect(lastLeg(r).verdict?.flags).toEqual([]);
   });
@@ -269,8 +269,8 @@ describe("S2 and S6 diverge: same surface, opposite verdicts", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("S3 — event ID reuse", () => {
-  it("seals the delivery, then aborts the reuse and records the attempt", () => {
-    const r = run("S3");
+  it("seals the delivery, then aborts the reuse and records the attempt", async () => {
+    const r = await run("S3");
 
     expect(lastLeg(r).decision).toBe("accept");
     expect(r.replay?.halted).toEqual({ at: "verify", reason: "EVENT_ID_REUSE" });
@@ -283,8 +283,8 @@ describe("S3 — event ID reuse", () => {
 });
 
 describe("S4 — a scan outside the courier's route", () => {
-  it("refuses the handoff on H2", () => {
-    const r = run("S4");
+  it("refuses the handoff on H2", async () => {
+    const r = await run("S4");
 
     expect(lastLeg(r).decision).toBe("freeze");
     expect(flagsAt(r, 5)).toContain("H2");
@@ -293,8 +293,8 @@ describe("S4 — a scan outside the courier's route", () => {
 });
 
 describe("S5 — clock tampering", () => {
-  it("flags the divergence between the device clock and the server clock", () => {
-    const r = run("S5");
+  it("flags the divergence between the device clock and the server clock", async () => {
+    const r = await run("S5");
 
     expect(lastLeg(r).decision).toBe("flag");
     expect(flagsAt(r, 5)).toContain("I4");
@@ -302,8 +302,8 @@ describe("S5 — clock tampering", () => {
 });
 
 describe("every scenario meets its declared expectation", () => {
-  it.each(SCENARIO_IDS)("%s", (id) => {
-    const r = run(id);
+  it.each(SCENARIO_IDS)("%s", async (id) => {
+    const r = await run(id);
     const scenario = r.scenario;
     const final = lastLeg(r);
 
@@ -317,9 +317,9 @@ describe("every scenario meets its declared expectation", () => {
     }
   });
 
-  it("puts the exception at the declared leg, not earlier", () => {
+  it("puts the exception at the declared leg, not earlier", async () => {
     for (const id of SCENARIO_IDS) {
-      const r = run(id);
+      const r = await run(id);
       const scenario = r.scenario;
       if (scenario.expectation.exceptionAtLeg === null) {
         expect(r.legs.every((c) => c.decision === "accept"), `${id} should be clean throughout`).toBe(
@@ -335,11 +335,11 @@ describe("every scenario meets its declared expectation", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("the holdout split", () => {
-  it("is deterministic for the same key and seed", () => {
+  it("is deterministic for the same key and seed", async () => {
     expect(splitOf("S2-run-14", "exp")).toBe(splitOf("S2-run-14", "exp"));
   });
 
-  it("partitions into two disjoint halves that cover the set", () => {
+  it("partitions into two disjoint halves that cover the set", async () => {
     const keys = Array.from({ length: 400 }, (_, i) => `run-${i}`);
     const { tune, report } = partition(keys, (k) => k, "exp-1");
 
@@ -350,7 +350,7 @@ describe("the holdout split", () => {
     expect(report.length).toBeGreaterThan(150);
   });
 
-  it("does not reassign existing items when the set grows", () => {
+  it("does not reassign existing items when the set grows", async () => {
     const small = Array.from({ length: 50 }, (_, i) => `run-${i}`);
     const large = Array.from({ length: 200 }, (_, i) => `run-${i}`);
 
@@ -360,7 +360,7 @@ describe("the holdout split", () => {
     for (const key of a.tune) expect(b.tune).toContain(key);
   });
 
-  it("splits differently under a different seed", () => {
+  it("splits differently under a different seed", async () => {
     const keys = Array.from({ length: 200 }, (_, i) => `run-${i}`);
     const a = partition(keys, (k) => k, "exp-1").tune;
     const b = partition(keys, (k) => k, "exp-2").tune;
@@ -370,12 +370,12 @@ describe("the holdout split", () => {
 
 describe("the carefulness ladder", () => {
   /** How much axis-1 evidence the forged scan leaves behind. */
-  function scoreAt(level: Carefulness): number {
+  async function scoreAt(level: Carefulness): Promise<number> {
     const ctx = context();
     const scenario = buildS1AtCarefulness(ctx, level);
     const harness = createHarness(ctx.world);
     harnesses.push(harness);
-    const r = ingestScenario(scenario, harness);
+    const r = await ingestScenario(scenario, harness);
     return lastLeg(r).inconsistency?.score ?? 0;
   }
 
@@ -387,8 +387,9 @@ describe("the carefulness ladder", () => {
    * the one below — so the attacker-cost sweep produces a curve rather than
    * noise. See docs/DATASET.md.
    */
-  it("never leaves more evidence as the attacker gets more capable", () => {
-    const scores = CAREFULNESS_LEVELS.map(scoreAt);
+  it("never leaves more evidence as the attacker gets more capable", async () => {
+    const scores: number[] = [];
+    for (const level of CAREFULNESS_LEVELS) scores.push(await scoreAt(level));
 
     for (let i = 1; i < scores.length; i++) {
       expect(scores[i], `level ${i} left more evidence than level ${i - 1}`).toBeLessThanOrEqual(
@@ -397,11 +398,11 @@ describe("the carefulness ladder", () => {
     }
   });
 
-  it("catches the careless attacker and reaches the documented limit", () => {
+  it("catches the careless attacker and reaches the documented limit", async () => {
     // Level 0 is caught on a single flag. The top of the ladder is the boundary
     // written into Known Limitations: a patched device plus a colluding
     // recipient is out of this architecture's reach on a single event.
-    expect(scoreAt(0)).toBeGreaterThan(0);
-    expect(scoreAt(4)).toBeLessThan(scoreAt(0));
+    expect(await scoreAt(0)).toBeGreaterThan(0);
+    expect(await scoreAt(4)).toBeLessThan(await scoreAt(0));
   });
 });

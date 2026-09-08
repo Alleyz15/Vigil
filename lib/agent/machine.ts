@@ -31,8 +31,18 @@ export type RunOptions = {
   credential?: Credential;
 };
 
-/** Run one event through the pipeline. */
-export function runAgent(input: unknown, deps: NodeDeps, options: RunOptions = {}): AgentContext {
+/**
+ * Run one event through the pipeline.
+ *
+ * Async because `plan` and `explain` reach a model. The deterministic core is
+ * untouched by that: nodes 1, 2, 4, 5 and 7 do not await anything, and the
+ * verdict is sealed at node 7 before the only node that writes prose runs.
+ */
+export async function runAgent(
+  input: unknown,
+  deps: NodeDeps,
+  options: RunOptions = {},
+): Promise<AgentContext> {
   const ctx = createContext(input);
   const runDeps: NodeDeps = options.credential ? { ...deps, credential: options.credential } : deps;
   let seq = 0;
@@ -51,7 +61,7 @@ export function runAgent(input: unknown, deps: NodeDeps, options: RunOptions = {
     emit({ type: "tool_start", seq: seq++, node, at: startedAt.toISOString() });
 
     try {
-      NODE_FNS[node](ctx, runDeps);
+      await NODE_FNS[node](ctx, runDeps);
     } catch (err) {
       // A node that throws must not leave a half-formed verdict behind. We halt
       // and say which node failed, rather than continuing with partial state —

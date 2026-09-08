@@ -196,6 +196,29 @@ answer to "what about a brand-new courier you have no baseline for?" is not a sh
 start — it is that the system knows it cannot judge, says so in the record, and requires a
 human to put their name on it.
 
+### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
+
+A model's response passes every gate or none of it is used. Do not implement
+per-citation filtering, per-tool filtering, or "keep the valid parts" as a usability
+improvement — it is the same failure as rule 3b in a different coat.
+
+**Why.** Dropping the bad members of a response and keeping the rest lets a model launder an
+invented claim by surrounding it with valid ones. A summary that cites `["C1", "I7"]` where I7
+never fired is not "mostly right with one bad citation" — it is prose written from a picture
+that included a rule that did not happen, and stripping the citation leaves the prose, which
+now reads as sourced. Both `PlanResponse` and `ExplainResponse` are all-or-nothing, and the
+failure path is the deterministic one.
+
+### 1b. The LLM cannot change a verdict, and the sharpest test says so
+
+Beyond the parity triple (rule 1), `lib/llm/llm.test.ts` has the stronger version: a model
+selects a tool the deterministic heuristic would **not** have chosen, the run genuinely gathers
+different evidence (`externalContext` is populated in one and absent in the other), and the
+sealed verdict is byte-identical.
+
+That is the claim in its strongest form. Not "the model was ignored" — the model changed what
+happened, and the decision did not move.
+
 ### 3b. Never fabricate a permissive default from unparseable data
 
 A mandate whose stored JSON will not parse, or does not satisfy the schema, yields **no
@@ -434,6 +457,13 @@ lib/
     keys.ts              env-var keys. The ONLY impure file here.
   mandate/
     schema.ts            CourierMandate zod. Shape only.
+  llm/                   THE MODEL SEAM. Two nodes, neither able to move a verdict.
+    types.ts             LlmProvider, LlmTelemetry (counters, by reason)
+    schemas.ts           PlanResponse / ExplainResponse — all-or-nothing
+    prompts.ts           the two prompts; neither asks for a judgement
+    plan.ts              tool selection + the REAL deterministic heuristic
+    explain.ts           citation validation, decision-word check, fallback
+    providers/           gemini.ts, ollama.ts (seam only), fake.ts
   generate/              SYNTHETIC DATA. Emits behaviour; never reads a threshold.
     data/                kl-addresses.json, with its provenance in the file
     rng.ts               seedrandom wrappers; the only source of randomness
@@ -743,14 +773,57 @@ before a single experiment:
   batch to one tower, and without this the engine measured tower scans against the world's
   original scattered addresses and fired I10 on all forty.
 
-### Session 7 — the LLM (next)
+### Session 7 — the LLM nodes (complete)
 
-Put a real model behind `deps.llm`: `plan` selecting 0–2 tools from the closed `ToolName` zod
-enum, and `explain` writing the operator's prose with schema-enforced evidence citations that
-fail closed on an id that was never collected. **The parity tests must keep passing unchanged.**
+453 tests passing, 3 skipped (the live-model tests, which skip without `GEMINI_API_KEY`).
+`tsc --noEmit` clean, eslint clean, `next build` succeeds.
 
-Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, synthetic data
-generation, the SSE endpoint, and the UI.
+**The parity tests pass unchanged in their assertions.** The sealed verdict is byte-identical
+across `llm: undefined`, fake A and fake B, on a single event and across a six-leg shipment.
+
+**The async migration was paid in full, not worked around.** `NodeFn` became
+`(ctx, deps) => void | Promise<void>` and `runAgent` returns a `Promise`; ~60 call sites across
+seven files were updated. A synchronous fake path was explicitly **not** kept — that would have
+created the second code path that drifts, and the one that drifts is always the one with the
+tests. Six of the eight nodes are still synchronous.
+
+| Area | What works |
+|---|---|
+| `plan.ts` | Closed-enum parse; a real deterministic heuristic; every failure path lands on it |
+| `explain.ts` | Citation validation against collected evidence, decision-word check, structured fallback |
+| `types.ts` | Telemetry counters by reason, accumulated across a whole run |
+| `providers/` | Gemini via the OpenAI-compatible endpoint, Ollama seam, four fakes |
+
+**Design decisions worth not re-litigating:**
+
+- **The heuristic is real, and that matters.** The session-4 lite path returned `[]`, which made
+  "we fall back to the heuristic" a sentence with nothing behind it — a vacuous fallback looks
+  like a defence while providing none. It now keys on unresolved identity, degraded location
+  signals and parcel value, capped at two, with each branch's reasoning in the code.
+- **The parity fakes are providers, not stubs.** They go through the same parse, enum check and
+  citation validation a live model does, so parity is asserted against disagreement travelling
+  the real path. `scriptedProvider` answers the plan and explain prompts differently — a double
+  that only answers one makes the other fall back every time, and comparing two identical
+  fallbacks proves nothing.
+- **Telemetry is injected and mutable** so one instance spans an experiment batch. Experiment 5
+  reports the rate before and after enforcement, and a log line cannot be totalled.
+- **The decision-word check strips negations first.** "not approved" contains "approved".
+- **`explain` writes prose onto an already-sealed verdict**, via a separate `persistExplanation`
+  update. A test asserts an explain failure leaves the verdict, the ledger chain and the
+  projection intact.
+
+**A bug the tests found:** the structured fallback listed `Flag` objects only, and the credential
+failure reaches the verdict as the bare id `C1` rather than a `Flag`. So a frozen handoff whose
+signature failed produced the fallback text *"No checks raised a concern."* — worse than terse,
+simply wrong. `structuredExplanation` now renders the credential result from its own source.
+
+### Session 8 — Open-Meteo and the SSE endpoint (next)
+
+`external_context` currently sets a `STUB` placeholder when `plan` asks for weather. Wire
+Open-Meteo behind it: this is the S6 beat, where the agent gathers evidence and decides **not**
+to escalate. Then the SSE endpoint against the frozen trace contract.
+
+Still untouched: liveness/timeout paths, the operator console, the experiments.
 
 ---
 

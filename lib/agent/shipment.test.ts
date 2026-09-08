@@ -15,6 +15,7 @@ import {
 } from "./fixtures";
 import type { AgentContext } from "./context";
 import type { NodeDeps } from "./nodes";
+import { scriptedProvider } from "@/lib/llm";
 import type { GeoPoint } from "@/lib/epcis";
 
 /**
@@ -127,13 +128,18 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(world.dir, { recursive: true, force: true }));
 
-function runShipment(w: World = world, d?: NodeDeps): AgentContext[] {
-  return LEGS.map((leg) => runSigned(legEvent(leg), w, { deps: d ?? w.deps }));
+async function runShipment(w: World = world, d?: NodeDeps): Promise<AgentContext[]> {
+  const out: AgentContext[] = [];
+  // Sequential: each leg builds the timeline the next one is judged against.
+  for (const leg of LEGS) {
+    out.push(await runSigned(legEvent(leg), w, { deps: d ?? w.deps }));
+  }
+  return out;
 }
 
 describe("a normal shipment, end to end", () => {
-  it("accepts every leg", () => {
-    const runs = runShipment();
+  it("accepts every leg", async () => {
+    const runs = await runShipment();
 
     for (const [i, ctx] of runs.entries()) {
       expect(ctx.halted, `${LEGS[i].name} halted: ${ctx.halted?.reason}`).toBeUndefined();
@@ -141,35 +147,35 @@ describe("a normal shipment, end to end", () => {
     }
   });
 
-  it("scores zero on axis 1 at every leg", () => {
-    const runs = runShipment();
+  it("scores zero on axis 1 at every leg", async () => {
+    const runs = await runShipment();
     expect(runs.map((c) => c.verdict?.inconsistencyScore)).toEqual([0, 0, 0, 0, 0, 0]);
   });
 
-  it("raises no hard failure at any leg, so the custody chain holds", () => {
-    const runs = runShipment();
+  it("raises no hard failure at any leg, so the custody chain holds", async () => {
+    const runs = await runShipment();
     for (const [i, ctx] of runs.entries()) {
       expect(ctx.engineResult?.aborted, `${LEGS[i].name} aborted`).toBe(false);
       expect(ctx.verdict?.abortCode).toBeUndefined();
     }
   });
 
-  it("leaves the ledger chain valid, one entry per leg", () => {
-    runShipment();
+  it("leaves the ledger chain valid, one entry per leg", async () => {
+    await runShipment();
 
     expect(deps.ledger.verifyChain()).toEqual({ valid: true, entries: LEGS.length });
     expect(deps.ledger.readRecords().every((r) => r.kind === "verdict")).toBe(true);
   });
 
-  it("projects every leg into the console tables", () => {
-    runShipment();
+  it("projects every leg into the console tables", async () => {
+    await runShipment();
 
     expect(deps.db.select().from(events).all()).toHaveLength(LEGS.length);
     expect(deps.db.select().from(verdicts).all()).toHaveLength(LEGS.length);
   });
 
-  it("seals a verdict whose ledger sequence matches its projection", () => {
-    const runs = runShipment();
+  it("seals a verdict whose ledger sequence matches its projection", async () => {
+    const runs = await runShipment();
 
     for (const ctx of runs) {
       const seq = ctx.ledger?.status === "recorded" ? ctx.ledger.seq : -1;
@@ -193,8 +199,8 @@ describe("a normal shipment, end to end", () => {
    * has a five-event timeline behind it — which is what makes H1 and I3 mean
    * anything at all.
    */
-  it("accumulates the timeline, so later legs are judged against earlier ones", () => {
-    const runs = runShipment();
+  it("accumulates the timeline, so later legs are judged against earlier ones", async () => {
+    const runs = await runShipment();
 
     const first = runs[0];
     const last = runs.at(-1)!;
@@ -206,8 +212,8 @@ describe("a normal shipment, end to end", () => {
     expect(last.resolution.resolved.some((r) => r.startsWith("previous event"))).toBe(true);
   });
 
-  it("still reports cold start: six handoffs is not a pattern", () => {
-    const runs = runShipment();
+  it("still reports cold start: six handoffs is not a pattern", async () => {
+    const runs = await runShipment();
     const last = runs.at(-1)!;
 
     expect(last.patternColdStart).toBe(true);
@@ -218,9 +224,10 @@ describe("a normal shipment, end to end", () => {
 });
 
 describe("from normal activity to a meaningful exception", () => {
-  it("accepts five clean legs, then flags a spoofed delivery", () => {
+  it("accepts five clean legs, then flags a spoofed delivery", async () => {
     // The first five legs are ordinary work.
-    const normal = LEGS.slice(0, 5).map((leg) => runSigned(legEvent(leg), world));
+    const normal = [];
+    for (const leg of LEGS.slice(0, 5)) normal.push(await runSigned(legEvent(leg), world));
     expect(normal.map((c) => c.decision)).toEqual(Array(5).fill("accept"));
 
     // The delivery scan claims a location from a fake location app.
@@ -228,7 +235,7 @@ describe("from normal activity to a meaningful exception", () => {
     const signals = signalsOf(exception);
     (signals.gps as { mockLocationProvider: boolean }).mockLocationProvider = true;
 
-    const ctx = runSigned(exception, world);
+    const ctx = await runSigned(exception, world);
 
     expect(ctx.decision).toBe("flag");
     expect(ctx.verdict?.flags).toContain("I7");
@@ -238,11 +245,11 @@ describe("from normal activity to a meaningful exception", () => {
     expect(deps.ledger.verifyChain()).toEqual({ valid: true, entries: 6 });
   });
 
-  it("refuses a delivery scanned 23 km from the recipient", () => {
-    LEGS.slice(0, 5).forEach((leg) => runSigned(legEvent(leg), world));
+  it("refuses a delivery scanned 23 km from the recipient", async () => {
+    for (const leg of LEGS.slice(0, 5)) await runSigned(legEvent(leg), world);
 
     const wrongPlace = legEvent({ ...LEGS[5], point: SHAH_ALAM });
-    const ctx = runSigned(wrongPlace, world);
+    const ctx = await runSigned(wrongPlace, world);
 
     expect(ctx.verdict?.flags).toContain("I10");
     expect(ctx.decision).not.toBe("accept");
@@ -257,39 +264,43 @@ describe("from normal activity to a meaningful exception", () => {
  * model lands at `plan` and `explain`. See CLAUDE.md.
  */
 describe("the whole shipment is unchanged by the LLM", () => {
-  const fakeA = {
-    planTools: () => ({ tools: ["check_traffic_weather"], rationale: "A" }),
-    explain: () => "A: nothing to see here.",
+  const fakeA: NodeDeps["llm"] = {
+    provider: scriptedProvider("fake-A", {
+      plan: { tools: ["check_traffic_weather"], rationale: "A" },
+      explain: { summary: "A: nothing unusual here.", citations: [] },
+    }),
   };
-  const fakeB = {
-    planTools: () => ({ tools: ["fetch_route_history"], rationale: "B" }),
-    explain: () => "B: I have a bad feeling about this one.",
+  const fakeB: NodeDeps["llm"] = {
+    provider: scriptedProvider("fake-B", {
+      plan: { tools: ["fetch_route_history"], rationale: "B" },
+      explain: { summary: "B: worth a second look at this courier.", citations: ["decision"] },
+    }),
   };
 
-  const shipmentVerdicts = (llm?: NodeDeps["llm"]) => {
+  const shipmentVerdicts = async (llm?: NodeDeps["llm"]) => {
     resetEventIds();
     const w = seedWorld();
-    const sealed = runShipment(w, { ...w.deps, llm }).map((c) => c.verdict);
+    const sealed = (await runShipment(w, { ...w.deps, llm })).map((c) => c.verdict);
     rmSync(w.dir, { recursive: true, force: true });
     return JSON.stringify(sealed);
   };
 
-  it("seals byte-identical verdicts with no LLM, with fake A and with fake B", () => {
-    const none = shipmentVerdicts(undefined);
-    expect(shipmentVerdicts(fakeA)).toBe(none);
-    expect(shipmentVerdicts(fakeB)).toBe(none);
+  it("seals byte-identical verdicts with no LLM, with fake A and with fake B", async () => {
+    const none = await shipmentVerdicts(undefined);
+    expect(await shipmentVerdicts(fakeA)).toBe(none);
+    expect(await shipmentVerdicts(fakeB)).toBe(none);
   });
 
-  it("produces an identical ledger chain either way", () => {
-    const chainOf = (llm?: NodeDeps["llm"]) => {
+  it("produces an identical ledger chain either way", async () => {
+    const chainOf = async (llm?: NodeDeps["llm"]) => {
       resetEventIds();
       const w = seedWorld();
-      runShipment(w, { ...w.deps, llm });
+      await runShipment(w, { ...w.deps, llm });
       const records = w.deps.ledger.readRecords().map((r) => r.payloadHash);
       rmSync(w.dir, { recursive: true, force: true });
       return records;
     };
 
-    expect(chainOf(fakeA)).toEqual(chainOf(undefined));
+    expect(await chainOf(fakeA)).toEqual(await chainOf(undefined));
   });
 });

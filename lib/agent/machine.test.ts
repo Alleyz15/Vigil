@@ -14,6 +14,7 @@ import {
   signalsOf,
 } from "./fixtures";
 import type { NodeDeps } from "./nodes";
+import { scriptedProvider } from "@/lib/llm";
 
 let world: World;
 let deps: NodeDeps;
@@ -27,8 +28,8 @@ beforeEach(() => {
 afterEach(() => rmSync(world.dir, { recursive: true, force: true }));
 
 describe("pipeline", () => {
-  it("runs all eight nodes in order and seals a verdict in the ledger", () => {
-    const ctx = runSigned(makeAgentEvent(), world);
+  it("runs all eight nodes in order and seals a verdict in the ledger", async () => {
+    const ctx = await runSigned(makeAgentEvent(), world);
 
     expect(ctx.halted).toBeUndefined();
     expect(
@@ -39,8 +40,8 @@ describe("pipeline", () => {
     expect(deps.ledger.verifyChain()).toEqual({ valid: true, entries: 1 });
   });
 
-  it("accepts a clean delivery from a known courier", () => {
-    const ctx = runSigned(makeAgentEvent(), world);
+  it("accepts a clean delivery from a known courier", async () => {
+    const ctx = await runSigned(makeAgentEvent(), world);
 
     expect(ctx.decision).toBe("accept");
     expect(ctx.verdict?.inconsistencyScore).toBe(0);
@@ -50,8 +51,8 @@ describe("pipeline", () => {
 });
 
 describe("parse", () => {
-  it("halts on an event that does not validate, rather than guessing", () => {
-    const ctx = runSigned(makeAgentEvent({ eventTime: "2026-09-08T10:15:00" }), world);
+  it("halts on an event that does not validate, rather than guessing", async () => {
+    const ctx = await runSigned(makeAgentEvent({ eventTime: "2026-09-08T10:15:00" }), world);
 
     expect(ctx.halted).toEqual({ at: "parse", reason: "EVENT_SCHEMA_INVALID" });
     expect(ctx.parseError).toMatch(/eventTime/);
@@ -59,22 +60,22 @@ describe("parse", () => {
     expect(deps.ledger.readRecords()).toHaveLength(0);
   });
 
-  it("stamps recordTime from the server clock when the device omits it", () => {
-    const ctx = runSigned(makeAgentEvent(), world);
+  it("stamps recordTime from the server clock when the device omits it", async () => {
+    const ctx = await runSigned(makeAgentEvent(), world);
 
     expect(ctx.event?.recordTime).toBe(deps.now().toISOString());
     expect(ctx.recordTimeSuppliedByClient).toBeUndefined();
   });
 
-  it("notes when a device supplies a recordTime it has no business authoring", () => {
-    const ctx = runSigned(makeAgentEvent({ recordTime: "2026-09-08T10:15:01+08:00" }), world);
+  it("notes when a device supplies a recordTime it has no business authoring", async () => {
+    const ctx = await runSigned(makeAgentEvent({ recordTime: "2026-09-08T10:15:01+08:00" }), world);
     expect(ctx.recordTimeSuppliedByClient).toBe(true);
   });
 });
 
 describe("lookup", () => {
-  it("resolves a known parcel, courier and active mandate", () => {
-    const ctx = runSigned(makeAgentEvent(), world);
+  it("resolves a known parcel, courier and active mandate", async () => {
+    const ctx = await runSigned(makeAgentEvent(), world);
 
     expect(ctx.parcel).toMatchObject({ epc: EPC, known: true });
     expect(ctx.parcel?.recipientPoint).toEqual({ latitude: 3.1595, longitude: 101.7123 });
@@ -84,29 +85,29 @@ describe("lookup", () => {
     expect(ctx.unknownEntityRisk).toBeUndefined();
   });
 
-  it("reads coordinates back as REAL numbers, not truncated integers", () => {
+  it("reads coordinates back as REAL numbers, not truncated integers", async () => {
     // Guards the schema fix: an integer column would hand back 3, not 3.1595.
-    const ctx = runSigned(makeAgentEvent(), world);
+    const ctx = await runSigned(makeAgentEvent(), world);
     expect(ctx.parcel?.recipientPoint?.latitude).toBeCloseTo(3.1595, 4);
     expect(Number.isInteger(ctx.parcel?.recipientPoint?.latitude)).toBe(false);
   });
 
-  it("marks an unissued EPC as high risk instead of treating it as neutral", () => {
-    const ctx = runSigned(makeAgentEvent({ epcList: ["urn:epc:id:sgtin:0614141.107346.0000"] }), world);
+  it("marks an unissued EPC as high risk instead of treating it as neutral", async () => {
+    const ctx = await runSigned(makeAgentEvent({ epcList: ["urn:epc:id:sgtin:0614141.107346.0000"] }), world);
 
     expect(ctx.parcel?.known).toBe(false);
     expect(ctx.unknownEntityRisk).toBe("high");
   });
 
-  it("marks an unknown courier as high risk", () => {
-    const ctx = runSigned(makeAgentEvent({ "vigil:courierId": "CR-9999" }), world);
+  it("marks an unknown courier as high risk", async () => {
+    const ctx = await runSigned(makeAgentEvent({ "vigil:courierId": "CR-9999" }), world);
 
     expect(ctx.courier?.known).toBe(false);
     expect(ctx.unknownEntityRisk).toBe("high");
   });
 
-  it("marks an event that claims no courier at all as high risk", () => {
-    const ctx = runSigned(makeAgentEvent({ "vigil:courierId": undefined }), world);
+  it("marks an event that claims no courier at all as high risk", async () => {
+    const ctx = await runSigned(makeAgentEvent({ "vigil:courierId": undefined }), world);
     expect(ctx.unknownEntityRisk).toBe("high");
   });
 
@@ -116,10 +117,10 @@ describe("lookup", () => {
    * the handoff, which is the right answer to "we cannot read what this courier
    * is permitted to do". See CLAUDE.md.
    */
-  it("treats a mandate with malformed JSON as no mandate, and refuses the handoff", () => {
+  it("treats a mandate with malformed JSON as no mandate, and refuses the handoff", async () => {
     deps.db.update(mandates).set({ scopeJson: "{not json" }).run();
 
-    const ctx = runSigned(makeAgentEvent(), world);
+    const ctx = await runSigned(makeAgentEvent(), world);
 
     expect(ctx.mandate?.known).toBe(false);
     expect(ctx.mandate?.value).toBeUndefined();
@@ -129,10 +130,10 @@ describe("lookup", () => {
     expect(ctx.decision).toBe("freeze");
   });
 
-  it("treats a schema-invalid mandate the same way", () => {
+  it("treats a schema-invalid mandate the same way", async () => {
     deps.db.update(mandates).set({ limitsJson: '{"maxHandoffsPerShift":"lots"}' }).run();
 
-    const ctx = runSigned(makeAgentEvent(), world);
+    const ctx = await runSigned(makeAgentEvent(), world);
 
     expect(ctx.mandate?.known).toBe(false);
     expect(ctx.resolution.missing.map((m) => m.reason).join(" ")).toMatch(/does not satisfy the schema/);
@@ -141,21 +142,21 @@ describe("lookup", () => {
 });
 
 describe("verify - the ledger check (H4)", () => {
-  it("replays the original verdict on a byte-equivalent retry, and halts", () => {
+  it("replays the original verdict on a byte-equivalent retry, and halts", async () => {
     const event = makeAgentEvent();
-    const first = runSigned(event, world);
-    const retry = runSigned(event, world);
+    const first = await runSigned(event, world);
+    const retry = await runSigned(event, world);
 
     expect(retry.halted).toEqual({ at: "verify", reason: "DUPLICATE_NO_OP" });
     expect(retry.verdict).toEqual(first.verdict);
     expect(deps.ledger.readRecords()).toHaveLength(1);
   });
 
-  it("aborts with EVENT_ID_REUSE when the same eventID carries different content", () => {
+  it("aborts with EVENT_ID_REUSE when the same eventID carries different content", async () => {
     const event = makeAgentEvent();
-    runSigned(event, world);
+    await runSigned(event, world);
 
-    const forged = runSigned({ ...event, epcList: ["urn:epc:id:sgtin:0614141.107346.9999"] }, world);
+    const forged = await runSigned({ ...event, epcList: ["urn:epc:id:sgtin:0614141.107346.9999"] }, world);
 
     expect(forged.halted).toEqual({ at: "verify", reason: "EVENT_ID_REUSE" });
     expect(forged.decision).toBe("freeze");
@@ -163,29 +164,29 @@ describe("verify - the ledger check (H4)", () => {
     expect(deps.ledger.readRecords().map((r) => r.kind)).toEqual(["verdict", "abort"]);
   });
 
-  it("still catches the replay after a restart, rebuilding from the file alone", () => {
+  it("still catches the replay after a restart, rebuilding from the file alone", async () => {
     const event = makeAgentEvent();
-    runSigned(event, world);
+    await runSigned(event, world);
 
     const reopened: NodeDeps = { ...deps, ledger: new NonceLedger(deps.ledger.path) };
-    const retry = runSigned(event, world, { deps: reopened });
+    const retry = await runSigned(event, world, { deps: reopened });
 
     expect(retry.halted).toEqual({ at: "verify", reason: "DUPLICATE_NO_OP" });
   });
 });
 
 describe("the two axes", () => {
-  it("keeps inconsistency and pattern as separate fields and never sums them", () => {
-    const ctx = runSigned(makeAgentEvent(), world);
+  it("keeps inconsistency and pattern as separate fields and never sums them", async () => {
+    const ctx = await runSigned(makeAgentEvent(), world);
 
     expect(ctx.verdict).toMatchObject({ inconsistencyScore: 0, patternScore: 0 });
     expect(ctx.engineResult).toBeDefined();
     expect(ctx.patternOutcome).toBeDefined();
   });
 
-  it("produces axis 1 at verify and axis 2 at fetch_history, meeting only at gate", () => {
+  it("produces axis 1 at verify and axis 2 at fetch_history, meeting only at gate", async () => {
     const order: string[] = [];
-    const ctx = runSigned(makeAgentEvent(), world, {
+    const ctx = await runSigned(makeAgentEvent(), world, {
       runOptions: {
         onTrace: (f) => {
           if (f.type !== "tool_end") return;
@@ -198,8 +199,8 @@ describe("the two axes", () => {
     expect(ctx.decision).toBeDefined();
   });
 
-  it("reports evidence coverage for each axis from the engines' own counts", () => {
-    const ctx = runSigned(makeAgentEvent(), world);
+  it("reports evidence coverage for each axis from the engines' own counts", async () => {
+    const ctx = await runSigned(makeAgentEvent(), world);
 
     expect(ctx.coverage?.inconsistency?.total).toBe(14);
     expect(ctx.coverage?.inconsistency?.line).toMatch(/^\d+ of 14 checks evaluable$/);
@@ -223,29 +224,40 @@ describe("the two axes", () => {
  * See CLAUDE.md.
  */
 describe("removing the LLM produces identical verdicts", () => {
-  const fakeA = {
-    planTools: () => ({ tools: ["check_traffic_weather"], rationale: "A: check the weather" }),
-    explain: () => "A: this delivery looks fine to me.",
+  /**
+   * Two models that disagree with each other.
+   *
+   * They go through the SAME parsing, enum check and citation validation a live
+   * model does — they are providers, not stubs bypassing the seam — so parity is
+   * asserted against genuine disagreement travelling the real path.
+   */
+  const fakeA: NodeDeps["llm"] = {
+    provider: scriptedProvider("fake-A", {
+      plan: { tools: ["check_traffic_weather"], rationale: "A: worth checking the weather" },
+      explain: { summary: "A: this handoff looks ordinary to me.", citations: [] },
+    }),
   };
 
-  const fakeB = {
-    planTools: () => ({ tools: ["lookup_recipient_history"], rationale: "B: check the recipient" }),
-    explain: () => "B: I would escalate this, personally.",
+  const fakeB: NodeDeps["llm"] = {
+    provider: scriptedProvider("fake-B", {
+      plan: { tools: ["lookup_recipient_history"], rationale: "B: check the recipient" },
+      explain: { summary: "B: I would keep an eye on this courier.", citations: ["decision"] },
+    }),
   };
 
   /** One fresh world per run, so each starts from identical state. */
-  const runWith = (llm?: NodeDeps["llm"]) => {
+  const runWith = async (llm?: NodeDeps["llm"]) => {
     resetEventIds();
     const w = seedWorld();
-    const ctx = runSigned(makeAgentEvent(), w, { deps: { ...w.deps, llm } });
+    const ctx = await runSigned(makeAgentEvent(), w, { deps: { ...w.deps, llm } });
     rmSync(w.dir, { recursive: true, force: true });
     return ctx;
   };
 
-  it("seals the same verdict with no LLM, with fake A, and with fake B", () => {
-    const none = runWith(undefined);
-    const a = runWith(fakeA);
-    const b = runWith(fakeB);
+  it("seals the same verdict with no LLM, with fake A, and with fake B", async () => {
+    const none = await runWith(undefined);
+    const a = await runWith(fakeA);
+    const b = await runWith(fakeB);
 
     const sealed = (c: typeof none) => JSON.stringify(c.verdict);
 
@@ -254,7 +266,7 @@ describe("removing the LLM produces identical verdicts", () => {
     expect(none.verdict).toBeDefined();
   });
 
-  it("seals the same verdict on an event that is NOT clean", () => {
+  it("seals the same verdict on an event that is NOT clean", async () => {
     // A mock-location spoof: the verdict must be identical regardless of what
     // any model says about it.
     const spoofed = () => {
@@ -266,22 +278,22 @@ describe("removing the LLM produces identical verdicts", () => {
       return { w, event };
     };
 
-    const results = [undefined, fakeA, fakeB].map((llm) => {
+    const results = [];
+    for (const llm of [undefined, fakeA, fakeB]) {
       const { w, event } = spoofed();
-      const ctx = runSigned(event, w, { deps: { ...w.deps, llm } });
+      results.push(await runSigned(event, w, { deps: { ...w.deps, llm } }));
       rmSync(w.dir, { recursive: true, force: true });
-      return ctx;
-    });
+    }
 
     expect(results[0].verdict?.flags).toContain("I7");
     expect(JSON.stringify(results[1].verdict)).toBe(JSON.stringify(results[0].verdict));
     expect(JSON.stringify(results[2].verdict)).toBe(JSON.stringify(results[0].verdict));
   });
 
-  it("lets only the prose differ", () => {
-    const none = runWith(undefined);
-    const a = runWith(fakeA);
-    const b = runWith(fakeB);
+  it("lets only the prose differ", async () => {
+    const none = await runWith(undefined);
+    const a = await runWith(fakeA);
+    const b = await runWith(fakeB);
 
     expect(a.explanation).not.toBe(none.explanation);
     expect(b.explanation).not.toBe(a.explanation);
@@ -289,8 +301,8 @@ describe("removing the LLM produces identical verdicts", () => {
     expect(b.decision).toBe(none.decision);
   });
 
-  it("records whether the plan came from the model or the deterministic heuristic", () => {
-    expect(runWith(undefined).planFromHeuristic).toBe(true);
-    expect(runWith(fakeA).planFromHeuristic).toBe(false);
+  it("records whether the plan came from the model or the deterministic heuristic", async () => {
+    expect((await runWith(undefined)).planFromHeuristic).toBe(true);
+    expect((await runWith(fakeA)).planFromHeuristic).toBe(false);
   });
 });
