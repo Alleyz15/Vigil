@@ -171,6 +171,37 @@ describe("lib/assemble is deliberately impure", () => {
 });
 
 /**
+ * ENFORCEMENT IS NEVER OFF IN THE PRODUCT.
+ *
+ * `explainVerdict` has a report-only mode so experiment 5 can measure the
+ * hallucination rate BEFORE enforcement — a number that is otherwise
+ * unobservable, because with enforcement on a bad citation never reaches an
+ * operator. It exists for measurement and nothing else.
+ *
+ * The agent must never pass it. Shipping prose that cites evidence the run
+ * never collected is the failure the citation check exists to prevent, and a
+ * flag that turns it off is one edit away from being set for a demo and left.
+ */
+describe("report-only mode is unreachable from the agent", () => {
+  it("lib/agent never passes enforce:false", () => {
+    for (const file of readdirSync(join(LIB, "agent"))) {
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+      const source = stripComments(readFileSync(join(LIB, "agent", file), "utf8"));
+
+      expect(
+        /enforce\s*:\s*false/.test(source),
+        `lib/agent/${file} disables citation enforcement. That flag is for experiment 5 only — the product must never ship an explanation citing evidence the run did not collect.`,
+      ).toBe(false);
+    }
+  });
+
+  it("defaults to enforcing when the caller says nothing", () => {
+    const source = readFileSync(join(LIB, "llm", "explain.ts"), "utf8");
+    expect(source).toMatch(/enforce\s*=\s*true/);
+  });
+});
+
+/**
  * THE GENERATOR MUST NOT KNOW THE DETECTOR'S THRESHOLDS.
  *
  * This is the fifth architectural claim the suite verifies rather than the
@@ -213,6 +244,38 @@ describe("the generator does not import the detector's thresholds", () => {
     }
     return out;
   }
+
+  /**
+   * The experiment scripts fall under the same rule, with ONE exception.
+   *
+   * E6 varies a threshold as its independent variable — that is the entire
+   * experiment — so it is allowed to import one. Every other script is banned,
+   * because a script that reads a threshold to decide what the attacker DOES is
+   * the circularity in a different file.
+   */
+  const E6 = "e6-threshold-sensitivity.ts";
+
+  function experimentSources(): { path: string; source: string }[] {
+    const root = join(LIB, "..", "scripts", "experiments");
+    if (!existsSync(root)) return [];
+    return readdirSync(root)
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => ({ path: `scripts/experiments/${f}`, source: readFileSync(join(root, f), "utf8") }));
+  }
+
+  it("no experiment except e6 reads the detector's thresholds", () => {
+    for (const { path, source } of experimentSources()) {
+      if (path.endsWith(E6)) continue;
+      const clean = stripComments(source);
+
+      for (const pattern of THRESHOLD_MODULES) {
+        expect(
+          pattern.test(clean),
+          `${path} imports the detector's thresholds. The ONLY file allowed to is ${E6}, because varying a threshold is that experiment's independent variable. Everywhere else, reading a threshold to decide what the attacker does makes the result circular — it would stay high if the rule were nonsense. Do not add yourself to this exception; describe behaviour instead.`,
+        ).toBe(false);
+      }
+    }
+  });
 
   it("reads no threshold from any scoring module", () => {
     for (const { path, source } of generatorSources()) {

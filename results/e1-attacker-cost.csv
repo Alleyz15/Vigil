@@ -1,0 +1,61 @@
+experiment,level,capability,seed,half,seeds_in_cell,max_attempts,completed_before_caught,caught_at_attempt,detected,flags
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-0,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-3,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-4,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-7,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-8,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-12,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-13,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-16,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-17,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-21,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-22,report,12,40,0,1,1,I1 I7
+E1,0,A mock-location app from the app store.,vigil-2026-e1-0-25,report,12,40,0,1,1,I1 I7
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-0,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-3,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-4,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-7,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-8,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-10,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-13,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-14,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-17,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-18,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-20,report,12,40,0,1,1,I1 I8
+E1,1,"A rooted handset, so the OS stops reporting the mock provider.",vigil-2026-e1-1-21,report,12,40,0,1,1,I1 I8
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-1,report,12,40,13,14,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-2,report,12,40,10,11,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-5,report,12,40,4,5,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-6,report,12,40,5,6,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-9,report,12,40,10,11,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-10,report,12,40,8,9,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-13,report,12,40,18,19,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-14,report,12,40,13,14,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-17,report,12,40,12,13,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-18,report,12,40,11,12,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-19,report,12,40,7,8,1,P2
+E1,2,A patched build that passes attestation and forges the radio environment.,vigil-2026-e1-2-20,report,12,40,15,16,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-3,report,12,40,8,9,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-4,report,12,40,9,10,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-7,report,12,40,13,14,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-8,report,12,40,14,15,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-10,report,12,40,5,6,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-11,report,12,40,5,6,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-15,report,12,40,9,10,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-16,report,12,40,12,13,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-18,report,12,40,5,6,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-19,report,12,40,12,13,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-20,report,12,40,11,12,1,P2
+E1,3,"The above, plus a synthesised accelerometer trace and battery curve.",vigil-2026-e1-3-21,report,12,40,10,11,1,P2
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-0,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-3,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-4,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-7,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-8,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-10,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-13,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-14,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-17,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-20,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-21,report,12,40,40,,0,
+E1,4,"The above, plus a recipient who agrees not to complain.",vigil-2026-e1-4-24,report,12,40,40,,0,

@@ -130,6 +130,19 @@ export type ExplainArgs = {
   provider?: LlmProvider;
   telemetry?: LlmTelemetry;
   timeoutMs?: number;
+  /**
+   * REPORT-ONLY MODE. Experiments only; never set by the agent.
+   *
+   * Counts what WOULD have been rejected and lets it through, so experiment 5
+   * can report the hallucination rate before and after enforcement. The "before"
+   * number cannot be obtained any other way: with enforcement on, a hallucinated
+   * citation never reaches an operator, so its rate is unobservable.
+   *
+   * `lib/agent/nodes.ts` does not pass this, and a purity test asserts it never
+   * does. Turning enforcement off in the product would silently ship prose
+   * citing evidence that was never collected.
+   */
+  enforce?: boolean;
 };
 
 export type ExplainOutcome = {
@@ -157,7 +170,7 @@ export async function explainVerdict(
   ctx: AgentContext,
   args: ExplainArgs = {},
 ): Promise<ExplainOutcome> {
-  const { provider, telemetry, timeoutMs = 12_000 } = args;
+  const { provider, telemetry, timeoutMs = 12_000, enforce = true } = args;
 
   if (!provider || !ctx.verdict) {
     return { explanation: structuredExplanation(ctx), fromFallback: true };
@@ -195,6 +208,16 @@ export async function explainVerdict(
   const hallucinated = parsed.citations.filter((id) => !allowed.has(id));
   if (hallucinated.length > 0) {
     recordRejected(telemetry, "explain", "bad_citation");
+    // Report-only: counted above, but allowed through so the experiment can
+    // measure what enforcement is actually catching.
+    if (!enforce) {
+      return {
+        explanation: [parsed.summary, parsed.nextStep].filter(Boolean).join(" "),
+        fromFallback: false,
+        rejection: "bad_citation (report-only)",
+        hallucinatedCitations: hallucinated,
+      };
+    }
     return {
       explanation: structuredExplanation(ctx),
       fromFallback: true,
@@ -207,6 +230,13 @@ export async function explainVerdict(
   const contradiction = findDecisionContradiction(prose, ctx.verdict.decision);
   if (contradiction) {
     recordRejected(telemetry, "explain", "decision_contradiction");
+    if (!enforce) {
+      return {
+        explanation: prose,
+        fromFallback: false,
+        rejection: `decision_contradiction (report-only): "${contradiction}"`,
+      };
+    }
     return {
       explanation: structuredExplanation(ctx),
       fromFallback: true,

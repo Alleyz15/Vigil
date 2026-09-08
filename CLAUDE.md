@@ -196,6 +196,18 @@ answer to "what about a brand-new courier you have no baseline for?" is not a sh
 start — it is that the system knows it cannot judge, says so in the record, and requires a
 human to put their name on it.
 
+### 1c. No production module may contain a function that asks a model for a verdict
+
+Not even unused. Not even for measurement. Not behind a flag.
+
+E4 needs one deciding prompt to show that path is unreliable — it lives in
+`scripts/experiments/e4-llm-instability.ts` and nowhere else. A reachable one in `lib/llm`
+would be exactly the path the architecture forbids, sitting in the codebase waiting to be wired
+up, and **building it in to prove it is unsafe would be self-defeating.**
+
+If a future session needs a model verdict for any reason, it goes in a script under
+`scripts/`, not in `lib/`.
+
 ### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
 
 A model's response passes every gate or none of it is used. Do not implement
@@ -923,7 +935,59 @@ three views verified in a browser, not just compiled.
   side by side; combining them arithmetically or naming a variable as though they were one
   number is not.
 
-### Session 9 — the experiments (in progress)
+### Session 9 — the experiments (complete)
+
+480 tests passing, 3 skipped. `tsc --noEmit` clean, eslint clean. Six experiments run, CSVs in
+`results/`, written up in `docs/RESULTS.md`. **No threshold was changed.**
+
+**Against the predictions below: two held, one was wrong in an instructive way.**
+
+- **Prediction 1 held.** E1 level 4 was undetected in 12/12 runs. Reported as the measured
+  boundary; nothing tuned.
+- **Prediction 2 was wrong, and the reason matters.** E3 came back at **0% across 240 legs**,
+  not "low but not zero", and **H1 never fired**. That is not a clean win: our generator's clean
+  shipments have bounded noise by construction, so 0% measures "our clean data does not trip our
+  rules", not a false-positive rate. **The H1 reservation stays open** — it did not fire because
+  no clean scenario contains a custody-chain gap, and real fleets have missed scans. RESULTS.md
+  states this as the weakest number in the set.
+- **Prediction 3 held.** E4 did not run; `GEMINI_API_KEY` was not set and RESULTS.md says "not
+  run" rather than showing a placeholder.
+
+**The finding worth carrying forward.** E6 shows the shipped implied-speed threshold of 120 km/h
+is **not optimal on this data** — anything from 50 km/h up has zero false positives and higher
+detection. It was **not changed**. The synthetic line-haul never drives at 110 km/h, so the
+dataset does not contain the case the threshold exists to tolerate; lowering it would be fitting
+to a gap in the generator. A number derived from a published speed limit survives contact with
+reality better than one fitted to our own fixtures. This is now the honest answer to "why 120?".
+
+**Two experiment bugs the runs exposed, both in the experiments rather than the detectors:**
+
+- E1's first run showed levels 2–4 all undetected, because the campaign never generated a
+  customer complaint — the ladder defines level 4 as *"a recipient who agrees not to complain"*,
+  which is meaningless unless the levels below have recipients who do.
+- E2's first run showed S2 caught by `I10` at leg 1, because the harness composed ingestion by
+  hand and skipped the parcel upsert — reproducing a bug session 6 had already fixed. The
+  experiments now use the tested `ingestScenario`.
+
+Both are recorded in RESULTS.md. Neither touched a detector.
+
+**Additions this session:** `deps.thresholds` on `NodeDeps` (symmetric with `deps.windows`, for
+E6); report-only mode on `explainVerdict` (for E5, with a purity test asserting the agent never
+passes it); the anti-circularity guard extended to `scripts/experiments/` with E6 named as its
+sole exception.
+
+### Session 10 — next
+
+Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, the map view, and the
+submission artefacts. **If E3's clean-data limitation is addressed first**, that is worth more
+than any of them: adding realistic environmental noise to the generator would turn the weakest
+number in RESULTS.md into a real one.
+
+---
+
+#### Predictions, recorded before any experiment was run
+
+### Session 9 — predictions (written first)
 
 **PREDICTIONS, WRITTEN BEFORE ANY EXPERIMENT WAS RUN.** Recorded here first so the log shows
 they were not retrofitted to the results. A result that contradicts one of these is a finding

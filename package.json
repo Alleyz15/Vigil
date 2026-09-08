@@ -13,7 +13,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.include='lib/engine/**' --coverage.include='lib/pattern/**' --coverage.include='lib/gate/**' --coverage.exclude='**/fixtures.ts' --coverage.exclude='**/index.ts' --coverage.exclude='**/*.test.ts'"
+    "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.include='lib/engine/**' --coverage.include='lib/pattern/**' --coverage.include='lib/gate/**' --coverage.exclude='**/fixtures.ts' --coverage.exclude='**/index.ts' --coverage.exclude='**/*.test.ts'",
+    "experiments": "tsx scripts/experiments/run-all.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -50,6 +51,7 @@
     "eslint-config-next": "16.3.4",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^5.0.0"
   }

@@ -20,6 +20,9 @@ import { explainVerdict, planTools } from "@/lib/llm";
 import type { LlmProvider, LlmTelemetry } from "@/lib/llm";
 import { verificationKeys, verifyCredential } from "@/lib/credential";
 import type { Credential, VerificationResult } from "@/lib/credential";
+import type { EngineInput } from "@/lib/engine/types";
+import type { PatternInput } from "@/lib/pattern/types";
+import type { GateInput } from "@/lib/gate/types";
 import type { AgentContext, Node } from "./context";
 
 /**
@@ -63,6 +66,18 @@ export type NodeDeps = {
   operatorPublicKey?: string;
   /** Window overrides, for experiments. */
   windows?: { patternHours?: number; shiftHours?: number };
+  /**
+   * Threshold overrides, for the sensitivity sweep.
+   *
+   * Same shape and purpose as `windows`: an experiment varies these as an
+   * independent variable and reads the effect. Nothing in the product sets
+   * them, and a rule may still never read a threshold it was not handed.
+   */
+  thresholds?: {
+    engine?: EngineInput["thresholds"];
+    pattern?: PatternInput["thresholds"];
+    gate?: GateInput["thresholds"];
+  };
 };
 
 /**
@@ -254,6 +269,7 @@ export const verify: NodeFn = (ctx, deps) => {
   const { input, resolution } = assembleEngineInput(deps.db, event, {
     courier: ctx.courier?.known ? ctx.courier : undefined,
     mandate: ctx.mandate?.value,
+    thresholds: deps.thresholds?.engine,
   });
   ctx.resolution = mergeResolutions(ctx.resolution, resolution);
 
@@ -302,6 +318,7 @@ export const fetchHistory: NodeFn = (ctx, deps) => {
 
   const { input, resolution } = assemblePatternInput(deps.db, courierId, event.eventTime, {
     windowHours: deps.windows?.patternHours,
+    thresholds: deps.thresholds?.pattern,
   });
   ctx.resolution = mergeResolutions(ctx.resolution, resolution);
 
@@ -347,6 +364,7 @@ export const gate: NodeFn = (ctx, deps) => {
     epc: ctx.parcel?.epc,
     now: event.eventTime,
     shiftWindowHours: deps.windows?.shiftHours,
+    thresholds: deps.thresholds?.gate,
   });
   ctx.resolution = mergeResolutions(ctx.resolution, resolution);
 

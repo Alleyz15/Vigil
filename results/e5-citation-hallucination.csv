@@ -1,0 +1,13 @@
+experiment,source,sample,samples_in_cell,injected_hallucination,report_only_rejection,report_only_hallucinated,enforced_rejection,enforced_fell_back
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",0,12,0,bad_citation (report-only),C1,bad_citation,1
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",1,12,1,,,,0
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",2,12,1,bad_citation (report-only),C1,bad_citation,1
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",3,12,1,"decision_contradiction (report-only): ""approved""",,"decision_contradiction: ""approved""",1
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",4,12,0,bad_citation (report-only),C1,bad_citation,1
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",5,12,1,,,,0
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",6,12,1,bad_citation (report-only),C1,bad_citation,1
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",7,12,1,"decision_contradiction (report-only): ""approved""",,"decision_contradiction: ""approved""",1
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",8,12,0,bad_citation (report-only),C1,bad_citation,1
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",9,12,1,,,,0
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",10,12,1,bad_citation (report-only),C1,bad_citation,1
+E5,"synthetic panel (mechanism validation, NOT a model measurement)",11,12,1,"decision_contradiction (report-only): ""approved""",,"decision_contradiction: ""approved""",1
