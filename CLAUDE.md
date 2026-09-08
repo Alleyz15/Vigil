@@ -117,6 +117,21 @@ need three different actions:
 No function of `single + pattern` can tell these apart. The sum discards *which axis* the risk
 came from, and that is precisely what decides what an operator should do next.
 
+### 2a. The generator must not know the detector's thresholds
+
+The fifth architectural claim the suite verifies rather than the README asserts, and the one
+that decides whether the experiments mean anything.
+
+`lib/purity.test.ts` fails the build if any module under `lib/generate/` imports
+`lib/engine/thresholds`, `lib/pattern/thresholds`, `lib/gate/thresholds`, or so much as names a
+threshold constant. A generator that reads `p1.maxDeliveriesInWindow` to decide how fast the
+fraudster scans is not producing a fraudster; it is producing something shaped to trip a rule,
+and a detection rate measured on it would stay high even if the rule were nonsense.
+
+**The generator emits BEHAVIOUR** — "one parcel every twenty seconds", "the courier is in a
+basement carpark", "the recipient agrees not to complain". **The detectors compute statistics.**
+If a threshold moves, the generator does not.
+
 ### 3. Approval is constitutive, not decorative
 
 Operator approval is **not** `approved = true` in a table. A high-risk handoff requires a
@@ -216,6 +231,45 @@ is `not_evaluated`, never `clear`. Treating silence as approval is how attestati
 **"8 of 14 checks evaluable"** next to the score. This is intended UI, not debug output. A
 score of 0 from 12 evaluated checks and a score of 0 from 2 evaluated checks are different
 claims, and an operator who cannot tell them apart is being misled by their own dashboard.
+
+### 4d. S2 was rebuilt because the original scenario contradicted the engine
+
+`track idea.md` §8 originally described the signature case as **batch scanning from a van**: the
+courier parks and scans a load of parcels addressed across the neighbourhood. **The condo-lobby
+version now in `lib/generate/scenarios/` is not a watered-down substitute for that. The van
+version is unbuildable**, and a future session that sees the original wording should not "restore"
+it.
+
+Traced against the built engine:
+
+- Scanning from one spot puts every scan hundreds of metres to kilometres from its recipient
+  address, so **I10/I11 fire on every event** — the events are not clean.
+- Moving the claimed positions onto the addresses to fix that makes consecutive scans imply
+  impossible speeds, so **I3 fires** instead — still not clean.
+
+Either way axis 1 catches it, and S2 stops being the case only the pattern axis can see, which
+is the entire reason S2 exists.
+
+**The condo tower keeps every event genuinely clean** — 40 parcels for one building, scanned at
+twenty-second intervals: the addresses really are clustered so P4 correctly stays silent, the
+scans are at the doors so I10/I11 are clean, the distances are metres so I3 is clean, and every
+event scores **0** on all fourteen checks. What remains is the shape: **P1** (a delivery rate no
+one can walk) and **P2** (the customers complain).
+
+**This was found by tracing, not by running** — reading the scenario against the built rules
+before writing the generator. It is worth knowing that the check is cheap and catches this class
+of problem: a scenario can be internally coherent and still contradict the system it is meant to
+exercise.
+
+**The argument it produced is a pitch line:**
+
+> A fraudster can fake **WHERE**. They cannot fake **HOW FAST**, or **WHETHER THE CUSTOMER GOT
+> IT**. P1 is a property of the *set*; P2 is an outcome that *arrives later*. Neither exists
+> inside any single event.
+
+That is the clearest statement of why the pattern axis is not a supplement to the single-event
+axis but a **structurally different kind of evidence** — and therefore why rule 2's ban on
+summing them is not fussiness.
 
 ### 4b. Every rule is a contradiction between signals, not a lone heuristic
 
@@ -380,7 +434,17 @@ lib/
     keys.ts              env-var keys. The ONLY impure file here.
   mandate/
     schema.ts            CourierMandate zod. Shape only.
-  purity.test.ts         guards the I/O ban AND the never-summed rule
+  generate/              SYNTHETIC DATA. Emits behaviour; never reads a threshold.
+    data/                kl-addresses.json, with its provenance in the file
+    rng.ts               seedrandom wrappers; the only source of randomness
+    world.ts             couriers, mandates, parcels, reference sites
+    timeline.ts          the six-leg shipment, built THROUGH the EPCIS schema
+    carefulness.ts       the fraudster's 0-4 capability ladder
+    split.ts             deterministic holdout for the experiments
+    scenarios/           S0-S6 + warm-up history
+    ingest.ts            runs a generated scenario through the real agent
+  purity.test.ts         guards the I/O ban, the never-summed rule AND
+                         the generator/detector separation
   assemble/              WHERE THE I/O IS. Deliberately NOT under the purity test.
     types.ts             Resolution: what was found, what was missing, and why
     mandate.ts           mandate row -> validated CourierMandate (fails closed)
@@ -454,6 +518,7 @@ npm test             # vitest, all lib/ tests
 npm run typecheck    # tsc --noEmit  (run `npm run build` first: Next generates route types)
 npm run lint
 npm run test:coverage # engine + pattern + gate; must stay at 100% branch
+node scripts/fetch-addresses.mjs  # refresh the geocoded address cache (one-off)
 npm run db:generate  # regenerate migrations after editing lib/db/schema.ts
 npm run db:migrate
 ```
@@ -631,7 +696,54 @@ of high-risk handoffs with no credential at all — which meant our own suite di
 the project is built on. They now present credentials via `runSigned`, so a scoring test is
 also, quietly, evidence that the credential was there.
 
-### Session 6 — the LLM (next)
+### Session 6 — the synthetic data generator (complete)
+
+418 tests passing. `tsc --noEmit` clean, eslint clean, `next build` succeeds.
+Dataset documented in `docs/DATASET.md`.
+
+**The generator produces whole timelines**, seeded and reproducible, with all seven scenarios
+running end to end through the real agent. Addresses were geocoded from OSM Nominatim (24 of 24
+resolved; the cache records `source: "nominatim"` in the file itself).
+
+| Area | What works |
+|---|---|
+| `rng.ts` | Every draw seeded; a purity test bans `Math.random` under `lib/generate/` |
+| `world.ts` | 4 couriers with scoped mandates, 240 parcels, cell + WiFi sites per address |
+| `timeline.ts` | Six legs, every event built **through** `EpcisEvent.parse` |
+| `scenarios/` | S0–S6, each a full timeline with at most one thing wrong at one leg |
+| `carefulness.ts` | The 0–4 ladder, monotonicity asserted |
+| `split.ts` | Deterministic holdout, stable as the set grows |
+| `ingest.ts` | Two-phase co-sign flow as a console would drive it |
+
+**Three engine bugs the generator found by being run.** This is the generator earning its keep
+before a single experiment:
+
+- **P5 was feeding back on itself.** It counts flag ids from sealed verdicts, and those include
+  *pattern* flags — so a recurring `P1` made `P5` fire, inflating axis 2 and reporting one
+  observation as two. P5 now counts only `I`-prefixed single-event contradictions.
+- **P4 had a false positive.** It compared the clustered scans against the recipient spread of
+  the *whole window*, so an honest courier doing a tower block in the morning and a normal round
+  in the afternoon tripped it. It now compares against the **clustered subset's own** addresses:
+  the parcels scanned from one spot — were they addressed to one spot?
+- **The generator's battery was non-monotone.** Drawing a level per leg let the handset gain
+  charge between scans, which fired I14 on the honest S6 timeline. Battery now declines
+  deterministically within a shift, with no jitter that could invert a drop.
+
+**Design decisions worth not re-litigating:**
+
+- **Warm-up history is mandatory.** Without ~14 prior sealed handoffs every scenario is
+  cold-start, every leg demands a co-signature, and S0 cannot show its point. S0 now asserts
+  `cosigned: [false × 6]`.
+- **The background fleet is written directly to `events`.** P2 needs peers to compare against,
+  and a baseline computed from the courier under test is that courier. These rows are context,
+  not events under test; everything belonging to a scenario goes through the real agent.
+- **Courier keypairs are deliberately NOT seeded.** Private keys should not be reproducible
+  from a public seed. The reproducibility test compares events, not keys.
+- **`upsertParcels` at ingest.** A scenario's parcels are authoritative — S2 re-addresses its
+  batch to one tower, and without this the engine measured tower scans against the world's
+  original scattered addresses and fired I10 on all forty.
+
+### Session 7 — the LLM (next)
 
 Put a real model behind `deps.llm`: `plan` selecting 0–2 tools from the closed `ToolName` zod
 enum, and `explain` writing the operator's prose with schema-enforced evidence citations that

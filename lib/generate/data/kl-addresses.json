@@ -1,0 +1,153 @@
+{
+  "source": "nominatim",
+  "note": "Geocoded from OpenStreetMap via Nominatim. Data © OpenStreetMap contributors, ODbL.",
+  "generatedAt": "2026-09-08T17:03:05.119Z",
+  "attribution": "© OpenStreetMap contributors, ODbL 1.0",
+  "count": 24,
+  "addresses": [
+    {
+      "label": "Jalan Ampang, Kuala Lumpur",
+      "latitude": 3.1610298,
+      "longitude": 101.737375,
+      "osmDisplayName": "Jalan Ampang, Ampang Hilir, Kampung Datuk Keramat, Kuala Lumpur, 50538, Malaysia"
+    },
+    {
+      "label": "Jalan Bukit Bintang, Kuala Lumpur",
+      "latitude": 3.1464005,
+      "longitude": 101.7108391,
+      "osmDisplayName": "Jalan Bukit Bintang, Kampung Dollah, Bukit Bintang, Kuala Lumpur, 50200, Malaysia"
+    },
+    {
+      "label": "Jalan Tun Razak, Kuala Lumpur",
+      "latitude": 3.1366067,
+      "longitude": 101.7192298,
+      "osmDisplayName": "Jalan Tun Razak, Maluri, Cheras, Kuala Lumpur, 55188, Malaysia"
+    },
+    {
+      "label": "Jalan Sultan Ismail, Kuala Lumpur",
+      "latitude": 3.1465197,
+      "longitude": 101.7112641,
+      "osmDisplayName": "Jalan Sultan Ismail, Bukit Bintang, Kuala Lumpur, 55100, Malaysia"
+    },
+    {
+      "label": "Jalan Raja Chulan, Kuala Lumpur",
+      "latitude": 3.1500061,
+      "longitude": 101.7103196,
+      "osmDisplayName": "Jalan Raja Chulan, Bukit Bintang, Kuala Lumpur, 50540, Malaysia"
+    },
+    {
+      "label": "Jalan Imbi, Kuala Lumpur",
+      "latitude": 3.143474,
+      "longitude": 101.7115949,
+      "osmDisplayName": "Jalan Imbi, Kampung Dollah, Bukit Bintang, Kuala Lumpur, 55100, Malaysia"
+    },
+    {
+      "label": "Brickfields, Kuala Lumpur",
+      "latitude": 3.1288572,
+      "longitude": 101.6845528,
+      "osmDisplayName": "Brickfields, Kuala Lumpur, 50470, Malaysia"
+    },
+    {
+      "label": "Bangsar, Kuala Lumpur",
+      "latitude": 3.1276122,
+      "longitude": 101.6790987,
+      "osmDisplayName": "KJ16 Bangsar, Jalan Bangsar, Bangsar, Kuala Lumpur, 59000, Malaysia"
+    },
+    {
+      "label": "Mont Kiara, Kuala Lumpur",
+      "latitude": 3.1699988,
+      "longitude": 101.6521467,
+      "osmDisplayName": "Mont Kiara, Kuala Lumpur, Malaysia"
+    },
+    {
+      "label": "Sri Hartamas, Kuala Lumpur",
+      "latitude": 3.1579157,
+      "longitude": 101.6474206,
+      "osmDisplayName": "Sri Hartamas, Kuala Lumpur, Malaysia"
+    },
+    {
+      "label": "Setapak, Kuala Lumpur",
+      "latitude": 3.1975774,
+      "longitude": 101.7139655,
+      "osmDisplayName": "Setapak, Kampung Padang Balang, Kuala Lumpur, 53000, Malaysia"
+    },
+    {
+      "label": "Cheras, Kuala Lumpur",
+      "latitude": 3.0991919,
+      "longitude": 101.7374229,
+      "osmDisplayName": "Cheras, Kuala Lumpur, Malaysia"
+    },
+    {
+      "label": "Wangsa Maju, Kuala Lumpur",
+      "latitude": 3.2057139,
+      "longitude": 101.731852,
+      "osmDisplayName": "Wangsa Maju, Jalan 1/27A, Wangsa Maju, Kuala Lumpur, 53300, Malaysia"
+    },
+    {
+      "label": "Kepong, Kuala Lumpur",
+      "latitude": 3.2140294,
+      "longitude": 101.634842,
+      "osmDisplayName": "Kepong, Kuala Lumpur, 52100, Malaysia"
+    },
+    {
+      "label": "Jalan Klang Lama, Kuala Lumpur",
+      "latitude": 3.0858544,
+      "longitude": 101.673229,
+      "osmDisplayName": "Jalan Klang Lama, Taman Skyline, Taman OUG, Kuala Lumpur, 58200, Malaysia"
+    },
+    {
+      "label": "Petaling Jaya, Selangor",
+      "latitude": 3.0988792,
+      "longitude": 101.6454202,
+      "osmDisplayName": "Petaling Jaya, Petaling, Selangor, Malaysia"
+    },
+    {
+      "label": "SS15, Subang Jaya, Selangor",
+      "latitude": 3.0756824,
+      "longitude": 101.5861786,
+      "osmDisplayName": "KJ29 SS15, Persiaran Jengka, Pusat Bandar Subang Jaya, Majlis Bandaraya Subang Jaya, Petaling, Selangor, 47500, Malaysia"
+    },
+    {
+      "label": "Damansara Utama, Petaling Jaya, Selangor",
+      "latitude": 3.1380606,
+      "longitude": 101.6231239,
+      "osmDisplayName": "Damansara Utama, Petaling Jaya, Petaling, Selangor, Malaysia"
+    },
+    {
+      "label": "Kota Damansara, Selangor",
+      "latitude": 3.1536719,
+      "longitude": 101.593544,
+      "osmDisplayName": "Kota Damansara, Petaling Jaya, Petaling, Selangor, 47810, Malaysia"
+    },
+    {
+      "label": "Shah Alam Seksyen 7, Selangor",
+      "latitude": 3.0682991,
+      "longitude": 101.4888619,
+      "osmDisplayName": "Icahfa, Icahfa 28A, Jalan Plumbum Q7/Q, Seksyen 7, 40000 Shah Alam, Selangor, Malaysia, Jalan Plumbum Q7/Q, Seksyen 7, Shah Alam, Petaling, Selangor, 40000, Malaysia"
+    },
+    {
+      "label": "Shah Alam Seksyen 13, Selangor",
+      "latitude": 3.0905811,
+      "longitude": 101.5465309,
+      "osmDisplayName": "Takaful Malaysia, Jalan Ragbi 13/30, Tadisma Business Park, Seksyen 13, Bukit Jelutong, Shah Alam, Petaling, Selangor, 40100, Malaysia"
+    },
+    {
+      "label": "Puchong, Selangor",
+      "latitude": 3.0342324,
+      "longitude": 101.6170345,
+      "osmDisplayName": "Puchong, Majlis Bandaraya Subang Jaya, Petaling, Selangor, 47160, Malaysia"
+    },
+    {
+      "label": "Ampang Jaya, Selangor",
+      "latitude": 3.1276087,
+      "longitude": 101.7538639,
+      "osmDisplayName": "Majlis Perbandaran Ampang Jaya, Hulu Langat, Selangor, 55300, Malaysia"
+    },
+    {
+      "label": "Cyberjaya, Selangor",
+      "latitude": 2.9338908,
+      "longitude": 101.6455587,
+      "osmDisplayName": "Cyberjaya, Sepang, Selangor, Malaysia"
+    }
+  ]
+}

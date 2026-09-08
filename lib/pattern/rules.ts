@@ -179,12 +179,26 @@ function spreadMeters(points: GeoPoint[]): number {
   return max;
 }
 
-/** The largest set of points lying within `radius` of any single member. */
-function largestCluster(points: GeoPoint[], radius: number): { size: number; centre: GeoPoint } {
-  let best = { size: 0, centre: points[0] };
+/**
+ * The largest set of points lying within `radius` of any single member, and
+ * WHICH points those are.
+ *
+ * The membership matters, not just the count: P4 compares the cluster against
+ * the addresses of the parcels IN it, so it has to know which ones they were.
+ */
+function largestCluster(
+  points: GeoPoint[],
+  radius: number,
+): { size: number; centre: GeoPoint; indices: number[] } {
+  let best = { size: 0, centre: points[0], indices: [] as number[] };
   for (const candidate of points) {
-    const size = points.filter((p) => distanceMeters(candidate, p) <= radius).length;
-    if (size > best.size) best = { size, centre: candidate };
+    const indices: number[] = [];
+    points.forEach((p, i) => {
+      if (distanceMeters(candidate, p) <= radius) indices.push(i);
+    });
+    if (indices.length > best.size) {
+      best = { size: indices.length, centre: candidate, indices };
+    }
   }
   return best;
 }
@@ -219,9 +233,17 @@ export function p4ScanClustering(input: PatternInput): RuleResult {
   const clusteredFraction = cluster.size / scanPoints.length;
   if (clusteredFraction < minClusteredFraction) return clear;
 
-  const recipientSpread = spreadMeters(recipientPoints);
+  // THE ADDRESSES OF THE CLUSTERED PARCELS, not of the whole window.
+  //
+  // Measuring the whole window's spread flags an honest courier who does a
+  // tower block in the morning and a normal round in the afternoon: their
+  // tower scans cluster, and the round's addresses supply the spread. The
+  // question P4 actually asks is narrower - the parcels scanned FROM ONE SPOT,
+  // were they addressed to one spot? Found by running the S2 generator.
+  const clusteredRecipients = cluster.indices.map((i) => recipientPoints[i]);
+  const recipientSpread = spreadMeters(clusteredRecipients);
   if (recipientSpread < minRecipientSpreadMeters) {
-    // Scans clustered AND addresses clustered: one building. Not fraud.
+    // Scans clustered AND their addresses clustered: one building. Not fraud.
     return clear;
   }
 
@@ -237,6 +259,21 @@ export function p4ScanClustering(input: PatternInput): RuleResult {
     ],
   );
 }
+
+/**
+ * Only single-event contradictions count toward P5.
+ *
+ * A sealed verdict's flag list carries everything that fired: I-rules, hard
+ * checks, mandate limits, credential failures AND pattern flags. P5 must count
+ * only the I-rules.
+ *
+ * WHY: pattern flags are recorded on every handoff once they start firing, so
+ * counting them makes P5 fire *because P1 fired*, on repeat, for as long as P1
+ * keeps firing. That is a feedback loop on axis 2 rather than evidence — the
+ * pattern score inflates itself and reports one observation as two. Found by
+ * running the S2 generator, where P5 was recurring on "P1".
+ */
+const CONTRADICTION_ID = /^I\d+$/;
 
 /**
  * P5 - the same contradiction keeps recurring.
@@ -258,6 +295,7 @@ export function p5RecurringContradiction(input: PatternInput): RuleResult {
     // Count each flag id once per handoff: a rule that fires twice on one
     // event is still one occurrence of that contradiction.
     for (const id of new Set(handoff.flagIds)) {
+      if (!CONTRADICTION_ID.test(id)) continue;
       counts.set(id, (counts.get(id) ?? 0) + 1);
     }
   }

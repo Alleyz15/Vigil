@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -167,6 +167,99 @@ describe("lib/assemble is deliberately impure", () => {
   it("really does reach the database, which is why it is excluded", () => {
     const source = readFileSync(join(LIB, "assemble", "engine-input.ts"), "utf8");
     expect(source).toMatch(/from "@\/lib\/db\/schema"/);
+  });
+});
+
+/**
+ * THE GENERATOR MUST NOT KNOW THE DETECTOR'S THRESHOLDS.
+ *
+ * This is the fifth architectural claim the suite verifies rather than the
+ * README asserts, and it is the one that decides whether the experiments mean
+ * anything.
+ *
+ * A generator that reads `p1.maxDeliveriesInWindow` to decide how fast the
+ * fraudster scans is not producing a fraudster; it is producing something
+ * shaped to trip a rule. Running the detector over it then measures how well
+ * the generator was tuned, and a detection rate obtained that way is circular:
+ * it would stay high if the rule were nonsense, because the data was built
+ * around the rule.
+ *
+ * So lib/generate emits BEHAVIOUR — "one parcel every twenty seconds", "the
+ * courier is in a basement carpark", "the recipient agrees not to complain" —
+ * and the detectors compute statistics over it. The two sides share no
+ * parameters. If a threshold moves, the generator does not.
+ */
+describe("the generator does not import the detector's thresholds", () => {
+  const THRESHOLD_MODULES = [
+    /\/lib\/engine\/thresholds/,
+    /\/lib\/pattern\/thresholds/,
+    /\/lib\/gate\/thresholds/,
+    // Barrels re-export the thresholds, so importing one is importing them.
+    /from\s+["']@\/lib\/(engine|pattern|gate)["']/,
+  ];
+
+  function generatorSources(dir = join(LIB, "generate")): { path: string; source: string }[] {
+    const out: { path: string; source: string }[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        out.push(...generatorSources(full));
+      } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+        out.push({
+          path: full.slice(LIB.length + 1).split(sep).join("/"),
+          source: readFileSync(full, "utf8"),
+        });
+      }
+    }
+    return out;
+  }
+
+  it("reads no threshold from any scoring module", () => {
+    for (const { path, source } of generatorSources()) {
+      // ingest.ts is the harness that RUNS the detector; it may import the
+      // agent. It still may not read a threshold.
+      const clean = stripComments(source);
+      for (const pattern of THRESHOLD_MODULES) {
+        expect(
+          pattern.test(clean),
+          `${path} imports the detector's thresholds. This is banned: a generator tuned against the detector measures how well it was tuned, not how well the detector works. Emit BEHAVIOUR and let the detector compute statistics over it.`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("names no threshold constant, even without importing one", () => {
+    const NAMES = [
+      "maxDeliveriesInWindow",
+      "maxImpliedSpeedKmh",
+      "minHandoffsForPattern",
+      "highInconsistency",
+      "highPattern",
+      "clockDivergenceBands",
+      "deliveryDistanceBands",
+      "baselineMultiplier",
+      "maxStdDev",
+    ];
+
+    for (const { path, source } of generatorSources()) {
+      const clean = stripComments(source);
+      for (const name of NAMES) {
+        expect(
+          clean.includes(name),
+          `${path} refers to the threshold "${name}". The generator must describe behaviour, not target a rule.`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("draws no randomness outside the seeded stream", () => {
+    for (const { path, source } of generatorSources()) {
+      const clean = stripComments(source);
+      expect(
+        /Math\.random\s*\(/.test(clean),
+        `${path} uses Math.random, so the dataset cannot be regenerated and any experiment run on it is unrepeatable.`,
+      ).toBe(false);
+    }
   });
 });
 
