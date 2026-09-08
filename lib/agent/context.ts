@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { EpcisEvent } from "@/lib/epcis";
+import type { Flag } from "@/lib/engine/types";
 import type { Decision, Verdict } from "@/lib/ledger/types";
 
 /**
@@ -44,16 +45,13 @@ export const ToolPlan = z.strictObject({
 });
 export type ToolPlan = z.infer<typeof ToolPlan>;
 
-/** One scored contradiction. Every flag names the fields it was derived from. */
-export type Flag = {
-  /** "H1".."H4" for hard checks, "I1".."I14" and "P1".."P5" for scores. */
-  code: string;
-  /** Plain-language text for the operator. */
-  label: string;
-  points: number;
-  /** Field paths the flag was computed from, e.g. ["eventTime", "recordTime"]. */
-  evidence: string[];
-};
+/**
+ * One scored contradiction, re-exported from the engine so the agent and the
+ * engine cannot drift apart. Evidence carries field AND value, because "the
+ * evidence behind the decision" means showing the operator what the values were,
+ * not just which fields were consulted.
+ */
+export type { Evidence, Flag } from "@/lib/engine/types";
 
 /** Axis 1: single-event contradiction. Produced by `verify`. */
 export type InconsistencyResult = {

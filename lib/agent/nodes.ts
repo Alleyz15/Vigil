@@ -160,10 +160,10 @@ export const verify: NodeFn = (ctx, deps) => {
       abortCode: "EVENT_ID_REUSE",
       flags: [
         {
-          code: "H4",
+          id: "H4",
           label: "This event ID was already used for different content.",
           points: 100,
-          evidence: ["eventID"],
+          evidence: [{ field: "event.eventID", value: event.eventID }],
         },
       ],
     };
@@ -222,7 +222,7 @@ export const gate: NodeFn = (ctx, deps) => {
     decision: ctx.decision,
     inconsistencyScore: ctx.inconsistency.score,
     patternScore: ctx.pattern.score,
-    flags: [...ctx.inconsistency.flags, ...ctx.pattern.flags].map((f) => f.code),
+    flags: [...ctx.inconsistency.flags, ...ctx.pattern.flags].map((f) => f.id),
     ...(ctx.inconsistency.abortCode ? { abortCode: ctx.inconsistency.abortCode } : {}),
   };
 

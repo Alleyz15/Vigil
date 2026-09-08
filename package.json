@@ -12,9 +12,11 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.include='lib/engine/**' --coverage.exclude='lib/engine/fixtures.ts' --coverage.exclude='lib/engine/index.ts' --coverage.exclude='**/*.test.ts'"
   },
   "dependencies": {
+    "@turf/turf": "^7.4.0",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",
     "next": "16.3.4",
@@ -28,6 +30,7 @@
     "@types/node": "^24.13.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^5.0.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",

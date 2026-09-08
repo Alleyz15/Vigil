@@ -165,7 +165,7 @@ describe("verify - the ledger check (H4)", () => {
 
     expect(forged.halted).toEqual({ at: "verify", reason: "EVENT_ID_REUSE" });
     expect(forged.decision).toBe("freeze");
-    expect(forged.inconsistency?.flags.map((f) => f.code)).toEqual(["H4"]);
+    expect(forged.inconsistency?.flags.map((f) => f.id)).toEqual(["H4"]);
     // The rejected attempt is itself evidence, so it lands in the audit trail.
     expect(deps.ledger.readRecords().map((r) => r.kind)).toEqual(["verdict", "abort"]);
   });

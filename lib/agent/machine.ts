@@ -85,7 +85,7 @@ function summarize(node: Node, ctx: AgentContext): unknown {
       return {
         ledger: ctx.ledger?.status ?? null,
         inconsistencyScore: ctx.inconsistency?.score ?? null,
-        flags: ctx.inconsistency?.flags.map((f) => f.code) ?? [],
+        flags: ctx.inconsistency?.flags.map((f) => f.id) ?? [],
       };
     case "fetch_history":
       return { patternScore: ctx.pattern?.score ?? null, sampleSize: ctx.pattern?.sampleSize ?? null };
