@@ -923,7 +923,25 @@ three views verified in a browser, not just compiled.
   side by side; combining them arithmetically or naming a variable as though they were one
   number is not.
 
-### Session 9 — Open-Meteo, then the experiments (next)
+### Session 9 — the experiments (in progress)
+
+**PREDICTIONS, WRITTEN BEFORE ANY EXPERIMENT WAS RUN.** Recorded here first so the log shows
+they were not retrofitted to the results. A result that contradicts one of these is a finding
+worth investigating, not a number to explain away.
+
+1. **E1 level 4 (recipient collusion) will be undetectable.** That boundary is already in Known
+   Limitations. It gets reported as a measured result and nothing is tuned to make it detectable.
+2. **E3's false-positive rate will be low but not zero**, and the by-abort-code breakdown may
+   well be dominated by H1 → freeze. If it is: **report it and stop.** Softening H1 in the
+   session that measured it is the circularity the anti-circularity guard exists to prevent.
+   Changing it is a separate session with a rerun on the reporting half.
+3. **E4 requires `GEMINI_API_KEY`.** Without one it does not run, and RESULTS.md says "not run"
+   rather than showing a blank or a placeholder.
+
+**Holdout: nothing is tuned this session.** The reporting half is what gets reported; the
+tuning half is declared and left unused. No threshold moved.
+
+### Session 9 — Open-Meteo, then the experiments (superseded by the above)
 
 `external_context` still sets a `STUB` placeholder when `plan` asks for weather. Wire Open-Meteo
 behind it: this is the S6 beat, where the agent gathers evidence and decides **not** to escalate.
