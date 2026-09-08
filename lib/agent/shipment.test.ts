@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { rmSync } from "node:fs";
 import { eq } from "drizzle-orm";
 import { events, verdicts } from "@/lib/db/schema";
-import { runAgent } from "./machine";
 import {
   KL_AMPANG_DOORSTEP,
   KL_HUB,
@@ -10,6 +9,7 @@ import {
   type World,
   makeAgentEvent,
   resetEventIds,
+  runSigned,
   seedWorld,
   signalsOf,
 } from "./fixtures";
@@ -127,8 +127,8 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(world.dir, { recursive: true, force: true }));
 
-function runShipment(d: NodeDeps = deps): AgentContext[] {
-  return LEGS.map((leg) => runAgent(legEvent(leg), d));
+function runShipment(w: World = world, d?: NodeDeps): AgentContext[] {
+  return LEGS.map((leg) => runSigned(legEvent(leg), w, { deps: d ?? w.deps }));
 }
 
 describe("a normal shipment, end to end", () => {
@@ -220,7 +220,7 @@ describe("a normal shipment, end to end", () => {
 describe("from normal activity to a meaningful exception", () => {
   it("accepts five clean legs, then flags a spoofed delivery", () => {
     // The first five legs are ordinary work.
-    const normal = LEGS.slice(0, 5).map((leg) => runAgent(legEvent(leg), deps));
+    const normal = LEGS.slice(0, 5).map((leg) => runSigned(legEvent(leg), world));
     expect(normal.map((c) => c.decision)).toEqual(Array(5).fill("accept"));
 
     // The delivery scan claims a location from a fake location app.
@@ -228,7 +228,7 @@ describe("from normal activity to a meaningful exception", () => {
     const signals = signalsOf(exception);
     (signals.gps as { mockLocationProvider: boolean }).mockLocationProvider = true;
 
-    const ctx = runAgent(exception, deps);
+    const ctx = runSigned(exception, world);
 
     expect(ctx.decision).toBe("flag");
     expect(ctx.verdict?.flags).toContain("I7");
@@ -239,10 +239,10 @@ describe("from normal activity to a meaningful exception", () => {
   });
 
   it("refuses a delivery scanned 23 km from the recipient", () => {
-    LEGS.slice(0, 5).forEach((leg) => runAgent(legEvent(leg), deps));
+    LEGS.slice(0, 5).forEach((leg) => runSigned(legEvent(leg), world));
 
     const wrongPlace = legEvent({ ...LEGS[5], point: SHAH_ALAM });
-    const ctx = runAgent(wrongPlace, deps);
+    const ctx = runSigned(wrongPlace, world);
 
     expect(ctx.verdict?.flags).toContain("I10");
     expect(ctx.decision).not.toBe("accept");
@@ -269,7 +269,7 @@ describe("the whole shipment is unchanged by the LLM", () => {
   const shipmentVerdicts = (llm?: NodeDeps["llm"]) => {
     resetEventIds();
     const w = seedWorld();
-    const sealed = runShipment({ ...w.deps, llm }).map((c) => c.verdict);
+    const sealed = runShipment(w, { ...w.deps, llm }).map((c) => c.verdict);
     rmSync(w.dir, { recursive: true, force: true });
     return JSON.stringify(sealed);
   };
@@ -284,7 +284,7 @@ describe("the whole shipment is unchanged by the LLM", () => {
     const chainOf = (llm?: NodeDeps["llm"]) => {
       resetEventIds();
       const w = seedWorld();
-      runShipment({ ...w.deps, llm });
+      runShipment(w, { ...w.deps, llm });
       const records = w.deps.ledger.readRecords().map((r) => r.payloadHash);
       rmSync(w.dir, { recursive: true, force: true });
       return records;

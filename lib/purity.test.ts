@@ -97,6 +97,61 @@ describe.each(Object.entries(PURE_TREES))("lib/%s is pure", (tree, modules) => {
 });
 
 /**
+ * lib/credential is deterministic, and gets a NARROW allowance rather than a hole.
+ *
+ * Signature verification needs `node:crypto`, which the blanket rule bans. The
+ * allowance is targeted because of WHY node:crypto is safe here: verifying a
+ * signature is a pure function of (message, key, signature) — same inputs, same
+ * answer, forever. Determinism is the property the purity test actually
+ * protects, and crypto does not weaken it. Reading a file or a clock would.
+ *
+ * Everything else on the banned list still applies, so a future session cannot
+ * reach for the database "just to look up a key" inside the verifier — keys
+ * arrive as arguments, and lib/credential/keys.ts is the one file allowed to
+ * read the environment.
+ */
+describe("lib/credential is deterministic, with a narrow node:crypto allowance", () => {
+  const CRYPTO_ONLY = ["message.ts", "verify.ts", "sign.ts", "types.ts"];
+
+  it.each(CRYPTO_ONLY)("%s reaches nothing impure except node:crypto", (moduleName) => {
+    const source = stripComments(readFileSync(join(LIB, "credential", moduleName), "utf8"));
+
+    for (const [name, pattern, reason] of FORBIDDEN) {
+      // The one allowance, and only for this exact import.
+      if (name === "node builtins" && /from "node:crypto"/.test(source)) {
+        const withoutCrypto = source.replace(/from "node:crypto"/g, 'from "<allowed>"');
+        expect(
+          pattern.test(withoutCrypto),
+          `lib/credential/${moduleName} imports a node builtin other than node:crypto.`,
+        ).toBe(false);
+        continue;
+      }
+      expect(
+        pattern.test(source),
+        `lib/credential/${moduleName} appears to use ${name}. This is banned: ${reason}.`,
+      ).toBe(false);
+    }
+  });
+
+  it("keeps process.env to keys.ts alone", () => {
+    for (const moduleName of CRYPTO_ONLY) {
+      const source = stripComments(readFileSync(join(LIB, "credential", moduleName), "utf8"));
+      expect(/process\.env/.test(source), `${moduleName} reads the environment`).toBe(false);
+    }
+
+    // And keys.ts really is the one that does, which is why it is excluded.
+    const keys = readFileSync(join(LIB, "credential", "keys.ts"), "utf8");
+    expect(keys).toMatch(/process\.env/);
+  });
+
+  it("never lets the verifier reach the database for a key", () => {
+    const verify = stripComments(readFileSync(join(LIB, "credential", "verify.ts"), "utf8"));
+    expect(verify).not.toMatch(/lib\/db/);
+    expect(verify).not.toMatch(/drizzle/);
+  });
+});
+
+/**
  * lib/assemble is where the I/O lives, and it must STAY out of the pure trees.
  *
  * The separation is the whole point: assemblers reach for rows, rules do

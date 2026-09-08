@@ -45,11 +45,21 @@ export function persistEvent(db: VigilDb, event: EpcisEvent, courierId?: string)
     .run();
 }
 
+/**
+ * `signatures` records WHO approved the handoff and with what, so an operator
+ * can see the approval and it can be re-verified later against the keys on
+ * file. The signatures are evidence, not decoration.
+ */
 export function persistVerdict(
   db: VigilDb,
   eventId: string,
   ledgerSeq: number,
   verdict: Verdict,
+  signatures?: {
+    courierSignature?: string;
+    operatorSignature?: string;
+    operatorId?: string;
+  },
 ): void {
   db.insert(verdicts)
     .values({
@@ -64,6 +74,9 @@ export function persistVerdict(
       abortCode: verdict.abortCode,
       basis: verdict.basis,
       requiresCosign: verdict.requiresCosign,
+      courierSignature: signatures?.courierSignature,
+      operatorSignature: signatures?.operatorSignature,
+      operatorId: signatures?.operatorId,
     })
     .onConflictDoNothing()
     .run();

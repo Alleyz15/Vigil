@@ -16,6 +16,8 @@ import {
   mergeResolutions,
 } from "@/lib/assemble";
 import { persistEvent, persistVerdict } from "@/lib/assemble/persist";
+import { verificationKeys, verifyCredential } from "@/lib/credential";
+import type { Credential, VerificationResult } from "@/lib/credential";
 import type { AgentContext, Node } from "./context";
 
 /**
@@ -42,6 +44,21 @@ export type NodeDeps = {
    * test in machine.test.ts. It shapes tool selection and prose only.
    */
   llm?: AgentLlm;
+  /**
+   * The credential presented alongside this handoff.
+   *
+   * A SIDECAR, never part of the EPCIS event. Embedding it would make a
+   * co-signed resubmission a different payload under the same eventID, which
+   * the ledger would rightly abort as EVENT_ID_REUSE — so co-signing would
+   * freeze the courier for co-signing. See CLAUDE.md.
+   */
+  credential?: Credential;
+  /**
+   * Overrides the operator public key from the environment. Tests inject one so
+   * they never touch process.env; production leaves it unset and keys.ts reads
+   * the environment.
+   */
+  operatorPublicKey?: string;
   /** Window overrides, for experiments. */
   windows?: { patternHours?: number; shiftHours?: number };
 };
@@ -128,7 +145,13 @@ export const lookup: NodeFn = (ctx, deps) => {
       .get();
 
     ctx.courier = row
-      ? { courierId: row.courierId, known: true, boundDeviceId: row.boundDeviceId }
+      ? {
+          courierId: row.courierId,
+          known: true,
+          boundDeviceId: row.boundDeviceId,
+          // Needed to verify the courier half of the credential.
+          publicKey: row.publicKey,
+        }
       : { courierId: claimedCourierId, known: false };
 
     if (row) {
@@ -314,8 +337,32 @@ export const gate: NodeFn = (ctx, deps) => {
   ctx.decision = result.decision;
   ctx.requiresCosign = result.requiresCosign;
 
+  // THE CONSTITUTIVE CHECK. The gate has just said whether this handoff needs a
+  // co-signature; the credential is now checked against that threshold, BEFORE
+  // anything is sealed. See CLAUDE.md.
+  const credentialCheck = checkCredential(ctx, deps, result.requiresCosign);
+  if (credentialCheck) {
+    ctx.credential = credentialCheck.result;
+
+    if (credentialCheck.outcome === "pending") {
+      // NOTHING IS SEALED. The handoff is undecided, not refused: the operator
+      // has not co-signed yet. Writing a verdict here would record a decision
+      // nobody made, and would bind this eventID in the ledger so the co-signed
+      // resubmission of the very same event could never be sealed.
+      ctx.halted = { at: "gate", reason: "PENDING_COSIGNATURE" };
+      ctx.decision = undefined;
+      return;
+    }
+
+    if (credentialCheck.outcome === "invalid") {
+      // A forged or mismatched signature is an ATTACK, and an attack is
+      // evidence. This one does get sealed, at the harshest outcome.
+      ctx.decision = "freeze";
+    }
+  }
+
   const verdict: Verdict = {
-    decision: result.decision,
+    decision: ctx.decision ?? result.decision,
     // Two separate fields, carried through to the sealed record unsummed.
     inconsistencyScore: result.axis.inconsistencyScore,
     patternScore: result.axis.patternScore,
@@ -326,8 +373,13 @@ export const gate: NodeFn = (ctx, deps) => {
       ...ctx.engineResult.flags.map((f) => f.id),
       ...ctx.patternOutcome.flags.map((f) => f.id),
       ...result.limitFlags.map((f) => f.id),
+      ...(ctx.credential && !ctx.credential.valid ? ["C1"] : []),
     ],
-    ...(ctx.engineResult.abortCode ? { abortCode: ctx.engineResult.abortCode } : {}),
+    ...(ctx.engineResult.abortCode
+      ? { abortCode: ctx.engineResult.abortCode }
+      : ctx.credential && !ctx.credential.valid
+        ? { abortCode: "CREDENTIAL_INVALID" }
+        : {}),
   };
   ctx.verdict = verdict;
 
@@ -336,8 +388,97 @@ export const gate: NodeFn = (ctx, deps) => {
 
   // Projection for the operator console. The ledger already holds the truth.
   persistEvent(deps.db, event, ctx.courier?.known ? ctx.courier.courierId : undefined);
-  persistVerdict(deps.db, event.eventID, seq, verdict);
+  persistVerdict(deps.db, event.eventID, seq, verdict, signaturesOf(deps.credential));
 };
+
+/**
+ * Check the presented credential against the threshold the gate just set.
+ *
+ * Returns undefined when there is nothing to check (no credential presented and
+ * none required), so a deployment that has not started issuing credentials is
+ * unaffected until it does.
+ *
+ * The two failure modes are deliberately different outcomes:
+ *
+ *   pending  the credential is valid as far as it goes, but the operator has
+ *            not co-signed. Nothing is sealed. The handoff decided nothing, so
+ *            it must write nothing.
+ *   invalid  a signature was forged, mismatched or unverifiable. Sealed as a
+ *            freeze, because an attack is evidence and belongs in the ledger.
+ */
+function checkCredential(
+  ctx: AgentContext,
+  deps: NodeDeps,
+  cosignRequired: boolean,
+): { outcome: "valid" | "pending" | "invalid"; result: VerificationResult } | undefined {
+  const event = ctx.event;
+  if (!event) return undefined;
+
+  const credential = deps.credential;
+
+  if (!credential) {
+    // No credential presented. Only a problem when one was required.
+    if (!cosignRequired) return undefined;
+    return {
+      outcome: "pending",
+      result: {
+        valid: false,
+        cosignRequired,
+        validSignatures: [],
+        invalidSignatures: [],
+        problems: [
+          {
+            code: "MISSING",
+            role: "operator",
+            detail: "this handoff requires an operator co-signature and no credential was presented",
+          },
+        ],
+      },
+    };
+  }
+
+  const result = verifyCredential({
+    credential,
+    handoff: {
+      eventID: event.eventID,
+      epc: epcsOf(event)[0] ?? "",
+      courierId: ctx.courier?.courierId ?? "",
+      mandateId: ctx.mandate?.value?.mandateId ?? "",
+    },
+    keys: {
+      ...verificationKeys(ctx.courier?.publicKey),
+      ...(deps.operatorPublicKey ? { operatorPublicKey: deps.operatorPublicKey } : {}),
+    },
+    cosignRequired,
+  });
+
+  if (result.valid) return { outcome: "valid", result };
+
+  // Only a co-signature that is absent — not forged, not mismatched — is a
+  // pending handoff. Everything else is an attack.
+  const onlyAwaitingOperator =
+    !result.subjectMismatch &&
+    result.invalidSignatures.length === 0 &&
+    result.problems.every((p) => p.code === "MISSING" && p.role === "operator");
+
+  return { outcome: onlyAwaitingOperator ? "pending" : "invalid", result };
+}
+
+/**
+ * The signatures to record on the console projection.
+ *
+ * Stored so an operator can see WHO approved a handoff, and so the approval can
+ * be re-verified later against the keys on file. The signatures are evidence,
+ * not decoration.
+ */
+function signaturesOf(credential: Credential | undefined) {
+  if (!credential) return undefined;
+  return {
+    courierSignature: credential.signatures.find((s) => s.role === "courier")?.signature,
+    operatorSignature: credential.signatures.find((s) => s.role === "operator")?.signature,
+    operatorId: credential.signatures.find((s) => s.role === "operator")?.signerId,
+  };
+}
 
 /**
  * 8. explain — STUB. The second and last place an LLM appears.

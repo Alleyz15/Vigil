@@ -3,7 +3,6 @@ import { rmSync } from "node:fs";
 import { EpcisEvent } from "@/lib/epcis";
 import { runInconsistencyEngine } from "@/lib/engine";
 import { runPatternEngine } from "@/lib/pattern";
-import { runAgent } from "@/lib/agent/machine";
 import {
   COURIER_ID,
   DEVICE_ID,
@@ -12,6 +11,7 @@ import {
   type World,
   makeAgentEvent,
   resetEventIds,
+  runSigned,
   seedDispute,
   seedWorld,
   signalsOf,
@@ -107,7 +107,7 @@ describe("assembleEngineInput", () => {
 
   it("finds the immediately preceding event once one has been stored", () => {
     const first = makeAgentEvent({ eventTime: "2026-09-08T09:45:00+08:00" });
-    runAgent(first, world.deps);
+    runSigned(first, world);
 
     const second = parseEvent(makeAgentEvent({ eventTime: "2026-09-08T10:15:00+08:00" }));
     const { input } = assembleEngineInput(world.deps.db, second);
@@ -174,7 +174,7 @@ describe("assemblePatternInput", () => {
     for (let i = 0; i < n; i++) {
       const eventTime = new Date(base + i * 5 * 60_000).toISOString().replace("Z", "+00:00");
       const event = makeAgentEvent({ eventTime, recordTime: eventTime });
-      const ctx = runAgent(event, w.deps);
+      const ctx = runSigned(event, w);
       if (ctx.event) ids.push(ctx.event.eventID);
     }
     return ids;
@@ -272,8 +272,8 @@ describe("assembleGateInput", () => {
     runInconsistencyEngine(assembleWithMandate(world.deps.db, parseEvent(makeAgentEvent())).input);
 
   it("counts handoffs this shift from the courier/time index", () => {
-    runAgent(makeAgentEvent({ eventTime: "2026-09-08T09:00:00+08:00" }), world.deps);
-    runAgent(makeAgentEvent({ eventTime: "2026-09-08T09:30:00+08:00" }), world.deps);
+    runSigned(makeAgentEvent({ eventTime: "2026-09-08T09:00:00+08:00" }), world);
+    runSigned(makeAgentEvent({ eventTime: "2026-09-08T09:30:00+08:00" }), world);
 
     const { input } = assembleGateInput(world.deps.db, {
       inconsistency: emptyAxis1(),
@@ -293,7 +293,7 @@ describe("assembleGateInput", () => {
     const spoofed = makeAgentEvent({ eventTime: "2026-09-08T09:00:00+08:00" });
     const signals = signalsOf(spoofed);
     (signals.gps as { mockLocationProvider: boolean }).mockLocationProvider = true;
-    const flagged = runAgent(spoofed, world.deps);
+    const flagged = runSigned(spoofed, world);
     expect(flagged.decision).not.toBe("accept");
 
     const { input } = assembleGateInput(world.deps.db, {

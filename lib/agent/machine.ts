@@ -1,6 +1,7 @@
 import { type AgentContext, type Node, NODES, createContext } from "./context";
 import { NODE_FNS, type NodeDeps } from "./nodes";
 import { TraceFrame } from "./trace";
+import type { Credential } from "@/lib/credential";
 
 /**
  * The agent: a switch over eight nodes and one context object.
@@ -23,11 +24,17 @@ import { TraceFrame } from "./trace";
 export type RunOptions = {
   /** Called on every trace frame, for the SSE stream. */
   onTrace?: (frame: TraceFrame) => void;
+  /**
+   * The credential presented with this handoff. Per-run, like the event itself,
+   * and a SIDECAR — never inside the EPCIS event. See CLAUDE.md.
+   */
+  credential?: Credential;
 };
 
 /** Run one event through the pipeline. */
 export function runAgent(input: unknown, deps: NodeDeps, options: RunOptions = {}): AgentContext {
   const ctx = createContext(input);
+  const runDeps: NodeDeps = options.credential ? { ...deps, credential: options.credential } : deps;
   let seq = 0;
 
   const emit = (frame: TraceFrame) => {
@@ -44,7 +51,7 @@ export function runAgent(input: unknown, deps: NodeDeps, options: RunOptions = {
     emit({ type: "tool_start", seq: seq++, node, at: startedAt.toISOString() });
 
     try {
-      NODE_FNS[node](ctx, deps);
+      NODE_FNS[node](ctx, runDeps);
     } catch (err) {
       // A node that throws must not leave a half-formed verdict behind. We halt
       // and say which node failed, rather than continuing with partial state —

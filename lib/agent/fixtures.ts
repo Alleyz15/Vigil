@@ -8,7 +8,11 @@ import { mandateToRow } from "@/lib/assemble";
 import { makeMandate } from "@/lib/engine/fixtures";
 import type { CourierMandate } from "@/lib/mandate/schema";
 import type { GeoPoint } from "@/lib/epcis";
+import { cosign, courierCredential, generateKeyPair } from "@/lib/credential";
+import type { Credential } from "@/lib/credential";
+import { EpcisEvent } from "@/lib/epcis";
 import type { NodeDeps } from "./nodes";
+import { runAgent as runAgentRef, type RunOptions } from "./machine";
 
 /**
  * A seeded world for the agent tests: a real in-memory SQLite, a real ledger
@@ -32,6 +36,27 @@ export type World = {
   dir: string;
   /** Advance the injected clock, so durations and orderings are testable. */
   tick: (ms?: number) => void;
+  /** The keypairs this world was seeded with. Generated per world, never committed. */
+  keys: { courier: KeyPair; operator: KeyPair; impostor: KeyPair };
+  /**
+   * Build the credential a device would present with this event.
+   *
+   * A SIDECAR: it is returned separately and passed to runAgent as an option,
+   * never merged into the event. See CLAUDE.md.
+   */
+  credentialFor: (event: unknown, options?: CredentialOptions) => Credential;
+};
+
+type KeyPair = { publicKey: string; privateKey: string };
+
+export type CredentialOptions = {
+  /** Add a valid operator co-signature. */
+  cosign?: boolean;
+  /** Sign the courier half with the wrong key. */
+  forgeCourier?: boolean;
+  /** Co-sign with a key that is not the configured operator's. */
+  forgeOperator?: boolean;
+  nonce?: string;
 };
 
 export type SeedOptions = {
@@ -62,6 +87,13 @@ export function seedWorld(options: SeedOptions = {}): World {
   const dir = mkdtempSync(join(tmpdir(), "vigil-agent-"));
   const db = createMigratedDb(":memory:");
 
+  // Fresh keypairs per world. Nothing is committed and no env var is read.
+  const keys = {
+    courier: generateKeyPair(),
+    operator: generateKeyPair(),
+    impostor: generateKeyPair(),
+  };
+
   if (withParcel) {
     db.insert(parcels)
       .values({
@@ -82,7 +114,7 @@ export function seedWorld(options: SeedOptions = {}): World {
       .values({
         courierId: COURIER_ID,
         displayName: "Courier 42",
-        publicKey: "base64key",
+        publicKey: keys.courier.publicKey,
         boundDeviceId: DEVICE_ID,
       })
       .run();
@@ -105,17 +137,79 @@ export function seedWorld(options: SeedOptions = {}): World {
 
   let clock = Date.parse(startAt);
 
+  const credentialFor = (event: unknown, options: CredentialOptions = {}): Credential => {
+    // Some tests deliberately submit an unparsable event to exercise the parse
+    // failure. Those runs halt long before the gate, so the credential is never
+    // checked - build a well-formed one from whatever fields are readable
+    // rather than throwing inside the fixture.
+    const parsed = EpcisEvent.safeParse(event).data;
+    const raw = (event ?? {}) as Record<string, unknown>;
+    const subject = {
+      v: 1 as const,
+      eventID: parsed?.eventID ?? (raw.eventID as string) ?? eventId(0),
+      epc:
+        (parsed && (parsed.type === "AssociationEvent" ? (parsed.childEPCs ?? [])[0] : parsed.epcList[0])) ??
+        ((raw.epcList as string[] | undefined)?.[0] ?? EPC),
+      courierId: (parsed?.["vigil:courierId"] ?? (raw["vigil:courierId"] as string)) ?? COURIER_ID,
+      mandateId: "MD-0001",
+      nonce: options.nonce ?? `nonce-${parsed?.eventID ?? raw.eventID ?? "unparsed"}`,
+    };
+
+    const base = courierCredential(
+      subject,
+      options.forgeCourier ? keys.impostor.privateKey : keys.courier.privateKey,
+    );
+
+    if (!options.cosign && !options.forgeOperator) return base;
+    return cosign(
+      base,
+      "OP-01",
+      options.forgeOperator ? keys.impostor.privateKey : keys.operator.privateKey,
+    );
+  };
+
   return {
     dir,
+    keys,
+    credentialFor,
     deps: {
       db,
       ledger: new NonceLedger(join(dir, "nonce-ledger.jsonl")),
       now: () => new Date(clock),
+      operatorPublicKey: keys.operator.publicKey,
     },
     tick: (ms = 1) => {
       clock += ms;
     },
   };
+}
+
+/**
+ * Run an event with a valid, co-signed credential.
+ *
+ * Most agent tests are about scoring, not about approval, and every fixture
+ * courier is cold-start (so `requiresCosign` is true). This presents the
+ * credential those handoffs need, so a scoring test is not silently also a
+ * credential test.
+ */
+export function runSigned(
+  event: unknown,
+  world: World,
+  options: CredentialOptions & {
+    deps?: NodeDeps;
+    /** Passed straight through to runAgent, e.g. an onTrace listener. */
+    runOptions?: Omit<RunOptions, "credential">;
+    /** Omit the credential entirely, to exercise the pending path. */
+    noCredential?: boolean;
+  } = {},
+) {
+  const { deps, runOptions, noCredential, ...credentialOptions } = options;
+  return runAgentRef(event, deps ?? world.deps, {
+    ...runOptions,
+    ...(noCredential
+      ? {}
+      : { credential: world.credentialFor(event, { cosign: true, ...credentialOptions }) }),
+  });
 }
 
 /** Register a dispute against a sealed handoff. */

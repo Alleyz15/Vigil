@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { rmSync } from "node:fs";
 import { NonceLedger } from "@/lib/ledger";
 import { mandates } from "@/lib/db/schema";
-import { runAgent } from "./machine";
 import { NODES } from "./context";
 import {
   COURIER_ID,
@@ -10,6 +9,7 @@ import {
   type World,
   makeAgentEvent,
   resetEventIds,
+  runSigned,
   seedWorld,
   signalsOf,
 } from "./fixtures";
@@ -28,7 +28,7 @@ afterEach(() => rmSync(world.dir, { recursive: true, force: true }));
 
 describe("pipeline", () => {
   it("runs all eight nodes in order and seals a verdict in the ledger", () => {
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     expect(ctx.halted).toBeUndefined();
     expect(
@@ -40,7 +40,7 @@ describe("pipeline", () => {
   });
 
   it("accepts a clean delivery from a known courier", () => {
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     expect(ctx.decision).toBe("accept");
     expect(ctx.verdict?.inconsistencyScore).toBe(0);
@@ -51,7 +51,7 @@ describe("pipeline", () => {
 
 describe("parse", () => {
   it("halts on an event that does not validate, rather than guessing", () => {
-    const ctx = runAgent(makeAgentEvent({ eventTime: "2026-09-08T10:15:00" }), deps);
+    const ctx = runSigned(makeAgentEvent({ eventTime: "2026-09-08T10:15:00" }), world);
 
     expect(ctx.halted).toEqual({ at: "parse", reason: "EVENT_SCHEMA_INVALID" });
     expect(ctx.parseError).toMatch(/eventTime/);
@@ -60,21 +60,21 @@ describe("parse", () => {
   });
 
   it("stamps recordTime from the server clock when the device omits it", () => {
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     expect(ctx.event?.recordTime).toBe(deps.now().toISOString());
     expect(ctx.recordTimeSuppliedByClient).toBeUndefined();
   });
 
   it("notes when a device supplies a recordTime it has no business authoring", () => {
-    const ctx = runAgent(makeAgentEvent({ recordTime: "2026-09-08T10:15:01+08:00" }), deps);
+    const ctx = runSigned(makeAgentEvent({ recordTime: "2026-09-08T10:15:01+08:00" }), world);
     expect(ctx.recordTimeSuppliedByClient).toBe(true);
   });
 });
 
 describe("lookup", () => {
   it("resolves a known parcel, courier and active mandate", () => {
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     expect(ctx.parcel).toMatchObject({ epc: EPC, known: true });
     expect(ctx.parcel?.recipientPoint).toEqual({ latitude: 3.1595, longitude: 101.7123 });
@@ -86,30 +86,27 @@ describe("lookup", () => {
 
   it("reads coordinates back as REAL numbers, not truncated integers", () => {
     // Guards the schema fix: an integer column would hand back 3, not 3.1595.
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
     expect(ctx.parcel?.recipientPoint?.latitude).toBeCloseTo(3.1595, 4);
     expect(Number.isInteger(ctx.parcel?.recipientPoint?.latitude)).toBe(false);
   });
 
   it("marks an unissued EPC as high risk instead of treating it as neutral", () => {
-    const ctx = runAgent(
-      makeAgentEvent({ epcList: ["urn:epc:id:sgtin:0614141.107346.0000"] }),
-      deps,
-    );
+    const ctx = runSigned(makeAgentEvent({ epcList: ["urn:epc:id:sgtin:0614141.107346.0000"] }), world);
 
     expect(ctx.parcel?.known).toBe(false);
     expect(ctx.unknownEntityRisk).toBe("high");
   });
 
   it("marks an unknown courier as high risk", () => {
-    const ctx = runAgent(makeAgentEvent({ "vigil:courierId": "CR-9999" }), deps);
+    const ctx = runSigned(makeAgentEvent({ "vigil:courierId": "CR-9999" }), world);
 
     expect(ctx.courier?.known).toBe(false);
     expect(ctx.unknownEntityRisk).toBe("high");
   });
 
   it("marks an event that claims no courier at all as high risk", () => {
-    const ctx = runAgent(makeAgentEvent({ "vigil:courierId": undefined }), deps);
+    const ctx = runSigned(makeAgentEvent({ "vigil:courierId": undefined }), world);
     expect(ctx.unknownEntityRisk).toBe("high");
   });
 
@@ -122,7 +119,7 @@ describe("lookup", () => {
   it("treats a mandate with malformed JSON as no mandate, and refuses the handoff", () => {
     deps.db.update(mandates).set({ scopeJson: "{not json" }).run();
 
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     expect(ctx.mandate?.known).toBe(false);
     expect(ctx.mandate?.value).toBeUndefined();
@@ -135,7 +132,7 @@ describe("lookup", () => {
   it("treats a schema-invalid mandate the same way", () => {
     deps.db.update(mandates).set({ limitsJson: '{"maxHandoffsPerShift":"lots"}' }).run();
 
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     expect(ctx.mandate?.known).toBe(false);
     expect(ctx.resolution.missing.map((m) => m.reason).join(" ")).toMatch(/does not satisfy the schema/);
@@ -146,8 +143,8 @@ describe("lookup", () => {
 describe("verify - the ledger check (H4)", () => {
   it("replays the original verdict on a byte-equivalent retry, and halts", () => {
     const event = makeAgentEvent();
-    const first = runAgent(event, deps);
-    const retry = runAgent(event, deps);
+    const first = runSigned(event, world);
+    const retry = runSigned(event, world);
 
     expect(retry.halted).toEqual({ at: "verify", reason: "DUPLICATE_NO_OP" });
     expect(retry.verdict).toEqual(first.verdict);
@@ -156,12 +153,9 @@ describe("verify - the ledger check (H4)", () => {
 
   it("aborts with EVENT_ID_REUSE when the same eventID carries different content", () => {
     const event = makeAgentEvent();
-    runAgent(event, deps);
+    runSigned(event, world);
 
-    const forged = runAgent(
-      { ...event, epcList: ["urn:epc:id:sgtin:0614141.107346.9999"] },
-      deps,
-    );
+    const forged = runSigned({ ...event, epcList: ["urn:epc:id:sgtin:0614141.107346.9999"] }, world);
 
     expect(forged.halted).toEqual({ at: "verify", reason: "EVENT_ID_REUSE" });
     expect(forged.decision).toBe("freeze");
@@ -171,10 +165,10 @@ describe("verify - the ledger check (H4)", () => {
 
   it("still catches the replay after a restart, rebuilding from the file alone", () => {
     const event = makeAgentEvent();
-    runAgent(event, deps);
+    runSigned(event, world);
 
     const reopened: NodeDeps = { ...deps, ledger: new NonceLedger(deps.ledger.path) };
-    const retry = runAgent(event, reopened);
+    const retry = runSigned(event, world, { deps: reopened });
 
     expect(retry.halted).toEqual({ at: "verify", reason: "DUPLICATE_NO_OP" });
   });
@@ -182,7 +176,7 @@ describe("verify - the ledger check (H4)", () => {
 
 describe("the two axes", () => {
   it("keeps inconsistency and pattern as separate fields and never sums them", () => {
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     expect(ctx.verdict).toMatchObject({ inconsistencyScore: 0, patternScore: 0 });
     expect(ctx.engineResult).toBeDefined();
@@ -191,10 +185,12 @@ describe("the two axes", () => {
 
   it("produces axis 1 at verify and axis 2 at fetch_history, meeting only at gate", () => {
     const order: string[] = [];
-    const ctx = runAgent(makeAgentEvent(), deps, {
-      onTrace: (f) => {
-        if (f.type !== "tool_end") return;
-        if (["verify", "fetch_history", "gate"].includes(f.node)) order.push(f.node);
+    const ctx = runSigned(makeAgentEvent(), world, {
+      runOptions: {
+        onTrace: (f) => {
+          if (f.type !== "tool_end") return;
+          if (["verify", "fetch_history", "gate"].includes(f.node)) order.push(f.node);
+        },
       },
     });
 
@@ -203,7 +199,7 @@ describe("the two axes", () => {
   });
 
   it("reports evidence coverage for each axis from the engines' own counts", () => {
-    const ctx = runAgent(makeAgentEvent(), deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     expect(ctx.coverage?.inconsistency?.total).toBe(14);
     expect(ctx.coverage?.inconsistency?.line).toMatch(/^\d+ of 14 checks evaluable$/);
@@ -241,7 +237,7 @@ describe("removing the LLM produces identical verdicts", () => {
   const runWith = (llm?: NodeDeps["llm"]) => {
     resetEventIds();
     const w = seedWorld();
-    const ctx = runAgent(makeAgentEvent(), { ...w.deps, llm });
+    const ctx = runSigned(makeAgentEvent(), w, { deps: { ...w.deps, llm } });
     rmSync(w.dir, { recursive: true, force: true });
     return ctx;
   };
@@ -272,7 +268,7 @@ describe("removing the LLM produces identical verdicts", () => {
 
     const results = [undefined, fakeA, fakeB].map((llm) => {
       const { w, event } = spoofed();
-      const ctx = runAgent(event, { ...w.deps, llm });
+      const ctx = runSigned(event, w, { deps: { ...w.deps, llm } });
       rmSync(w.dir, { recursive: true, force: true });
       return ctx;
     });

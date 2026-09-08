@@ -1,0 +1,152 @@
+import { createPublicKey, verify as cryptoVerify } from "node:crypto";
+import { messageFor, subjectMatches } from "./message";
+import type {
+  Credential,
+  HandoffSubject,
+  SignatureProblem,
+  SignerRole,
+  VerificationKeys,
+  VerificationResult,
+} from "./types";
+
+/**
+ * Verify a credential against a handoff and a threshold.
+ *
+ * DETERMINISTIC. Same credential, same keys, same threshold, same answer, every
+ * time — no clock, no randomness, no I/O. `node:crypto` is the one import here
+ * that the purity test would normally ban, and it is allowed for exactly that
+ * reason: signature verification is a pure function of its inputs, which is the
+ * property the purity rule actually protects. See lib/purity.test.ts.
+ *
+ * THE THRESHOLD RULE
+ * ------------------
+ *   cosignRequired = false  ->  a valid courier signature suffices
+ *   cosignRequired = true   ->  courier AND operator signatures must both verify
+ *
+ * A courier-only token against a co-sign-required handoff returns `valid:
+ * false`. That is not a policy rejection recorded as "unapproved" — there is no
+ * valid credential to present. Without the operator's key the token cannot be
+ * assembled at all. See CLAUDE.md.
+ */
+export function verifyCredential(args: {
+  credential: Credential;
+  handoff: HandoffSubject;
+  keys: VerificationKeys;
+  cosignRequired: boolean;
+}): VerificationResult {
+  const { credential, handoff, keys, cosignRequired } = args;
+
+  const validSignatures: SignerRole[] = [];
+  const invalidSignatures: SignerRole[] = [];
+  const problems: SignatureProblem[] = [];
+
+  // A credential about a different handoff is rejected before any signature is
+  // checked. The signature may be perfectly valid — over other bytes.
+  const mismatch = subjectMatches(credential.subject, handoff);
+  if (mismatch) {
+    return {
+      valid: false,
+      cosignRequired,
+      validSignatures: [],
+      invalidSignatures: [],
+      problems: [],
+      subjectMismatch: mismatch,
+    };
+  }
+
+  const seen = new Set<SignerRole>();
+
+  for (const entry of credential.signatures) {
+    if (seen.has(entry.role)) {
+      // Two signatures in one role cannot both be the authority for it.
+      problems.push({
+        code: "DUPLICATE_ROLE",
+        role: entry.role,
+        detail: `more than one ${entry.role} signature was presented`,
+      });
+      invalidSignatures.push(entry.role);
+      continue;
+    }
+    seen.add(entry.role);
+
+    const publicKeyB64 =
+      entry.role === "courier" ? keys.courierPublicKey : keys.operatorPublicKey;
+
+    if (!publicKeyB64) {
+      problems.push({
+        code: "NO_PUBLIC_KEY",
+        role: entry.role,
+        detail: `no public key on file for the ${entry.role}; the signature cannot be checked`,
+      });
+      invalidSignatures.push(entry.role);
+      continue;
+    }
+
+    let ok = false;
+    try {
+      const key = createPublicKey({
+        key: Buffer.from(publicKeyB64, "base64"),
+        format: "der",
+        type: "spki",
+      });
+      ok = cryptoVerify(
+        null,
+        messageFor(credential.subject, entry.role),
+        key,
+        Buffer.from(entry.signature, "base64"),
+      );
+    } catch (err) {
+      problems.push({
+        code: "MALFORMED_KEY",
+        role: entry.role,
+        detail: `the ${entry.role} key or signature could not be read: ${(err as Error).message}`,
+      });
+      invalidSignatures.push(entry.role);
+      continue;
+    }
+
+    if (ok) {
+      validSignatures.push(entry.role);
+    } else {
+      invalidSignatures.push(entry.role);
+      problems.push({
+        code: "BAD_SIGNATURE",
+        role: entry.role,
+        detail: `the ${entry.role} signature does not verify against the key on file`,
+      });
+    }
+  }
+
+  // The threshold. A courier signature is always required; the operator's is
+  // required exactly when the gate said so.
+  const required: SignerRole[] = cosignRequired ? ["courier", "operator"] : ["courier"];
+
+  for (const role of required) {
+    if (!validSignatures.includes(role) && !invalidSignatures.includes(role)) {
+      problems.push({
+        code: "MISSING",
+        role,
+        detail:
+          role === "operator"
+            ? "this handoff requires an operator co-signature and none was presented"
+            : "no courier signature was presented",
+      });
+    }
+  }
+
+  const valid = required.every((role) => validSignatures.includes(role));
+
+  return { valid, cosignRequired, validSignatures, invalidSignatures, problems };
+}
+
+/** A one-line summary for the operator console and the trace. */
+export function describeVerification(result: VerificationResult): string {
+  if (result.subjectMismatch) return `Credential does not match this handoff: ${result.subjectMismatch}`;
+  if (result.valid) {
+    return result.cosignRequired
+      ? "Courier and operator signatures both verified."
+      : "Courier signature verified.";
+  }
+  if (result.problems.length === 0) return "Credential did not verify.";
+  return result.problems.map((p) => p.detail).join(" ");
+}

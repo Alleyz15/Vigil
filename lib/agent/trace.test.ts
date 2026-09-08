@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { rmSync } from "node:fs";
-import { runAgent } from "./machine";
 import { NODES } from "./context";
 import { TraceFrame, toSseMessage } from "./trace";
-import { type World, makeAgentEvent, resetEventIds, seedWorld, signalsOf } from "./fixtures";
+import {
+  type World,
+  makeAgentEvent,
+  resetEventIds,
+  runSigned,
+  seedWorld,
+  signalsOf,
+} from "./fixtures";
 
 /**
  * The SSE contract. Frozen from session 4 — the operator console is built
@@ -27,7 +33,7 @@ function tickingWorld() {
 
 describe("frame shape", () => {
   it("emits only the four contract types", () => {
-    const ctx = runAgent(makeAgentEvent(), world.deps);
+    const ctx = runSigned(makeAgentEvent(), world);
     const types = new Set(ctx.trace.map((f) => f.type));
 
     expect([...types].sort()).toEqual(["result", "tool_end", "tool_start"]);
@@ -37,14 +43,14 @@ describe("frame shape", () => {
   });
 
   it("validates every frame against the schema on the way out", () => {
-    const ctx = runAgent(makeAgentEvent(), world.deps);
+    const ctx = runSigned(makeAgentEvent(), world);
     for (const frame of ctx.trace) {
       expect(TraceFrame.safeParse(frame).success).toBe(true);
     }
   });
 
   it("pairs a tool_start with a tool_end for every node", () => {
-    const ctx = runAgent(makeAgentEvent(), world.deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     const starts = ctx.trace.filter((f) => f.type === "tool_start").map((f) => f.node);
     const ends = ctx.trace.filter((f) => f.type === "tool_end").map((f) => f.node);
@@ -54,7 +60,7 @@ describe("frame shape", () => {
   });
 
   it("emits exactly one result frame, and emits it last", () => {
-    const ctx = runAgent(makeAgentEvent(), world.deps);
+    const ctx = runSigned(makeAgentEvent(), world);
     const results = ctx.trace.filter((f) => f.type === "result");
 
     expect(results).toHaveLength(1);
@@ -64,14 +70,14 @@ describe("frame shape", () => {
 
 describe("ordering and timing", () => {
   it("numbers frames monotonically from zero", () => {
-    const ctx = runAgent(makeAgentEvent(), world.deps);
+    const ctx = runSigned(makeAgentEvent(), world);
     expect(ctx.trace.map((f) => f.seq)).toEqual(ctx.trace.map((_, i) => i));
   });
 
   it("never moves time backwards", () => {
     const w = tickingWorld();
     try {
-      const ctx = runAgent(makeAgentEvent(), w.deps);
+      const ctx = runSigned(makeAgentEvent(), w);
       const times = ctx.trace.map((f) => Date.parse(f.at));
       for (let i = 1; i < times.length; i++) {
         expect(times[i]).toBeGreaterThanOrEqual(times[i - 1]);
@@ -84,7 +90,7 @@ describe("ordering and timing", () => {
   it("reports a duration on every tool_end", () => {
     const w = tickingWorld();
     try {
-      const ctx = runAgent(makeAgentEvent(), w.deps);
+      const ctx = runSigned(makeAgentEvent(), w);
       const ends = ctx.trace.filter((f) => f.type === "tool_end");
 
       expect(ends).toHaveLength(NODES.length);
@@ -96,8 +102,8 @@ describe("ordering and timing", () => {
 
   it("streams frames to the consumer in the same order they are recorded", () => {
     const streamed: number[] = [];
-    const ctx = runAgent(makeAgentEvent(), world.deps, {
-      onTrace: (f) => streamed.push(f.seq),
+    const ctx = runSigned(makeAgentEvent(), world, {
+      runOptions: { onTrace: (f) => streamed.push(f.seq) },
     });
 
     expect(streamed).toEqual(ctx.trace.map((f) => f.seq));
@@ -111,7 +117,7 @@ describe("what the frames carry", () => {
     const signals = signalsOf(event);
     (signals.gps as { mockLocationProvider: boolean }).mockLocationProvider = true;
 
-    const ctx = runAgent(event, world.deps);
+    const ctx = runSigned(event, world);
     const verify = ctx.trace.find((f) => f.type === "tool_end" && f.node === "verify");
     const history = ctx.trace.find((f) => f.type === "tool_end" && f.node === "fetch_history");
 
@@ -121,7 +127,7 @@ describe("what the frames carry", () => {
   });
 
   it("carries the evidence-coverage line on both scoring nodes", () => {
-    const ctx = runAgent(makeAgentEvent(), world.deps);
+    const ctx = runSigned(makeAgentEvent(), world);
 
     const verify = ctx.trace.find((f) => f.type === "tool_end" && f.node === "verify");
     expect(verify?.type === "tool_end" && verify.summary?.coverage?.total).toBe(14);
@@ -134,7 +140,7 @@ describe("what the frames carry", () => {
   });
 
   it("keeps the two axis scores as separate fields on the result frame", () => {
-    const ctx = runAgent(makeAgentEvent(), world.deps);
+    const ctx = runSigned(makeAgentEvent(), world);
     const result = ctx.trace.at(-1);
 
     expect(result?.type).toBe("result");
@@ -147,7 +153,7 @@ describe("what the frames carry", () => {
   });
 
   it("reports the gate's cell, co-sign state and ledger sequence", () => {
-    const ctx = runAgent(makeAgentEvent(), world.deps);
+    const ctx = runSigned(makeAgentEvent(), world);
     const gate = ctx.trace.find((f) => f.type === "tool_end" && f.node === "gate");
 
     expect(gate?.type === "tool_end" && gate.summary?.detail).toMatchObject({
@@ -160,7 +166,7 @@ describe("what the frames carry", () => {
 
 describe("halted runs still produce a contract-shaped stream", () => {
   it("emits a result frame naming where it stopped", () => {
-    const ctx = runAgent(makeAgentEvent({ eventTime: "not-a-time" }), world.deps);
+    const ctx = runSigned(makeAgentEvent({ eventTime: "not-a-time" }), world);
     const result = ctx.trace.at(-1);
 
     expect(result?.type).toBe("result");
@@ -170,7 +176,7 @@ describe("halted runs still produce a contract-shaped stream", () => {
   });
 
   it("stops emitting tool frames after the halt", () => {
-    const ctx = runAgent(makeAgentEvent({ eventTime: "not-a-time" }), world.deps);
+    const ctx = runSigned(makeAgentEvent({ eventTime: "not-a-time" }), world);
     const nodes = ctx.trace.filter((f) => f.type === "tool_start").map((f) => f.node);
 
     expect(nodes).toEqual(["parse"]);
@@ -178,8 +184,8 @@ describe("halted runs still produce a contract-shaped stream", () => {
 
   it("reports the replayed verdict on a duplicate", () => {
     const event = makeAgentEvent();
-    runAgent(event, world.deps);
-    const retry = runAgent(event, world.deps);
+    runSigned(event, world);
+    const retry = runSigned(event, world);
 
     const result = retry.trace.at(-1);
     expect(result?.type === "result" && result.halted?.reason).toBe("DUPLICATE_NO_OP");

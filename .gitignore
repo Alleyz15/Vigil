@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the template IS documentation: it names every variable the app reads,
+# including the operator co-signing keys, and holds no secrets.
+!.env.example
 
 # vercel
 .vercel

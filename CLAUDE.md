@@ -66,6 +66,12 @@ fails the build if any module on the verdict path reaches a file, a socket, a da
 thing up" inside a rule is stopped there, with a message saying why. Thresholds arrive as an
 argument for the same reason.
 
+`lib/credential/` gets a **narrow, justified allowance**: `node:crypto` only, and only in the
+verifier and message builder. The reason is stated in the test — verifying a signature is a
+pure function of (message, key, signature), and determinism is the property the purity rule
+actually protects. Every other ban still applies there, including `process.env`, which is
+confined to `keys.ts`. A narrow allowance beats a hole in the check.
+
 ### 2. The two axes are separate, and load-bearing
 
 This split is deliberate. **Do not "simplify" it back into a single scoring pass.**
@@ -119,6 +125,42 @@ token co-signed by the courier's key **and** the operator's key. The courier's h
 answer is: without it, the credential does not verify.
 
 Shift limits are a hard stop **even with a valid co-sign**.
+
+### 3c. The credential is a SIDECAR. It must never live inside the EPCIS event.
+
+**Do not "tidy" the credential into `vigil:credential`.** It looks like it belongs there — it
+is handoff data, and `vigil:courierId` sets the precedent — and putting it there breaks the
+co-sign flow in a way that only surfaces on the first full two-phase run.
+
+Two correct designs collide. Co-signing is inherently two-phase:
+
+```
+courier submits (courier-signed)  ->  gate: requiresCosign  ->  operator co-signs  ->  seals
+```
+
+If the credential were part of the event, the co-signed resubmission would be a **different
+payload under the same eventID**. The ledger would do exactly what it is built to do and abort
+it as `EVENT_ID_REUSE`. **The result: co-signing freezes the courier for co-signing.**
+
+So the credential rides alongside — `runAgent(event, deps, { credential })` — and the ledger
+keeps hashing the event alone. Two behaviours fall out of that for free rather than being
+special-cased, which is worth knowing before anyone "simplifies" them:
+
+- the co-signed resubmission is byte-identical, so it seals as a first sighting;
+- a courier-only retry arriving *after* sealing hits the ordinary NO-OP replay path.
+
+`lib/agent/cosign.test.ts` holds both, plus a test asserting the sealed payload hash is
+unchanged by whether a credential rode along.
+
+### 3d. Two failure modes, two different outcomes
+
+| What happened | Outcome | Why |
+|---|---|---|
+| A signature is forged, mismatched or unverifiable | **seal `freeze`** (`abortCode: CREDENTIAL_INVALID`, flag `C1`) | An attack is evidence, and evidence belongs in the ledger |
+| A required operator co-signature is simply absent | **seal nothing**, halt `PENDING_COSIGNATURE` | The handoff decided nothing, so it must write nothing |
+
+Sealing the pending case would record a decision nobody made — and worse, it would bind the
+eventID, so the co-signed resubmission of the very same event could never be sealed.
 
 ### 3a. When the machine cannot judge, the signature becomes constitutive
 
@@ -330,8 +372,14 @@ lib/
     thresholds.ts        axis cut points, severity order
     types.ts             GateInput, GateResult, ShiftContext
     gate.ts              the matrix (incl. absence cells), then limits/cooldown
+  credential/            THE CONSTITUTIVE CO-SIGN. Deterministic; node:crypto only.
+    types.ts             SignedPayload, Credential, VerificationResult
+    message.ts           what is signed (reuses lib/ledger canonicalize)
+    verify.ts            verifyCredential() — reports what it found, not a boolean
+    sign.ts              signing helpers for the injector and the console
+    keys.ts              env-var keys. The ONLY impure file here.
   mandate/
-    schema.ts            CourierMandate zod. Shape only — no crypto yet.
+    schema.ts            CourierMandate zod. Shape only.
   purity.test.ts         guards the I/O ban AND the never-summed rule
   assemble/              WHERE THE I/O IS. Deliberately NOT under the purity test.
     types.ts             Resolution: what was found, what was missing, and why
@@ -548,14 +596,49 @@ dynamic typing meant nothing ever complained. **Where practical, fixtures should
 through the schema** — `makeEvent` already parses through `EpcisEvent`, and `seedWorld` now
 writes and reads real rows. A fixture that bypasses the boundary cannot test the boundary.
 
-### Session 5 — the LLM (next)
+### Session 5 — the constitutive co-sign (complete)
+
+375 tests passing. `tsc --noEmit` clean, eslint clean, `next build` succeeds.
+
+**The second core differentiator is real.** A courier-only token against a co-sign-required
+handoff does not verify — it is not stored and marked unapproved, there is no valid credential
+to store. The test that says so is named for the argument:
+*"courier-only credential is cryptographically invalid, not merely unapproved"*.
+
+| Area | What works |
+|---|---|
+| `credential/message.ts` | Canonical message via the **one** `canonicalize` in the codebase; `role` bound so a signature cannot fill the other slot |
+| `credential/verify.ts` | Reports `validSignatures`, `invalidSignatures`, `problems[]` and `subjectMismatch` — never a bare boolean |
+| `credential/sign.ts` | `courierCredential`, `cosign`, `generateKeyPair` |
+| `agent/gate` | Credential verified against the gate's own `requiresCosign`, **before** anything is sealed |
+| `persist.ts` | Signatures and `operatorId` stored on the console projection |
+
+**Design decisions worth not re-litigating:**
+
+- **A subject mismatch is reported as a mismatch, not a bad signature.** A credential lifted
+  from handoff A onto B is cryptographically *valid* — over A's bytes. Saying "bad signature"
+  would send an operator hunting for a forged key.
+- **An absent operator key fails closed.** An unconfigured deployment must not be able to wave
+  high-risk handoffs through by having forgotten to set a variable.
+- **Two signatures claiming the same role is a `DUPLICATE_ROLE` failure.** Two operators cannot
+  both be the authority for one approval.
+- **`deps.operatorPublicKey` overrides the env var**, so tests are hermetic and never mutate
+  `process.env`. Production leaves it unset and `keys.ts` reads the environment.
+
+**Why the whole test suite changed.** Every fixture courier is cold-start, so every fixture
+handoff requires a co-signature. Once the check landed, the existing tests were sealing dozens
+of high-risk handoffs with no credential at all — which meant our own suite disproved the claim
+the project is built on. They now present credentials via `runSigned`, so a scoring test is
+also, quietly, evidence that the credential was there.
+
+### Session 6 — the LLM (next)
 
 Put a real model behind `deps.llm`: `plan` selecting 0–2 tools from the closed `ToolName` zod
 enum, and `explain` writing the operator's prose with schema-enforced evidence citations that
 fail closed on an id that was never collected. **The parity tests must keep passing unchanged.**
 
-Then: Open-Meteo at `external_context` (the S6 beat), Ed25519 co-sign, liveness/timeout paths,
-synthetic data generation, the SSE endpoint, and the UI.
+Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, synthetic data
+generation, the SSE endpoint, and the UI.
 
 ---
 
@@ -577,11 +660,33 @@ a courier could be stopped early or late relative to their actual roster. **This
 submission's Known Limitations**, not only in a code comment. Fixing it properly needs a
 `shifts` table and roster data we do not have.
 
+**Named future primitive: the operator does not sign over the risk they saw.** The credential
+binds `eventID`, `epc`, `courierId`, `mandateId` and a nonce — it does not bind the
+inconsistency and pattern scores that were on screen when the operator approved. So "the
+operator signed before the risk was known" is a question a judge could reasonably ask, and the
+honest answer is that we identified it and scoped it out, not that it does not apply.
+
+Binding the assessment would make the signature an attestation about a *specific* risk picture
+rather than about a handoff. It was deferred because the scores are not sealed at the moment
+the operator signs, so it needs a two-step commitment (sign the assessment hash, then seal) and
+that is a larger change than this session's scope. Revisit if there is time before submission.
+
 **The pattern window is 24h and the shift window is 12h**, both arbitrary. They are assembler
 config (`DEFAULT_PATTERN_WINDOW_HOURS`, `DEFAULT_SHIFT_WINDOW_HOURS`) and overridable per run
 via `deps.windows`, so experiment 6 can sweep them.
 
 ## Known limitations (test these, don't claim them)
+
+**Demo keys live in environment variables. This is a stated limitation, not an oversight.**
+The operator's signing key is the thing that makes approval constitutive, and a key in an env
+var can be read by anything that can read the process environment. Production needs an HSM or a
+managed KMS. `lib/credential/keys.ts` is the only file that touches the environment, so the
+swap is contained — but it has not been made.
+
+**The nonce is covered by the signature, but nothing enforces monotonicity.** We have
+cross-handoff replay protection via the `eventID` binding, and we do **NOT** have cross-time
+replay protection. `mandate.nonceCounter` exists and is unused. Do not imply otherwise anywhere
+in the docs or the pitch.
 
 Vigil catches the lazy attacker. A rooted, patched device operated by someone colluding with
 the recipient is out of reach of this architecture — that is a boundary of the idea, not a

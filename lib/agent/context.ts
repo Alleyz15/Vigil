@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { EpcisEvent, GeoPoint } from "@/lib/epcis";
 import type { CourierMandate } from "@/lib/mandate/schema";
 import type { GateResult } from "@/lib/gate/types";
+import type { VerificationResult } from "@/lib/credential/types";
 import { type Resolution, emptyResolution } from "@/lib/assemble/types";
 import type { TraceFrame } from "./trace";
 import type { EngineResult, Flag } from "@/lib/engine/types";
@@ -97,7 +98,13 @@ export type AgentContext = {
     declaredValueSen?: number;
     recipientPoint?: GeoPoint;
   };
-  courier?: { courierId: string; known: boolean; boundDeviceId?: string | null };
+  courier?: {
+    courierId: string;
+    known: boolean;
+    boundDeviceId?: string | null;
+    /** SPKI DER base64, for verifying the courier half of the credential. */
+    publicKey?: string;
+  };
   /**
    * The courier's authorisation. `value` is the full validated object the
    * engine and gate read; it is absent when no active mandate exists OR when
@@ -145,6 +152,9 @@ export type AgentContext = {
 
   /** external_context */
   externalContext?: { source: string; summary: string; raw?: unknown };
+
+  /** gate — credential verification, run against the gate's own threshold */
+  credential?: VerificationResult;
 
   /** gate */
   decision?: Decision;
