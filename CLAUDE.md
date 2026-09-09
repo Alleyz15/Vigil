@@ -243,6 +243,23 @@ skipped without a key. Session 14 found that Ollama's stub defaulted to an OpenA
 requested `/chat/completions`, a route the local server does not expose. Both would have failed
 on demo day despite looking configured.
 
+### 1e. External API output is untrusted input
+
+An external service response is untrusted in exactly the same sense as a delivery note. The
+Open-Meteo adapter may pass only zod-validated numeric observations and deterministic WMO labels
+into the explanation node. It must never pass through provider prose, HTML, an error message, or
+any other natural-language field returned over the network.
+
+This is the session-14 prompt-injection finding applied to integrations: adding a trusted API key
+does not make the response trusted as an instruction. A future session must not "enrich" an
+explanation with the provider's own description string. Normalise at the boundary, then expose
+only the fields the product actually reads.
+
+Weather is corroborating context, never a verdict input. Open-Meteo historical data is regional
+reanalysis at roughly 9 km resolution for this scenario date. It can show that regional
+conditions were consistent with a benign explanation; it cannot prove that a particular
+carpark was wet. The UI and RESULTS.md must state that limit where the claim is shown.
+
 Provider defaults and URL construction therefore require offline request-contract tests that
 exercise the real fallback values without needing a live key. Live tests remain necessary for
 model retirement and service availability, but skipping them must not also skip construction,
@@ -1369,6 +1386,40 @@ and no result CSV changed.
 ---
 
 #### Predictions, recorded before any experiment was run
+
+### Session 15 — predictions (written first)
+
+**WRITTEN AND COMMITTED BEFORE THE FIRST OPEN-METEO REQUEST, BEFORE THE WEATHER CACHE WAS
+POPULATED, AND BEFORE ANY REROUTE RESULT WAS MEASURED.** No detector threshold moves. Weather is
+excluded from `GateInput` and from every sealed verdict field; reroute is a post-gate action with
+its own credential, not a new rule.
+
+1. **S6's deterministic plan will select `check_traffic_weather`, and the first successful
+   archive request will be followed by byte-identical cache reads for the same latitude,
+   longitude and hour.** Whether the archive reports rain is not predicted. If it reports no
+   unusual conditions, the timestamp stays fixed and that negative result is shown rather than
+   replaced with a more convenient hour.
+2. **Weather available, unavailable, timed out or malformed will produce byte-identical sealed
+   verdicts and ledger commitments.** The explanation and trace may differ because additional
+   context was or was not gathered; the decision cannot. If this fails, the dependency crossed
+   the verdict boundary and that is the finding of the session.
+3. **The archive result can support only a regional statement.** Its approximately 9 km
+   reanalysis grid may be consistent with a benign environmental explanation, but it cannot
+   establish conditions inside the specific basement carpark. The UI and RESULTS.md will carry
+   this limit next to the observation.
+4. **A deterministic reroute policy will select the nearest authorised pickup point for a
+   flagged event, and will prefer an authorised alternate courier for an escalated or frozen
+   event.** Stable identifiers break equal-distance ties. If no active mandate covers the
+   destination, the result will be the explicit statement "No authorised reroute exists for
+   this address", not an invalid proposal and not an empty panel.
+5. **A reroute acceptance carrying only the courier signature will be cryptographically invalid;
+   the same proposal carrying valid courier and operator signatures will verify.** Changing the
+   destination, replacement courier, mandate or source event after signing will also fail. The
+   handoff credential remains byte-compatible and the reroute credential remains a separate
+   sidecar.
+6. **No experiment result should move**, because neither weather nor a post-gate proposal is an
+   input to a detector or the gate. If a sealed result changes, only the affected experiment is
+   rerun after the dependency leak is identified; no broad experiment rerun will conceal it.
 
 ### Session 14 — predictions (written first)
 
