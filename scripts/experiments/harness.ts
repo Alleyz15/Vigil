@@ -34,6 +34,7 @@ export const START_MS = Date.parse("2026-09-07T14:30:00+08:00");
 
 /** The holdout seed. Kept apart from the data seed so one cannot leak into the other. */
 export const SPLIT_SEED = "vigil-holdout-2026";
+export type HoldoutHalf = "tune" | "report";
 
 /**
  * Which half a run belongs to.
@@ -42,18 +43,28 @@ export const SPLIT_SEED = "vigil-holdout-2026";
  * unused. It exists so a future session that DOES tune has somewhere honest to
  * do it, and so the reporting numbers can say which half they came from.
  */
-export function halfOf(key: string): "tune" | "report" {
+export function halfOf(key: string): HoldoutHalf {
   return splitOf(key, SPLIT_SEED);
 }
 
-/** Seeds for one experiment cell, all of them from the reporting half. */
-export function reportingSeeds(prefix: string, count: number): string[] {
+/** Seeds for one experiment cell, all selected from exactly one declared half. */
+export function seedsForHalf(prefix: string, count: number, half: HoldoutHalf): string[] {
   const seeds: string[] = [];
   for (let i = 0; seeds.length < count && i < count * 8; i++) {
     const seed = `${prefix}-${i}`;
-    if (halfOf(seed) === "report") seeds.push(seed);
+    if (halfOf(seed) === half) seeds.push(seed);
   }
   return seeds;
+}
+
+/** Seeds for final reported numbers. */
+export function reportingSeeds(prefix: string, count: number): string[] {
+  return seedsForHalf(prefix, count, "report");
+}
+
+/** Seeds for checking a candidate before the reporting half is opened. */
+export function tuningSeeds(prefix: string, count: number): string[] {
+  return seedsForHalf(prefix, count, "tune");
 }
 
 export type PreparedRun = {

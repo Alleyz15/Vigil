@@ -298,7 +298,7 @@ describe("the generator does not import the detector's thresholds", () => {
       "minHandoffsForPattern",
       "highInconsistency",
       "highPattern",
-      "clockDivergenceBands",
+      "clockDivergence",
       "deliveryDistanceBands",
       "baselineMultiplier",
       "maxStdDev",

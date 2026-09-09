@@ -260,35 +260,47 @@ describe("I4 / I5 - device clock vs server clock", () => {
   const withRecordTime = (recordTime: string) =>
     makeInput({ event: makeEvent({ eventTime: "2026-09-08T10:15:00+08:00", recordTime }) });
 
-  it("triggers I4 at 45 minutes and scores 30, NOT 30 + 15", () => {
-    const flag = flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T11:00:00+08:00")));
+  it("triggers I4 when the device is 45 minutes ahead and scores 30", () => {
+    const flag = flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T09:30:00+08:00")));
 
     expect(flag.id).toBe("I4");
     expect(flag.points).toBe(30);
-    expect(flag.evidence).toContainEqual({ field: "computed.divergenceMinutes", value: 45 });
+    expect(flag.evidence).toContainEqual({ field: "computed.deviceAheadMinutes", value: 45 });
   });
 
-  it("triggers I5 in the 5-30 minute band and scores 15", () => {
-    const flag = flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T10:26:00+08:00")));
+  it("triggers I5 when the server receives a scan eight hours late and scores 10", () => {
+    const flag = flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T18:15:00+08:00")));
 
     expect(flag.id).toBe("I5");
-    expect(flag.points).toBe(15);
+    expect(flag.points).toBe(10);
+    expect(flag.evidence).toContainEqual({ field: "computed.uploadDelayMinutes", value: 480 });
   });
 
-  it("triggers on divergence in either direction", () => {
-    // Device clock AHEAD of the server: the event claims to have happened later
-    // than it was received, which is at least as suspicious as the reverse.
-    const flag = flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T09:30:00+08:00")));
-    expect(flag.id).toBe("I4");
+  it("does not treat a 45-minute queued upload as clock tampering", () => {
+    expect(i4i5ClockDivergence(withRecordTime("2026-09-08T11:00:00+08:00")).status).toBe(
+      "clear",
+    );
   });
 
-  it("does not trigger on the near-miss: 4 minutes, under the I5 band", () => {
-    expect(i4i5ClockDivergence(withRecordTime("2026-09-08T10:19:00+08:00")).status).toBe("clear");
+  it("does not trigger I4 when the device is 29 minutes ahead", () => {
+    expect(i4i5ClockDivergence(withRecordTime("2026-09-08T09:46:00+08:00")).status).toBe(
+      "clear",
+    );
   });
 
-  it("triggers exactly at the band edge, since bands are inclusive lower bounds", () => {
-    expect(flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T10:20:00+08:00"))).id).toBe("I5");
-    expect(flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T10:45:00+08:00"))).id).toBe("I4");
+  it("does not trigger I5 when the server delay is 479 minutes", () => {
+    expect(i4i5ClockDivergence(withRecordTime("2026-09-08T18:14:00+08:00")).status).toBe(
+      "clear",
+    );
+  });
+
+  it("triggers each directional band exactly at its inclusive edge", () => {
+    expect(flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T09:45:00+08:00"))).id).toBe(
+      "I4",
+    );
+    expect(flagOf(i4i5ClockDivergence(withRecordTime("2026-09-08T18:15:00+08:00"))).id).toBe(
+      "I5",
+    );
   });
 
   it("does not evaluate when recordTime was never stamped", () => {

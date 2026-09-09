@@ -205,31 +205,40 @@ export function i3ImpossibleSpeed(input: EngineInput): RuleResult {
 }
 
 /**
- * I4 / I5 - the device clock and the server clock disagree.
+ * I4 / I5 - the device clock and the server clock disagree by direction.
  *
- * One tiered rule, not two: a 45-minute divergence scores 30, never 45. The
- * bands are a table in thresholds.ts so experiment 6 can move a band edge
- * without touching this function.
+ * An absolute value is wrong here. `eventTime > recordTime` means the device
+ * claims an event in the server's future; `recordTime > eventTime` can be an
+ * ordinary store-and-forward upload. Those mechanisms have different bounds,
+ * so each direction has its own band table and at most one flag can fire.
  */
 export function i4i5ClockDivergence(input: EngineInput): RuleResult {
   const recordTime = input.event.recordTime;
   if (!recordTime) return skip("recordTime not stamped");
 
-  const minutes = minutesBetween(input.event.eventTime, recordTime);
-  if (minutes === undefined) return skip("timestamps are not parsable");
+  const eventMs = Date.parse(input.event.eventTime);
+  const recordMs = Date.parse(recordTime);
+  if (!Number.isFinite(eventMs) || !Number.isFinite(recordMs)) {
+    return skip("timestamps are not parsable");
+  }
 
-  const band = matchBand(input.thresholds.clockDivergenceBands, minutes);
+  const signedMinutes = (eventMs - recordMs) / 60_000;
+  const deviceAhead = signedMinutes >= 0;
+  const minutes = Math.abs(signedMinutes);
+  const bands = deviceAhead
+    ? input.thresholds.clockDivergence.deviceAheadBands
+    : input.thresholds.clockDivergence.uploadDelayBands;
+  const band = matchBand(bands, minutes);
   if (!band) return clear;
 
-  const label =
-    band.id === "I4"
-      ? "The time on the courier's device is far out of step with when the server received the scan. The timestamp may have been altered."
-      : "The courier's device clock and the server clock do not agree.";
+  const label = deviceAhead
+    ? "The courier's device claims this event happened well after the server received it. The device timestamp may have been altered."
+    : "The server received this scan more than a full shift after the device says it happened. The event was held offline unusually long.";
 
   return triggered(band.id, band.points, label, [
     ev("event.eventTime", input.event.eventTime),
     ev("event.recordTime", recordTime),
-    ev("computed.divergenceMinutes", Math.round(minutes)),
+    ev(deviceAhead ? "computed.deviceAheadMinutes" : "computed.uploadDelayMinutes", Math.round(minutes)),
   ]);
 }
 

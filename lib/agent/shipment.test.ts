@@ -94,7 +94,7 @@ const LEGS: Leg[] = [
 function legEvent(leg: Leg) {
   const event = makeAgentEvent({
     eventTime: leg.eventTime,
-    // Ordinary upload latency: well inside the I5 band.
+    // Ordinary upload latency: far below the full-shift I5 band.
     recordTime: new Date(Date.parse(leg.eventTime) + 42_000).toISOString(),
     bizStep: leg.bizStep,
     disposition: leg.disposition,

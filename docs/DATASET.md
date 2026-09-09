@@ -89,6 +89,17 @@ The generator still imports no threshold and names none; `lib/purity.test.ts` en
 
 ### Every parameter, with its source
 
+**Mobile upload delay has a sourced mechanism and an assumed distribution.** Android's
+[offline-first guidance](https://developer.android.com/topic/architecture/data-layer/offline-first)
+explicitly uses persistent write queues that drain when connectivity returns. Microsoft's
+[Field Service mobile documentation](https://learn.microsoft.com/en-us/dynamics365/field-service/mobile/work-offline)
+says changes are stored locally and uploaded automatically on reconnection; its
+[sync configuration](https://learn.microsoft.com/en-us/dynamics365/field-service/mobile/offline-data-sync)
+allows intervals from five minutes to one day. These sources establish that a legitimate upload
+can be delayed by offline operation and that the network gives no fixed upper bound. They do
+**not** provide a fleet latency distribution. The 2–110 minute draws below remain assumptions,
+and the detector's eight-hour I5 edge is also an assumption.
+
 **Sourced.** These are the values with something behind them.
 
 | Parameter | L1 | L2 | L3 | Source |
@@ -97,7 +108,7 @@ The generator still imports no threshold and names none; `lib/purity.test.ts` en
 | GPS accuracy, urban canyon | 12–45 m | 15–60 m | 20–80 m | Smartphone GNSS multipath/NLOS literature: errors of **tens of metres** in built-up streets, **exceeding 50 m** where the sky view is narrow |
 | GPS accuracy, indoor | 25–90 m | 30–130 m | 40–180 m | With GNSS blocked the handset falls back to WiFi and cell; reported accuracy degrades **from metres to hundreds of metres** |
 | GPS accuracy, underground | 60–220 m | 70–320 m | 90–450 m | As above; underground on cell alone, **hundreds of metres** of error |
-| Clock drift | 1–5 s/day x 0–6 days | x 0–21 days | x 0–45 days | Free-running consumer quartz without a completed network time sync: **1–5 s/day** |
+| Clock drift | 1–5 s/day x 0–6 days | x 0–21 days | x 0–45 days | [NIST](https://www.nist.gov/pml/time-and-frequency-division/time-distribution/radio-station-wwvb/help-wwvb-radio-controlled): most quartz clocks keep within 1 s/day, some drift several s/day. [AOSP](https://source.android.com/docs/core/connect/time/network-time-detection): Android normally refreshes network time every 18 h. |
 | Recipient absent, then redelivery | 1.5% | 2.9% | 10.8% | First-attempt delivery failure **8–20%** globally (up to ~30% in Europe), of which **36%** are "recipient not home". L2 is 8% x 36%; L1 halves it; L3 takes the European end |
 | Address correction | 0.9% | 1.8% | 6.6% | Same failure rate, of which **22%** are inaccurate address information |
 
@@ -109,7 +120,7 @@ plausibility. They are the values a reader should press on.
 | Share of scans at an address that are indoor or underground | 6% | 22% | 37% | Assumption. Klang Valley is condo-dense, but we have not counted. |
 | Ordinary upload latency | 5–120 s | 5–180 s | 5–300 s | Assumption. Widened from the original 8–90 s. |
 | Share of scans with no uplink, queued for later | 2% | 7% | 14% | Assumption. **This is the parameter the headline number is most sensitive to** — see RESULTS.md E3. |
-| Queued upload delay | 2–25 min | 3–55 min | 5–110 min | Assumption. A basement, a lift lobby, a dead spot on the ring road. |
+| Queued upload delay | 2–25 min | 3–55 min | 5–110 min | Assumption. Official mobile docs establish offline queueing, not this distribution. A basement, a lift lobby, a dead spot on the ring road. |
 | Photo capture to scan delay | 10–240 s | 15–540 s | 20–1200 s | Assumption. Photograph on the 25th floor, scan back at the van. |
 | Missed scan | 1.5% | 5% | 11% | Assumption. Hub scan compliance is high but not perfect. |
 | Charged mid-shift | 5% | 12% | 22% | Assumption. |
@@ -145,8 +156,16 @@ result is in RESULTS.md E3.
 
 - **Correlated failures.** Every draw is independent. Real GNSS error is autocorrelated over
   seconds to minutes, and a real hub outage batches *every* parcel's upload at once rather than
-  each parcel's separately. Our uploads queue one at a time, which almost certainly
-  **understates** how bunched a real fleet's I4 flags would be.
+  each parcel's separately. Our uploads queue one at a time, which understates how bunched a real
+  fleet's upload-delay observations would be.
+- **Independent validation of I4.** The same published quartz-drift evidence informs both this
+  generator's honest clock offsets and the detector's 30-minute device-ahead boundary. That is
+  not a threshold imported into the generator, but it means E3 cannot independently validate the
+  I4 edge. It can test whether preserving the sign separates upload delay from clock-ahead
+  behaviour; it cannot prove that 30 minutes is the right boundary.
+- **I5's long-delay tail.** The longest queued upload generated here is 110 minutes. The new I5
+  edge is 480 minutes, so I5 is not exercised by this dataset at all. A controlled offline-field
+  dataset, or fleet telemetry spanning full-shift outages, is still required.
 - **Weather and temperature.** Not modelled at all. The cold-weather battery case does not apply
   to a Klang Valley dataset, and rain's effect on GNSS is small next to building geometry.
 - **Device heterogeneity.** One accuracy distribution stands in for a fleet's whole mix of

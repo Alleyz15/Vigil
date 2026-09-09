@@ -75,13 +75,17 @@ export type Thresholds = {
   maxImpliedSpeedKmh: number;
 
   /**
-   * Clock divergence bands: |recordTime - eventTime|, in minutes.
-   *
-   * Source: 5 minutes is roughly where ordinary device clock drift and mobile
-   * upload latency stop explaining the gap. 30 minutes cannot be explained by
-   * either and indicates the device clock was set, not drifted.
+   * Clock divergence is directional because its two signs have different
+   * physical causes. Device-ahead time is bounded by clock synchronisation and
+   * oscillator drift; server-late time includes offline queueing and has no
+   * network-imposed upper bound.
    */
-  clockDivergenceBands: Band[];
+  clockDivergence: {
+    /** eventTime - recordTime: the device claims an event in the server's future. */
+    deviceAheadBands: Band[];
+    /** recordTime - eventTime: the server received a stored event later. */
+    uploadDelayBands: Band[];
+  };
 
   /**
    * Distance bands between the scan location and the recipient address.
@@ -158,10 +162,33 @@ export const DEFAULT_THRESHOLDS: Thresholds = Object.freeze({
     movedMeters: 15,
   }),
   maxImpliedSpeedKmh: 120,
-  clockDivergenceBands: Object.freeze([
-    { id: "I4", atLeast: 30, points: 30 },
-    { id: "I5", atLeast: 5, points: 15 },
-  ]) as Band[],
+  clockDivergence: Object.freeze({
+    /**
+     * I4: AOSP's default network-time path refreshes about every 18 hours and
+     * documents a ~2.5 s theoretical maximum SNTP error at its 5 s timeout.
+     * Thirty minutes ahead is therefore a deliberately conservative operational
+     * boundary, not a measured handset percentile.
+     * Source: https://source.android.com/docs/core/connect/time/network-time-detection
+     *
+     * KEEP +30. A points cut was considered and rejected: no benign data-path
+     * mechanism can make the server receive an event before the device says it
+     * happened, and ordinary quartz drift is orders of magnitude smaller.
+     * Reducing it below the gate cut would trade away S5's single-event
+     * detection.
+     */
+    deviceAheadBands: Object.freeze([{ id: "I4", atLeast: 30, points: 30 }]) as Band[],
+    /**
+     * I5: offline-first mobile apps persist writes until connectivity returns;
+     * neither Android nor field-service documentation supplies a delay ceiling.
+     * Eight hours is therefore an ASSUMPTION anchored to one configured shift,
+     * not a sourced latency percentile. It is weak evidence and cannot cross
+     * the gate alone.
+     * Sources:
+     * https://developer.android.com/topic/architecture/data-layer/offline-first
+     * https://learn.microsoft.com/dynamics365/field-service/mobile/work-offline
+     */
+    uploadDelayBands: Object.freeze([{ id: "I5", atLeast: 480, points: 10 }]) as Band[],
+  }),
   deliveryDistanceBands: Object.freeze([
     { id: "I10", atLeast: 2_000, points: 40 },
     { id: "I11", atLeast: 200, points: 20 },
@@ -188,8 +215,8 @@ export const DEFAULT_THRESHOLDS: Thresholds = Object.freeze({
 
 /**
  * Pick the first matching band. Bands must be ordered worst-first; this is what
- * makes I4 and I5 mutually exclusive, so a 45-minute divergence scores 30 rather
- * than 45. Returns undefined when the measurement clears every band.
+ * makes tiers within one direction mutually exclusive. Returns undefined when
+ * the measurement clears every band.
  */
 export function matchBand(bands: readonly Band[], measurement: number): Band | undefined {
   return bands.find((band) => measurement >= band.atLeast);

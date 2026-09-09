@@ -4,9 +4,10 @@ import {
   pct,
   printTable,
   reachedOperator,
-  reportingSeeds,
+  seedsForHalf,
   runFullScenario,
   writeCsv,
+  type HoldoutHalf,
   type ScenarioId,
 } from "./harness";
 import { NOISE_LEVELS, NOISE_PROFILES } from "@/lib/generate";
@@ -58,6 +59,7 @@ type Tally = { shipments: number; alerted: number };
 type MissTally = { shipments: number; alerted: number; h1: number };
 
 async function main() {
+  const half: HoldoutHalf = process.argv.includes("--tune") ? "tune" : "report";
   const rows: Record<string, unknown>[] = [];
   const summary: Record<string, unknown>[] = [];
   const overall: Record<string, unknown>[] = [];
@@ -90,7 +92,7 @@ async function main() {
     let levelShipmentsAlerted = 0;
 
     for (const scenario of CLEAN) {
-      const seeds = reportingSeeds(`${BASE_SEED}-e3-${scenario.id}`, SEEDS_PER_SCENARIO);
+      const seeds = seedsForHalf(`${BASE_SEED}-e3-${scenario.id}`, SEEDS_PER_SCENARIO, half);
       let legs = 0;
       let alerts = 0;
       let shipmentsWithAnyAlert = 0;
@@ -128,7 +130,7 @@ async function main() {
               noise_name: NOISE_PROFILES[level].name,
               scenario: scenario.id,
               seed,
-              half: "report",
+              half,
               seeds_in_cell: seeds.length,
               leg: ctx.event?.bizStep ?? "",
               decision: ctx.decision ?? "",
@@ -200,7 +202,7 @@ async function main() {
       noise_name: "",
       scenario: "(all)",
       seed: "(none alerted)",
-      half: "report",
+      half,
       seeds_in_cell: SEEDS_PER_SCENARIO,
       leg: "",
       decision: "",
@@ -211,9 +213,12 @@ async function main() {
     });
   }
 
-  const path = writeCsv("e3-false-positives.csv", rows);
+  const path = writeCsv(
+    half === "tune" ? "e3-false-positives-tune.csv" : "e3-false-positives.csv",
+    rows,
+  );
 
-  printTable("E3 — false positives on clean shipments, by noise level (reporting half only)", summary);
+  printTable(`E3 — false positives on clean shipments, by noise level (${half} half only)`, summary);
   printTable("  overall, per noise level", overall);
 
   for (const level of NOISE_LEVELS) {

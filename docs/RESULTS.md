@@ -17,23 +17,25 @@ Base seed `vigil-2026`. Holdout seed `vigil-holdout-2026`.
 not estimates of real-world performance and must not be presented as such. The distributions
 they run over are our assumptions, listed in DATASET.md under *"Assumptions, not measurements"*.
 
-**Holdout: nothing was tuned.** The deterministic split from `lib/generate/split.ts` was used to
-draw every seed from the **reporting half**. The tuning half exists and was left unused, because
-no threshold was changed in this session. If a future session tunes anything, it tunes on the
-tuning half and reruns everything here.
+**Holdout discipline is now exercised.** Session 11 fixed the I4/I5 candidate from the physical
+meaning of the signal first, committed the candidate and predictions, then checked E3 on the
+**tuning half** (`results/e3-false-positives-tune.csv`). Only after the candidate was fixed did E2,
+E3 and E6 run on the **reporting half**. No reporting result selected a threshold, and no other
+threshold moved.
 
-**No threshold moved as a result of these runs.** Two of them arguably should move, and neither
-was touched. E6 found that a *lower* implied-speed limit would score better on this data. E3
-found that I4's 30-minute clock-divergence band rests on a claim the noise model contradicts —
-that band produces 89% of the false positives at level 3. Both are reported here and left for a
-session that tunes on the tuning half and reruns the reporting half. **Changing a threshold in
-the run that measured it is the circularity this whole discipline exists to prevent.**
+**I4/I5 changed because the measured quantity was wrong, not because 30 was conservative.** The
+old rule took `abs(recordTime - eventTime)`, folding clock-ahead events and offline uploads into
+one magnitude even though the two directions have different causes and bounds. I4 is now
+`eventTime - recordTime >= 30 min` at +30; I5 is now
+`recordTime - eventTime >= 480 min` at +10. The 480-minute edge is an operational **assumption**
+anchored to one shift, not a published upload-latency percentile. The implied-speed threshold
+did not move.
 
 **E3 and E6 were rerun in session 10 against a modelled fleet environment** — degraded GPS,
 queued uploads, missed scans, clock drift, redeliveries, stale addresses — parameterised at four
 levels and documented in [DATASET.md](./DATASET.md#the-environmental-noise-model). Level 0 is the
 old noise-free dataset and is reported alongside, so what changed is visible rather than
-asserted. E1, E2 and E5 are unchanged from session 9 and still run at level 0.
+asserted. E2 was rerun after the I4/I5 change; E1 and E5 remain unchanged from session 9.
 
 ---
 
@@ -118,6 +120,7 @@ injected would mean the system is catching it by accident downstream rather than
 **How often does ordinary work reach an operator?**
 
 ```bash
+npx tsx scripts/experiments/e3-false-positives.ts --tune  # tuning check, separate CSV
 npx tsx scripts/experiments/e3-false-positives.ts   # results/e3-false-positives.csv
 ```
 
@@ -135,8 +138,8 @@ n = 120 seeds per scenario per noise level, reporting half only. 960 shipments, 
 |---|---|---|---|---|---|---|
 | 0 `pristine` (the old dataset) | 240 | 1,440 | 0 | **0.0%** | 0.0% | — |
 | 1 `good` | 240 | 1,447 | 3 | **0.2%** | 1.3% | I10 ×2 |
-| 2 `urban` | 240 | 1,439 | 50 | **3.5%** | 18.8% | I4 ×43 |
-| 3 `adverse` | 240 | 1,479 | 184 | **12.4%** | 57.1% | I4 ×164 |
+| 2 `urban` | 240 | 1,439 | 7 | **0.5%** | 2.9% | H1 ×4 |
+| 3 `adverse` | 240 | 1,479 | 18 | **1.2%** | 7.5% | H1 ×7 |
 
 **By abort code.** Hard aborts are a small and roughly constant minority; the rest are scored
 decisions, all of them `flag` rather than `escalate` or `freeze`.
@@ -144,47 +147,67 @@ decisions, all of them `flag` rather than `escalate` or `freeze`.
 | Level | Alerts | `H1` freeze | No abort code (scored `flag`) |
 |---|---:|---:|---:|
 | 1 | 3 | 1 (33.3%) | 2 |
-| 2 | 50 | 4 (8.0%) | 46 |
-| 3 | 184 | 7 (3.8%) | 177 |
+| 2 | 7 | 4 (57.1%) | 3 |
+| 3 | 18 | 7 (38.9%) | 11 |
 
 **By flag.**
 
 | Level | Flags raised on clean work |
 |---|---|
 | 1 | I10 ×2, H1 ×1 |
-| 2 | I4 ×43, H1 ×4, I10 ×2, I1 ×1, I11 ×1 |
-| 3 | I4 ×164, I9 ×11, H1 ×7, P5 ×7, I5 ×7, I14 ×7, I10 ×4, I1 ×4, I11 ×4, I6 ×3 |
+| 2 | H1 ×4, I10 ×2, I1 ×1, I11 ×1 |
+| 3 | H1 ×7, I10 ×4, I14 ×4, I1 ×4, I9 ×4, I11 ×4, P5 ×2, I6 ×1 |
 
 **Per episode**, from the generator's own record of what it drew — not inferred back out of the
 events, which would mean explaining the detector's output with the detector's own measurement.
 
 | Episode (level 3) | Shipments | Alerted | Rate |
 |---|---:|---:|---|
-| Recipient absent → redelivery | 33 | 20 | 60.6% |
-| Address correction mid-route | 16 | 10 | 62.5% |
-| Missed scan | 27 | 16 | 59.3% |
-| Charged mid-shift | 49 | 27 | 55.1% |
-| Handset swap | 8 | 5 | 62.5% |
+| Recipient absent → redelivery | 33 | 0 | 0.0% |
+| Address correction mid-route | 16 | 9 | 56.3% |
+| Missed scan | 27 | 10 | 37.0% |
+| Charged mid-shift | 49 | 5 | 10.2% |
+| Handset swap | 8 | 1 | 12.5% |
 
-**What this shows.** The number depends almost entirely on how bad you think the environment is,
-and the answer to *"what is your false-positive rate?"* is therefore **0.2% per leg on a good
-day, 3.5% in ordinary urban conditions, 12.4% on a bad one**. Quoting one of those without the
-other two would be picking a number.
+**What this shows.** After correcting the clock rule, ordinary work reaches an operator on
+**0.2% of legs on a good day, 0.5% in ordinary urban conditions, and 1.2% on an adverse day**.
+The tuning half independently landed at 0.3% / 0.5% / 2.0%, so the reporting curve was not a
+lucky half selected after the change. Quote the curve, not one preferred point.
 
-**The dominant false positive is I4, and it exposes a threshold whose stated reason is wrong.**
-164 of 184 level-3 alerts are I4 — clock divergence of 30 minutes or more between the device's
-`eventTime` and the server's `recordTime` — produced by a handset with no uplink that queues a
-scan and uploads it later. `lib/engine/thresholds.ts` derives that 30-minute band from the claim
-that *"30 minutes cannot be explained by [drift or upload latency] and indicates the device clock
-was set, not drifted."* **The noise model contradicts that claim directly:** a basement queue
-explains it easily, and I4 is worth +30, which clears the `highInconsistency` cut of 30 on its
-own.
+### The I4/I5 change: from an absolute magnitude to two physical directions
 
-**It was not changed.** Reporting a threshold as wrong in the session that measured it and fixing
-it in the same session is the circularity the whole discipline exists to prevent. This is now the
-top item for a session that tunes on the tuning half and reruns the reporting half.
+The old 30-minute I4 band produced 164 of 184 level-3 alerts because it treated a server receiving
+an old queued scan as equivalent to a device claiming an event in the server's future. That is
+not a threshold that was merely too low. It is the wrong quantity: upload delay has no fixed
+ceiling, while a clock running ahead is bounded by synchronisation and oscillator drift.
 
-### On the H1 reservation — closed, and here is what closed it
+The replacement was derived before opening either holdout half:
+
+| Rule | Before | After | Points | Derivation |
+|---|---|---|---:|---|
+| I4 | `abs(recordTime - eventTime) >= 30 min` | `eventTime - recordTime >= 30 min` | 30 → 30 | AOSP documents automatic network-time refresh and an SNTP error on the order of seconds, not minutes; upload queueing cannot produce this sign |
+| I5 | `abs(recordTime - eventTime) >= 5 min` | `recordTime - eventTime >= 480 min` | 15 → 10 | Offline-first apps retain writes until connectivity returns; 480 minutes is an **assumption** anchored to a shift, not a measured tail |
+
+[Android's network-time documentation](https://source.android.com/docs/core/connect/time/network-time-detection)
+states that AOSP normally refreshes network time every 18 hours and gives about 2.5 seconds as
+the maximum theoretical SNTP error under its default timeout. Android's
+[offline-first architecture](https://developer.android.com/topic/architecture/data-layer/offline-first)
+and Microsoft's [field-service offline documentation](https://learn.microsoft.com/en-us/dynamics365/field-service/mobile/work-offline)
+both describe persisting writes until connectivity returns; neither supplies a latency ceiling or
+a field distribution. That absence is why I5's eight hours is labelled as an assumption.
+
+**Why I4 still carries +30.** In the corrected direction there is no benign data-path mechanism:
+the server cannot receive an event before the device says it happened. A points cut was considered
+and rejected because it would make S5's clock-tampering event insufficient on its own. E2 confirms
+the intended trade: S5 remains detected 12/12 at leg 6 by I4.
+
+**The tuning result.** Before the reporting half was opened, the fixed candidate produced 0.5%
+at level 2 and 2.0% at level 3 on the tuning half. No edge or point value changed afterward.
+On the reporting half, I4 fell from 164 to **zero** level-3 alerts and I5 also fired **zero**
+times. The latter is not validation: the generator's longest queued upload is 110 minutes, well
+below I5's assumed 480-minute edge.
+
+### On the H1 reservation — reopened by the smaller denominator
 
 CLAUDE.md flagged `H1 → freeze` as a possible over-refusal and session 9 kept it open because
 nothing in the data exercised it: no clean scenario contained a custody-chain gap. Missed scans
@@ -197,33 +220,34 @@ the world model rather than being dialled in:
 
 | Missed scan | Shipments | Reached an operator | `H1` freeze |
 |---|---:|---:|---:|
-| `sortation` | 12 | 6 (50.0%) | **0** |
+| `sortation` | 12 | 2 (16.7%) | **0** |
 | **`linehaul_departure`** | 12 | **12 (100.0%)** | **12** |
-| `out_for_delivery` | 10 | 3 (30.0%) | **0** |
-| `linehaul_arrival` | 9 | 2 (22.2%) | **0** |
+| `out_for_delivery` | 10 | 0 (0.0%) | **0** |
+| `linehaul_arrival` | 9 | 1 (11.1%) | **0** |
 
-**H1 fired, and it did not dominate: 12 of 237 alerts across all levels, under 4% at level 3.**
-The reservation closes on that. What closed it is a property of the design that nobody would
-guess from reading the rule — **the custody table is deliberately permissive, so a fleet's missed
-scans reach H1 in exactly one place rather than everywhere.** Without the departure scan a parcel
-reports `arriving` straight out of `in_progress`, and that is the only one of the four gaps the
-table refuses.
+**H1 is now 12 of 28 alerts across all levels, and the largest remaining abort code.** At level 2
+it is 4 of 7 alerts, so the script's share-based dominance check fires; at level 3 it is 7 of 18.
+That is a denominator effect exposed by removing 207 false I4 alerts, not a change in H1: its
+absolute rate is four freezes across 1,439 level-2 legs and seven across 1,479 level-3 legs. The
+known narrow over-refusal remains exactly what session 10 measured — **the custody table is
+deliberately permissive, so a fleet's missed scans reach H1 in exactly one place rather than
+everywhere.**
 
 **The residual is real and is now in Known Limitations:** a hub that chronically loses its
 departure scan gets frozen every single time, 12 out of 12. H1 is not over-refusing broadly; it
 is over-refusing narrowly and completely.
 
-**What this does not show.** The rate is a function of our assumed environment, and the single
-parameter it is most sensitive to is the share of scans with no uplink (2% / 7% / 14%, an
-assumption with nothing behind it). Every draw is independent, so a real hub outage — which
-batches *every* parcel at once — would bunch these flags in a way this model does not produce.
-S2 is not in the sweep. And 12.4% is a per-*leg* rate on a six-leg shipment: 57% of level-3
-shipments raised at least one alert, which is the number an operator would actually feel.
+**What this does not show.** The same published clock-accuracy evidence informs both the
+generator's drift range and the new I4 boundary. That shared source is not a detector threshold
+leaking into the generator, but it means E3 cannot independently validate the 30-minute I4 edge;
+it tests the corrected **direction**, not the boundary. I5 is wholly unexercised. Every noise draw
+is independent, S2 is not in the sweep, and 1.2% per leg still means 7.5% of level-3 shipments
+raised at least one alert.
 
-**What would falsify it.** A fleet whose real uplink availability is much better than 93% would
-push the whole curve down and make level 3 unrepresentative. A real fleet's I4 rate is the single
-measurement that would settle this, and it is measurable without any of our detectors — it is
-just `recordTime − eventTime` on their existing scan data.
+**What would falsify it.** Fleet telemetry containing honest device-ahead offsets near or above
+30 minutes would falsify I4's reliability claim. A controlled offline-field dataset with uploads
+held for eight hours or more would test I5; this dataset cannot. Either measurement can be made
+from `eventTime` and server-stamped `recordTime` without using Vigil's verdicts.
 
 ---
 
@@ -321,6 +345,11 @@ entirely. Both columns are in the CSV.
 | 2 `urban` | 50 km/h | 100% | 68.8% |
 | 3 `adverse` | 50 km/h | 100% | 68.8% |
 
+**Session 11 rerun.** The I4/I5 change did not alter one `I3_fired` value in the 1,920-row CSV:
+the speed-specific curve is identical. It removed 127 `any_alert` observations caused by the old
+clock rule and added none. That is the expected separation: E6 varies I3, while the corrected
+clock direction removes an unrelated route to an operator.
+
 ### The prediction was wrong, and the reason is the finding
 
 Session 10 predicted, before running, that *"the false-positive edge will move upward under
@@ -331,7 +360,7 @@ Two mistakes in that prediction, and both are worth keeping:
 
 - **Upload batching cannot touch I3.** Queuing a scan moves `recordTime`, which the *server*
   stamps. I3 measures the interval between two `eventTime`s, which the *device* authors. The
-  mechanism that produces 89% of E3's false positives has no path to this rule at all.
+  old mechanism that produced 89% of E3's false positives had no path to this rule at all.
 - **Ordinary clock drift cancels.** The handset's offset is a property of its crystal and is the
   same on both scans, so it subtracts out of the interval. Only a handset *swap* between two legs
   changes it, and swaps are rare enough not to move a 16-seed cell.
@@ -384,19 +413,19 @@ outstanding test for this threshold.
 | Capable fraud is caught by the pattern axis | 12/12, ~10 deliveries | via P2, the customer complaint |
 | Fraud with recipient collusion is **not** caught | 0/12, 40/40 completed | measured boundary, not tuned away |
 | Every modelled attack class is detected | 5/5 at 100% | the classes we designed for |
-| Clean work rarely reaches an operator | **0.2% / 3.5% / 12.4%** of legs at noise levels 1 / 2 / 3, n = 1,440+ legs each | the rate depends on how bad you think the environment is; quote all three |
-| The dominant false positive is one rule | I4, 164 of 184 level-3 alerts | its stated derivation is contradicted by the noise model. Reported, not changed |
+| Clean work rarely reaches an operator | **0.2% / 0.5% / 1.2%** of legs at noise levels 1 / 2 / 3, n = 1,440+ legs each | the rate depends on how bad you think the environment is; quote all three |
+| The clock rule was measuring the wrong quantity | I4 fell from 164 to 0 level-3 alerts after preserving direction | E3 validates the direction fix, not the 30-minute edge; I5 remains unexercised |
 | Citation enforcement stops unsourced prose | 12/12 → 3/12 reaching an operator | mechanism, not a model rate |
 | The speed threshold has headroom | 0% I3 false positives from 50 km/h up, **at every noise level** | 120 is derived, not fitted — and noise cannot justify the margin |
-| `H1 → freeze` is a narrow over-refusal, not a broad one | 12 of 237 alerts; but 12/12 when the departure scan is the one lost | measured, and the residual is in Known Limitations |
+| `H1 → freeze` is a narrow over-refusal, not a broad one | 12 of 28 remaining alerts; 12/12 when the departure scan is the one lost | now the largest residual by share; its absolute leg rate remains low |
 
 **The three numbers a judge should press on**, and the answers:
 
 1. *"What is your false-positive rate?"* There isn't one number, and anyone offering one is
-   choosing it. 0.2% of legs on a good day, 3.5% in ordinary urban conditions, 12.4% on a bad
-   one — and 89% of the bad-day alerts are a single rule whose justification we can now show is
-   wrong. See E3. The previous answer, 0%, was a floor measured against noise-free data, and it
-   was replaced rather than explained.
+   choosing it. 0.2% of legs on a good day, 0.5% in ordinary urban conditions, 1.2% on a bad
+   one. See E3. The previous 0% floor was replaced by environmental noise; the first noisy result
+   then exposed I4's wrong absolute-value shape, which was fixed on the tuning half and reported
+   again rather than silently retained.
 2. *"Your detection is 100%."* On the five classes we modelled and built detectors for. E1 is the
    more honest measure, and it has a level that is never detected.
 3. *"Why 120 and not 50?"* Not because 120 is optimal here — 50 would be. Because the 70 km/h of

@@ -95,9 +95,12 @@ describe("scoring", () => {
   it("clamps the score at 100 but keeps rawScore unclamped for threshold sweeps", () => {
     // Everything wrong at once: I1 40 + I2 40 + I3 40 + I4 30 + I6 25 + I7 50
     // + I8 50 + I9 25 + I10 40 + I12 45 = 385.
+    // recordTime is deliberately earlier than eventTime: this arithmetic fixture
+    // was flipped when I4 became directional so it still tests a device-ahead
+    // contradiction, not the queued-upload direction that exposed the old bug.
     const result = runInconsistencyEngine(
       makeInput({
-        event: makeEvent({ eventTime: "2026-09-08T10:15:00+08:00", recordTime: "2026-09-08T11:30:00+08:00" }),
+        event: makeEvent({ eventTime: "2026-09-08T10:15:00+08:00", recordTime: "2026-09-08T08:00:00+08:00" }),
         sensor: {
           deviceId: "HHT-9999",
           gps: {
@@ -124,11 +127,12 @@ describe("scoring", () => {
   });
 
   it("never scores a tiered pair twice", () => {
-    // 45 minutes of clock drift AND 23 km off the address: I4 (30) + I10 (40).
-    // If the tiers double-counted this would be 30+15+40+20 = 105.
+    // 45 device-ahead minutes AND 23 km off the address: I4 (30) + I10 (40).
+    // This arithmetic fixture was flipped from server-late to device-ahead when
+    // the absolute-value bug was fixed; it tests tier exclusivity, not direction.
     const result = runInconsistencyEngine(
       makeInput({
-        event: makeEvent({ eventTime: "2026-09-08T10:15:00+08:00", recordTime: "2026-09-08T11:00:00+08:00" }),
+        event: makeEvent({ eventTime: "2026-09-08T10:15:00+08:00", recordTime: "2026-09-08T09:30:00+08:00" }),
         sensor: {
           deviceId: "HHT-0042",
           gps: {
@@ -298,7 +302,7 @@ describe("S0 — a normal shipment produces no flags at any leg", () => {
       event: makeEvent({
         bizStep: leg.bizStep,
         eventTime: leg.eventTime,
-        // Ordinary upload latency: well inside the I5 band.
+        // Ordinary upload latency: far below the full-shift I5 band.
         recordTime: new Date(Date.parse(leg.eventTime) + 42_000).toISOString(),
       }),
       sensor: {
@@ -413,14 +417,13 @@ describe("threshold configurability — experiment 6", () => {
   });
 
   it("sweeps the band edges without restructuring control flow", () => {
-    const bands = [
-      { id: "I4", atLeast: 10, points: 30 },
-      { id: "I5", atLeast: 2, points: 15 },
-    ];
-    expect(matchBand(bands, 1)).toBeUndefined();
-    expect(matchBand(bands, 2)?.id).toBe("I5");
-    expect(matchBand(bands, 10)?.id).toBe("I4");
-    expect(matchBand(bands, 999)?.id).toBe("I4");
+    const deviceAheadBands = [{ id: "I4", atLeast: 10, points: 30 }];
+    const uploadDelayBands = [{ id: "I5", atLeast: 20, points: 10 }];
+
+    expect(matchBand(deviceAheadBands, 9)).toBeUndefined();
+    expect(matchBand(deviceAheadBands, 10)?.id).toBe("I4");
+    expect(matchBand(uploadDelayBands, 19)).toBeUndefined();
+    expect(matchBand(uploadDelayBands, 20)?.id).toBe("I5");
   });
 
   it("ships thresholds frozen, so an experiment cannot corrupt the shared defaults", () => {

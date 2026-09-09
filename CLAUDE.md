@@ -1099,7 +1099,10 @@ shows only one applies — a sharper argument than the one it replaces.
   without this the second would derive the same eventID and the ledger would abort it as a replay
   — an honest redelivery would look like S3.
 
-### Session 11 — I4 semantics and tuning (in progress)
+### Session 11 — I4 semantics and tuning (complete)
+
+494 tests passing, 3 skipped. `tsc --noEmit` clean, eslint clean, `next build` succeeds.
+`lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% branch coverage.
 
 The candidate is fixed from the meaning of the signal before looking at the tuning half:
 
@@ -1122,6 +1125,23 @@ detector parameter — both independently cite the same claim about the world �
 cannot independently validate the I4 boundary. E3 can test whether the corrected *direction*
 removes queued-upload false positives; it cannot establish that 30 minutes is the right
 clock-ahead edge. This limitation belongs in DATASET.md and RESULTS.md, not only here.
+
+**The tuning half was opened first and the candidate was not adjusted.** E3 measured 0.5% per
+leg at level 2 and 2.0% at level 3 there. The fixed candidate then ran on the reporting half:
+**0.2% / 0.5% / 1.2%** at levels 1 / 2 / 3, down from 0.2% / 3.5% / 12.4%. I4 fell from 164 to
+zero level-3 alerts. I5 also fired zero times, which is a coverage gap rather than validation —
+the generator's longest queued upload is 110 minutes and the assumed edge is 480.
+
+**E2 paid no detection cost:** all five classes remain 12/12, and S5 still fires I4 at leg 6.
+**E6 is unchanged on its own measurement:** all 1,920 `I3_fired` values are identical, the edge
+stays 50 km/h at every noise level, and 127 unrelated `any_alert` rows disappeared with no new
+ones. No other threshold moved.
+
+**H1 is the largest residual by share after I4 is removed, not by absolute rate.** It is 4 of 7
+level-2 alerts, so the script's dominance guard fires, and 7 of 18 at level 3. The absolute rates
+are four freezes across 1,439 level-2 legs and seven across 1,479 level-3 legs. The known narrow
+failure remains unchanged: lose `linehaul_departure` and H1 freezes 12/12; lose another one of
+the four missable scans and H1 fires 0/31.
 
 Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, the map view, and
 the submission artefacts. Adding a genuine expressway leg to the generator is the only remaining
@@ -1234,12 +1254,14 @@ in place. Still untouched: liveness/timeout paths, the map view.
 
 ## Open reservations (decided, but revisit)
 
-**~~H1 → freeze is a known over-refusal.~~ CLOSED in session 10, and here is what closed it.**
-The reservation asked whether H1 dominates the false positives. Measured against a fleet that
-misses scans: **it does not — 12 of 237 alerts across all noise levels, under 4% at level 3.**
-No fifth outcome was invented and H1 was not softened.
+**H1 → freeze was closed in session 10 and REOPENED in session 11.** Session 10 measured H1 as
+12 of 237 alerts, under 4% at level 3. Removing 207 false I4 alerts changed the denominator, not
+H1: it is now **12 of 28 remaining alerts**, and 4 of 7 at level 2, so the experiment's
+share-based dominance check fires. Its absolute rate remains low (12 freezes across 5,805 clean
+legs), but the claim that it does not dominate can no longer be made without qualification. No
+fifth outcome was invented and H1 was not softened; operational review remains open.
 
-What closed it is a property of the design worth knowing, traced by hand from
+What first closed it is still a property of the design worth knowing, traced by hand from
 `lib/engine/custody.ts` and committed to the log **before** the noise model was written, then
 confirmed by the run: **the custody table is deliberately permissive, so a fleet's missed scans
 reach H1 in exactly one place rather than everywhere.** Of the four missable scans, only a lost
@@ -1276,27 +1298,29 @@ via `deps.windows`, so experiment 6 can sweep them.
 
 **A hub that chronically loses its departure scan gets frozen every time.** Measured in session
 10: of the four scans a fleet can miss, only a lost `linehaul_departure` trips H1 — and when it
-is lost, **12 out of 12 shipments were frozen.** H1 does not over-refuse broadly (12 of 237
-alerts), it over-refuses narrowly and completely. A depot with a broken departure scanner would
-have its whole outbound flow voided until someone noticed. Stated, measured, not softened in the
-session that measured it.
+is lost, **12 out of 12 shipments were frozen.** After the I4 correction it is 12 of 28 remaining
+alerts and the largest residual by share, but still only 12 freezes across 5,805 clean legs. It
+does not over-refuse broadly; it over-refuses narrowly and completely. A depot with a broken
+departure scanner would have its whole outbound flow voided until someone noticed. Stated,
+measured, not softened.
 
 **An honest delivery to a corrected address alerts, because the system is sensitive to stale
 records as well as to fraud.** The parcel record says one address, the courier was told another
 by phone, and the delivery scan is measured against what is on file — so I10/I11 fire on work
 that was done correctly. At level 1 this is the *leading* false positive (2 of 3 alerts); at
-level 3 it is 10 of 184. **This is a real property of the approach, not a bug:** every rule in
+level 3 it is 9 of 18. **This is a real property of the approach, not a bug:** every rule in
 the system is a contradiction between two signals, and a stale record is a genuine contradiction
 — the system cannot tell "the record is wrong" from "the scan is wrong" without a third source.
 The mitigation is operational (push address corrections into the record) rather than algorithmic,
 and a judge is entitled to ask about it.
 
-**I4's 30-minute clock-divergence band rests on a claim the data contradicts.**
-`lib/engine/thresholds.ts` derives it from *"30 minutes cannot be explained by [drift or upload
-latency]"*. A handset with no uplink queuing a scan in a basement explains it easily, and I4
-alone is +30, which clears the gate's cut. It produces **89% of the level-3 false positives**.
-Reported in the session that measured it and deliberately not changed; it is the first item for a
-session that tunes on the tuning half and reruns the reporting half.
+**The new I4 edge is not independently validated by E3, and I5 is not exercised.** The same
+published quartz-drift evidence informs the generator's clock distribution and I4's 30-minute
+device-ahead edge. That is not a detector parameter leaking into the generator, but it means E3
+tests the corrected direction rather than independently testing the edge. I5's 480-minute
+upload-delay boundary is an explicit shift-anchored **assumption**; this dataset stops at 110
+minutes, so the rule fired zero times. Both need field telemetry before either threshold can be
+claimed as measured.
 
 **Demo keys live in environment variables. This is a stated limitation, not an oversight.**
 The operator's signing key is the thing that makes approval constitutive, and a key in an env

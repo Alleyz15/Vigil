@@ -207,7 +207,7 @@ export function buildLegEvent(args: {
 
   const env = shipmentNoise ? drawEventNoise(rng, shipmentNoise, { atAddress }) : undefined;
 
-  // Ordinary upload latency: seconds, comfortably inside the I5 band. Under
+  // Ordinary upload latency: seconds, far below the full-shift I5 band. Under
   // noise the handset may have had no uplink at all and queued the scan.
   //
   // The SERVER stamps recordTime, so it is on true time: the divergence the
