@@ -1,0 +1,328 @@
+experiment,provider,model,case,meaning,scenario,seed,attempt,samples_in_cell,event_id,temperature,latency_ms,raw_shape,model_decision,schema_invalid,provider_error,raw_response,deterministic_verdict
+E4a,gemini,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,1,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,935,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,gemini,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,2,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,902,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,gemini,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,3,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,872,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4a,gemini,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,4,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,809,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4a,gemini,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,5,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,769,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,anthropic,claude-haiku-4-5-20251001,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,1,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,4217,prose_wrapped_json,accept,0,,"```json
+{
+  ""decision"": ""accept""
+}
+```
+
+**Reasoning:**
+
+- **Location verification**: GPS point (3.034073, 101.616452) is within 16m accuracy of declared recipient location (3.034201, 101.616582), indicating courier is at the correct delivery address
+- **Network corroboration**: Cell tower and WiFi AP locations all cluster around Puchong, Selangor, consistent with GPS coordinates
+- **Motion profile**: Low acceleration variance (mean 0.28 m/s², max 1.68 m/s²) and zero speed indicate stationary delivery, not suspicious movement
+- **Device integrity**: Attestation passed with no root detection or app tampering
+- **Proof of delivery**: OTP verified, photo and signature captured with valid timestamps (photo at 10:13:18, event at 10:15:00 - reasonable 2-minute gap)
+- **Business context**: Disposition shows ""retail_sold"", bizStep shows ""delivering"", parcel is known, and all timestamps are coherent
+- **No anomalies**: Battery adequate (90%), no mock location provider detected, no integrity violations
+
+All evidence supports a legitimate delivery completion at the correct location.",accept
+E4a,anthropic,claude-haiku-4-5-20251001,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,2,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,4083,prose_wrapped_json,accept,0,,"```json
+{
+  ""decision"": ""accept""
+}
+```
+
+**Reasoning:**
+
+- **Location verification**: GPS point (3.034073, 101.616452) is within 16m accuracy of declared recipient location (3.034201, 101.616582), indicating courier is at the correct delivery address
+- **Network corroboration**: Cell tower and WiFi AP locations all cluster around Puchong, Selangor, consistent with GPS coordinates
+- **Motion profile**: Low acceleration variance (mean 0.28 m/s², max 1.68 m/s²) and zero speed indicate stationary delivery, not suspicious movement
+- **Device integrity**: Attestation passed with no root detection or app tampering
+- **Proof of delivery**: OTP verified, photo and signature captured with valid timestamps (photo at 10:13:18, event at 10:15:00 - reasonable 2-minute gap)
+- **Business context**: Disposition shows ""retail_sold"", bizStep shows ""delivering"", parcel is known, and all timestamps are coherent
+- **No anomalies**: Battery adequate (90%), no mock location provider detected, no integrity violations
+
+All evidence supports a legitimate delivery completion at the correct location.",accept
+E4a,anthropic,claude-haiku-4-5-20251001,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,3,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,4044,prose_wrapped_json,accept,0,,"```json
+{
+  ""decision"": ""accept""
+}
+```
+
+**Reasoning:**
+
+- **Location verification**: GPS point (3.034073, 101.616452) is within 16m accuracy of declared recipient location (3.034201, 101.616582), indicating courier is at the correct delivery address
+- **Network corroboration**: Cell tower and WiFi AP locations all cluster around Puchong, Selangor, consistent with GPS coordinates
+- **Motion profile**: Low acceleration variance (mean 0.28 m/s², max 1.68 m/s²) and zero speed indicate stationary delivery, not suspicious movement
+- **Device integrity**: Attestation passed with no root detection or app tampering
+- **Proof of delivery**: OTP verified, photo and signature captured with valid timestamps (photo at 10:13:18, event at 10:15:00 - reasonable 2-minute gap)
+- **Business context**: Disposition shows ""retail_sold"", bizStep shows ""delivering"", parcel is known, and all timestamps are coherent
+- **No anomalies**: Battery adequate (90%), no mock location provider detected, no integrity violations
+
+All evidence supports a legitimate delivery completion at the correct location.",accept
+E4a,anthropic,claude-haiku-4-5-20251001,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,4,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,4074,prose_wrapped_json,accept,0,,"```json
+{
+  ""decision"": ""accept""
+}
+```
+
+**Reasoning:**
+
+- **Location verification**: GPS point (3.034073, 101.616452) is within 16m accuracy of declared recipient location (3.034201, 101.616582), indicating courier is at the correct delivery address
+- **Network corroboration**: Cell tower and WiFi AP locations all cluster around Puchong, Selangor, consistent with GPS coordinates
+- **Motion profile**: Low acceleration variance (mean 0.28 m/s², max 1.68 m/s²) and zero speed indicate stationary delivery, not suspicious movement
+- **Device integrity**: Attestation passed with no root detection or app tampering
+- **Proof of delivery**: OTP verified, photo and signature captured with valid timestamps (photo at 10:13:18, event at 10:15:00 - reasonable 2-minute gap)
+- **Business context**: Disposition shows ""retail_sold"", bizStep shows ""delivering"", parcel is known, and all timestamps are coherent
+- **No anomalies**: Battery adequate (90%), no mock location provider detected, no integrity violations
+
+All evidence supports a legitimate delivery completion at the correct location.",accept
+E4a,anthropic,claude-haiku-4-5-20251001,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,5,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,4064,prose_wrapped_json,accept,0,,"```json
+{
+  ""decision"": ""accept""
+}
+```
+
+**Reasoning:**
+
+- **Location verification**: GPS point (3.034073, 101.616452) is within 16m accuracy of declared recipient location (3.034201, 101.616582), indicating courier is at the correct delivery address
+- **Network corroboration**: Cell tower and WiFi AP locations all cluster around Puchong, Selangor, consistent with GPS coordinates
+- **Motion profile**: Low acceleration variance (mean 0.28 m/s², max 1.68 m/s²) and zero speed indicate stationary delivery, not suspicious movement
+- **Device integrity**: Attestation passed with no root detection or app tampering
+- **Proof of delivery**: OTP verified, photo and signature captured with valid timestamps (photo at 10:13:18, event at 10:15:00 - reasonable 2-minute gap)
+- **Business context**: Disposition shows ""retail_sold"", bizStep shows ""delivering"", parcel is known, and all timestamps are coherent
+- **No anomalies**: Battery adequate (90%), no mock location provider detected, no integrity violations
+
+All evidence supports a legitimate delivery completion at the correct location.",accept
+E4a,ollama,qwen2.5:7b,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,1,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,1428,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,ollama,qwen2.5:7b,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,2,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,528,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,ollama,qwen2.5:7b,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,3,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,486,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,ollama,qwen2.5:7b,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,4,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,548,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,ollama,qwen2.5:7b,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4a-clean,5,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,548,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,gemini,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,1,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,1121,strict_json,flag,0,,"{
+  ""decision"": ""flag""
+}",flag
+E4a,gemini,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,2,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,27782,strict_json,flag,0,,"{
+  ""decision"": ""flag""
+}",flag
+E4a,gemini,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,3,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,801,strict_json,flag,0,,"{
+  ""decision"": ""flag""
+}",flag
+E4a,gemini,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,4,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,24032,strict_json,flag,0,,"{
+  ""decision"": ""flag""
+}",flag
+E4a,gemini,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,5,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,1187,strict_json,flag,0,,"{
+  ""decision"": ""flag""
+}",flag
+E4a,anthropic,claude-haiku-4-5-20251001,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,1,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,4761,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+
+1. **Mock Location Provider Detected**: The GPS observation explicitly indicates `""mockLocationProvider"": true`, which is a critical integrity concern. This suggests the device location data may be spoofed.
+
+2. **Location Discrepancy**: 
+   - Recipient location: (3.1278833443571834, 101.75396328587887)
+   - GPS point: (3.12779303880238, 101.7538297177233) - matches recipient within ~16m accuracy
+   - Cell tower: (3.1399577482976158, 101.70969702536537) - ~1.3km away
+   - WiFi AP: (3.143595965721037, 101.71162929431141) - ~1.4km away
+   
+   The GPS closely matches the recipient location, but cell and WiFi signals originate from a different area, creating inconsistency.
+
+3. **Device Attestation Mocked**: `""attestationSource"": ""mocked""` indicates the device integrity verification itself is mocked, reducing confidence in all device-based claims.
+
+4. **Proof of Delivery Present**: Photo, signature, and OTP verification are documented, which is positive, but cannot fully compensate for the location spoofing indicators.
+
+The combination of mock location provider and mocked attestation requires additional verification before accepting this handoff. The parcel should be flagged for manual review to confirm actual delivery.",flag
+E4a,anthropic,claude-haiku-4-5-20251001,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,2,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,4646,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+
+1. **Mock Location Provider Detected**: The GPS observation explicitly indicates `""mockLocationProvider"": true`, which is a critical integrity concern. This suggests the device location data may be spoofed.
+
+2. **Location Discrepancy**: 
+   - Recipient location: (3.1278833443571834, 101.75396328587887)
+   - GPS point: (3.12779303880238, 101.7538297177233) - matches recipient within ~16m accuracy
+   - Cell tower: (3.1399577482976158, 101.70969702536537) - ~1.3km away
+   - WiFi AP: (3.143595965721037, 101.71162929431141) - ~1.4km away
+   
+   The GPS closely matches the recipient location, but cell and WiFi signals originate from a different area, creating inconsistency.
+
+3. **Device Attestation Mocked**: `""attestationSource"": ""mocked""` indicates the device integrity verification itself is mocked, reducing confidence in all device-based claims.
+
+4. **Proof of Delivery Present**: Photo, signature, and OTP verification are documented, which is positive, but cannot fully compensate for the location spoofing indicators.
+
+The combination of mock location provider and mocked attestation requires additional verification before accepting this handoff. The parcel should be flagged for manual review to confirm actual delivery.",flag
+E4a,anthropic,claude-haiku-4-5-20251001,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,3,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,4666,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+
+1. **Mock Location Provider Detected**: The GPS observation explicitly indicates `""mockLocationProvider"": true`, which is a critical integrity concern. This suggests the device location data may be spoofed.
+
+2. **Location Discrepancy**: 
+   - Recipient location: (3.1278833443571834, 101.75396328587887)
+   - GPS point: (3.12779303880238, 101.7538297177233) - matches recipient within ~16m accuracy
+   - Cell tower: (3.1399577482976158, 101.70969702536537) - ~1.3km away
+   - WiFi AP: (3.143595965721037, 101.71162929431141) - ~1.4km away
+   
+   The GPS closely matches the recipient location, but cell and WiFi signals originate from a different area, creating inconsistency.
+
+3. **Device Attestation Mocked**: `""attestationSource"": ""mocked""` indicates the device integrity verification itself is mocked, reducing confidence in all device-based claims.
+
+4. **Proof of Delivery Present**: Photo, signature, and OTP verification are documented, which is positive, but cannot fully compensate for the location spoofing indicators.
+
+The combination of mock location provider and mocked attestation requires additional verification before accepting this handoff. The parcel should be flagged for manual review to confirm actual delivery.",flag
+E4a,anthropic,claude-haiku-4-5-20251001,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,4,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,4667,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+
+1. **Mock Location Provider Detected**: The GPS observation explicitly indicates `""mockLocationProvider"": true`, which is a critical integrity concern. This suggests the device location data may be spoofed.
+
+2. **Location Discrepancy**: 
+   - Recipient location: (3.1278833443571834, 101.75396328587887)
+   - GPS point: (3.12779303880238, 101.7538297177233) - matches recipient within ~16m accuracy
+   - Cell tower: (3.1399577482976158, 101.70969702536537) - ~1.3km away
+   - WiFi AP: (3.143595965721037, 101.71162929431141) - ~1.4km away
+   
+   The GPS closely matches the recipient location, but cell and WiFi signals originate from a different area, creating inconsistency.
+
+3. **Device Attestation Mocked**: `""attestationSource"": ""mocked""` indicates the device integrity verification itself is mocked, reducing confidence in all device-based claims.
+
+4. **Proof of Delivery Present**: Photo, signature, and OTP verification are documented, which is positive, but cannot fully compensate for the location spoofing indicators.
+
+The combination of mock location provider and mocked attestation requires additional verification before accepting this handoff. The parcel should be flagged for manual review to confirm actual delivery.",flag
+E4a,anthropic,claude-haiku-4-5-20251001,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,5,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,4627,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+
+1. **Mock Location Provider Detected**: The GPS observation explicitly indicates `""mockLocationProvider"": true`, which is a critical integrity concern. This suggests the device location data may be spoofed.
+
+2. **Location Discrepancy**: 
+   - Recipient location: (3.1278833443571834, 101.75396328587887)
+   - GPS point: (3.12779303880238, 101.7538297177233) - matches recipient within ~16m accuracy
+   - Cell tower: (3.1399577482976158, 101.70969702536537) - ~1.3km away
+   - WiFi AP: (3.143595965721037, 101.71162929431141) - ~1.4km away
+   
+   The GPS closely matches the recipient location, but cell and WiFi signals originate from a different area, creating inconsistency.
+
+3. **Device Attestation Mocked**: `""attestationSource"": ""mocked""` indicates the device integrity verification itself is mocked, reducing confidence in all device-based claims.
+
+4. **Proof of Delivery Present**: Photo, signature, and OTP verification are documented, which is positive, but cannot fully compensate for the location spoofing indicators.
+
+The combination of mock location provider and mocked attestation requires additional verification before accepting this handoff. The parcel should be flagged for manual review to confirm actual delivery.",flag
+E4a,ollama,qwen2.5:7b,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,1,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,1308,strict_json,accept,0,,"{""decision"": ""accept""}",flag
+E4a,ollama,qwen2.5:7b,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,2,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,553,strict_json,accept,0,,"{""decision"": ""accept""}",flag
+E4a,ollama,qwen2.5:7b,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,3,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,522,strict_json,accept,0,,"{""decision"": ""accept""}",flag
+E4a,ollama,qwen2.5:7b,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,4,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,461,strict_json,accept,0,,"{""decision"": ""accept""}",flag
+E4a,ollama,qwen2.5:7b,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4a-obvious_fraud,5,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,504,strict_json,accept,0,,"{""decision"": ""accept""}",flag
+E4a,gemini,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,1,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,21620,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4a,gemini,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,2,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,25750,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4a,gemini,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,3,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,19920,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4a,gemini,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,4,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,21096,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4a,gemini,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,5,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,6336,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4a,anthropic,claude-haiku-4-5-20251001,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,1,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,3263,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+- **GPS accuracy concern**: The GPS accuracy is 140 meters, which is relatively poor for delivery confirmation. The reported location (3.131044757781272, 101.68615004027608) differs from the declared recipient location (3.1287091487262955, 101.68444070118436) by approximately 200+ meters.
+- **Device integrity attestation source**: The attestation source is marked as ""mocked,"" which indicates the device integrity verification may not be fully reliable.
+- **Photo timestamp discrepancy**: The proof of delivery photo was captured at 10:14:48, but the event was recorded at 10:15:00 (12 seconds later), which is acceptable but worth noting.
+
+While the parcel is known, OTP is verified, and motion/battery data appear normal, the combination of poor GPS accuracy and mocked attestation warrants additional verification before accepting this handoff.",accept
+E4a,anthropic,claude-haiku-4-5-20251001,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,2,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,3707,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+
+1. **GPS Accuracy Concern**: The GPS accuracy is 140 meters, which is relatively poor for delivery confirmation. While the reported location (3.131044757781272, 101.68615004027608) is close to the recipient location (3.1287091487262955, 101.68444070118436), the large accuracy margin creates ambiguity about whether the courier was actually at the precise delivery point.
+
+2. **Device Integrity Red Flag**: The `attestationSource` is marked as ""mocked"", which indicates the device integrity attestation may not be reliable. This undermines confidence in the authenticity of other sensor readings and the device's trustworthiness.
+
+3. **Positive Indicators**: 
+   - Proof of delivery is complete (photo, OTP verified, signature)
+   - No motion detected (stationary)
+   - No root detection or app tampering
+   - Device integrity verdict passed despite mocked attestation
+
+The combination of poor GPS accuracy and mocked attestation source warrants additional verification before accepting this handoff, even though other signals appear normal.",accept
+E4a,anthropic,claude-haiku-4-5-20251001,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,3,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,3445,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+- **GPS accuracy concern**: The GPS accuracy is 140 meters, which is relatively poor for delivery confirmation. The reported location (3.131044757781272, 101.68615004027608) differs from the declared recipient location (3.1287091487262955, 101.68444070118436) by approximately 200+ meters.
+- **Device integrity attestation source**: The attestation source is marked as ""mocked,"" which reduces confidence in the device integrity verdict despite it passing.
+- **Proof of delivery timing**: The photo capture time (10:14:48) is 12 seconds before the event time (10:15:00), which is acceptable but tight.
+- **No cellular/WiFi data**: Absence of cell tower or WiFi confirmation data limits triangulation verification.
+
+While the parcel is known, OTP is verified, and motion/battery data appear normal, the combination of poor GPS accuracy, mocked attestation, and location discrepancy warrants additional verification before accepting this handoff.",accept
+E4a,anthropic,claude-haiku-4-5-20251001,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,4,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,3176,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+- **GPS accuracy concern**: The GPS accuracy is 140 meters, which is relatively poor for delivery confirmation. The reported location (3.131044757781272, 101.68615004027608) differs from the declared recipient location (3.1287091487262955, 101.68444070118436) by approximately 200+ meters.
+- **Device integrity attestation source**: The attestation source is marked as ""mocked,"" which indicates the device integrity verification may not be fully reliable.
+- **Photo timestamp discrepancy**: The proof of delivery photo was captured at 10:14:48, but the event was recorded at 10:15:00 (12 seconds later), which is acceptable but worth noting.
+
+While the parcel is known, OTP is verified, and motion/battery data appear normal, the combination of poor GPS accuracy and mocked attestation warrants additional verification before accepting this handoff.",accept
+E4a,anthropic,claude-haiku-4-5-20251001,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,5,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,3876,prose_wrapped_json,flag,0,,"```json
+{
+  ""decision"": ""flag""
+}
+```
+
+**Reasoning:**
+
+1. **Device Integrity Concern**: The `attestationSource` is ""mocked"", which indicates the device integrity attestation is not from a genuine attestation service. This is a significant red flag for device trustworthiness.
+
+2. **GPS Accuracy Issue**: The GPS accuracy is 140 meters, which is relatively poor for delivery confirmation. Combined with the mocked attestation, this raises questions about location reliability.
+
+3. **Location Discrepancy**: The GPS point (3.131044757781272, 101.68615004027608) differs from the declared recipient location (3.1287091487262955, 101.68444070118436) by approximately 200+ meters, which exceeds the GPS accuracy margin.
+
+4. **Positive Indicators**: The proof of delivery elements (OTP verified, photos, signatures) and motion/battery data appear normal, and there are no obvious signs of spoofing or tampering.
+
+The mocked attestation source is the primary concern requiring clarification before accepting this handoff. Additional evidence or re-verification is needed to confirm the legitimacy of this delivery claim.",accept
+E4a,ollama,qwen2.5:7b,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,1,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,1083,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,ollama,qwen2.5:7b,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,2,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,539,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,ollama,qwen2.5:7b,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,3,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,532,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,ollama,qwen2.5:7b,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,4,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,568,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4a,ollama,qwen2.5:7b,ambiguous,degraded underground location evidence,S6,vigil-2026-e4a-ambiguous,5,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,513,strict_json,accept,0,,"{""decision"": ""accept""}",accept

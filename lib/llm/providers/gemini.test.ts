@@ -6,11 +6,14 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Gemini request configuration", () => {
   it("uses minimal reasoning effort on the default Flash-Lite model", async () => {
     const fetchMock = vi.fn(
-      async (_input: string | URL | Request, _init?: RequestInit) =>
-        new Response(
+      async (_input: string | URL | Request, _init?: RequestInit) => {
+        void _input;
+        void _init;
+        return new Response(
           JSON.stringify({ choices: [{ message: { content: '{"tools":[]}' } }] }),
           { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
+        );
+      },
     );
     vi.stubGlobal("fetch", fetchMock);
 

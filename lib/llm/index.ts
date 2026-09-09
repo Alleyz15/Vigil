@@ -4,5 +4,6 @@ export * from "./prompts";
 export * from "./plan";
 export * from "./explain";
 export * from "./providers/fake";
+export * from "./providers/anthropic";
 export * from "./providers/gemini";
 export * from "./providers/ollama";

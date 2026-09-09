@@ -1,0 +1,29 @@
+experiment,provider,model,operation,seed,samples_in_cell,latency_ms,raw_shape,accepted,fallback,rejection,selected_tools,raw_response
+provider_seam,gemini,gemini-3.5-flash-lite,plan,vigil-2026-provider-seam,1,1410,strict_json,1,0,,,"{
+  ""tools"": [],
+  ""rationale"": ""The handoff has standard tracking, known entities, and valid proof of delivery without anomalous indicators.""
+}"
+provider_seam,gemini,gemini-3.5-flash-lite,explain,vigil-2026-provider-seam,1,4187,strict_json,1,0,,,"{
+  ""summary"": ""The handoff has been flagged because the reported GPS position is far outside the range of the connected mobile tower, and the device reported that its location was supplied by a fake location app."",
+  ""nextStep"": ""An operator must review and co-sign this decision before further processing."",
+  ""citations"": [
+    ""I1"",
+    ""I7""
+  ]
+}"
+provider_seam,anthropic,claude-haiku-4-5-20251001,plan,vigil-2026-provider-seam,1,1608,markdown_fenced_json,1,0,,,"```json
+{
+  ""tools"": [],
+  ""rationale"": ""All key entities are known, GPS/cell data confirm location, proof of delivery exists, and no unknown entity risk flags present—no additional background checks needed.""
+}
+```"
+provider_seam,anthropic,claude-haiku-4-5-20251001,explain,vigil-2026-provider-seam,1,1506,markdown_fenced_json,1,0,,,"```json
+{
+  ""summary"": ""This handoff has been flagged due to location inconsistencies. The GPS position reported is far outside the range of the mobile tower the device was connected to, and the device indicated its location came from a fake location app. The inconsistency score exceeds the threshold for operator review."",
+  ""nextStep"": ""An operator must review and cosign this handoff before it can proceed."",
+  ""citations"": [""I1"", ""I7""]
+}
+```"
+provider_seam,ollama,qwen2.5:7b,warmup,vigil-2026-provider-seam,1,657,strict_json,1,0,,,
+provider_seam,ollama,qwen2.5:7b,plan,vigil-2026-provider-seam,1,1446,strict_json,1,0,,lookup_recipient_history,"{""tools"": [""lookup_recipient_history""], ""rationale"": ""Checking the recipient's history can provide context if they have a pattern of disputes.""}"
+provider_seam,ollama,qwen2.5:7b,explain,vigil-2026-provider-seam,1,2850,strict_json,1,0,,,"{""summary"": ""The decision to flag this handoff was made based on two rules: the GPS position is inconsistent with the mobile tower signal, and the device reported a fake location. These inconsistencies exceed the threshold requiring operator co-signature."", ""nextStep"": ""An operator must review and cosign the decision before it can be sealed to the audit ledger."", ""citations"": [""I1"", ""I7""]}"

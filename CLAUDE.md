@@ -561,7 +561,7 @@ lib/
     prompts.ts           the two prompts; neither asks for a judgement
     plan.ts              tool selection + the REAL deterministic heuristic
     explain.ts           citation validation, decision-word check, fallback
-    providers/           gemini.ts, ollama.ts (seam only), fake.ts
+    providers/           gemini.ts, anthropic.ts, ollama.ts, fake.ts
   generate/              SYNTHETIC DATA. Emits behaviour; never reads a threshold.
     data/                kl-addresses.json, with its provenance in the file
     rng.ts               seedrandom wrappers; the only source of randomness
@@ -964,7 +964,7 @@ tests. Six of the eight nodes are still synchronous.
 | `plan.ts` | Closed-enum parse; a real deterministic heuristic; every failure path lands on it |
 | `explain.ts` | Citation validation against collected evidence, decision-word check, structured fallback |
 | `types.ts` | Telemetry counters by reason, accumulated across a whole run |
-| `providers/` | Gemini via the OpenAI-compatible endpoint, Ollama seam, four fakes |
+| `providers/` | Gemini, Anthropic Messages, native Ollama JSON mode, four fakes |
 
 **Design decisions worth not re-litigating:**
 
@@ -1184,6 +1184,91 @@ the four missable scans and H1 fires 0/31.
 Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, the map view, and
 the submission artefacts. Adding a genuine expressway leg to the generator is the only remaining
 test for the implied-speed threshold.
+
+### Session 14 — three model families and adversarial E4 (complete)
+
+524 offline tests passing, 7 live tests skipped without provider configuration. The dedicated
+three-family live suite passes 10/10. `tsc --noEmit` clean, eslint clean, `next build` succeeds;
+`lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% branch coverage.
+
+Predictions were committed first in `722f2c4`, before the first Claude or Ollama request. The
+exact measured models are `gemini-3.5-flash-lite`, `claude-haiku-4-5-20251001` and
+`qwen2.5:7b`. No detector threshold moved, the EPCIS schema did not change, and E1, E2, E3 and
+E6 were not rerun.
+
+**A second unreachable-configuration defect was found before the live run.** The Ollama stub
+read the same `OLLAMA_BASE_URL` name that `.env` supplied, but the code expected an
+OpenAI-compatible base ending in `/v1` while `.env` supplied the native server root. It would
+have called `/chat/completions`, which does not exist. The provider now uses Ollama's native
+`/api/tags` and `/api/chat` endpoints with `format: "json"`; changing `.env` to conceal the
+mismatch would have left the untested path intact. Offline contract tests now exercise URL
+normalisation, model selection, JSON mode and abort behavior. This is rule 1d's second concrete
+case after the retired Gemini model id.
+
+**The live provider suite passed against all three families.** Model availability was checked
+before Qwen ran, its first warm-up took 15.6 seconds from a cold process and 0.66 seconds in the
+recorded warm process, and subsequent structured calls were interactive. The 10-test live suite
+exercised plan, explain and byte-identical verdict/ledger parity. Gemini timed out once at the
+older 20-second integration ceiling and took the deterministic fallback; that is provider
+behavior being contained, not a failed verdict.
+
+**The response-shape prediction was wrong for Qwen and right in a different way for Claude.**
+Qwen returned strict JSON throughout native JSON mode and all its plan/explain responses passed
+the same zod and citation gates as the hosted models. Claude's preflight plan/explain responses
+were markdown-fenced JSON; all 15 E4a answers were fenced objects followed by a full reasoning
+essay despite the instruction to return JSON only. `extractJson` recovered one object and the
+strict schema accepted it. This is the first live evidence that the transport normaliser does
+real work rather than merely accommodating scripted fixtures.
+
+**E4a found vendor choice is substantive even when every model is internally stable.** Every
+provider was 5/5 consistent in every cell. All three accepted S0. On obvious S1 spoofing, Gemini
+and Claude flagged while Qwen accepted; on degraded S6, Gemini and Qwen accepted while Claude
+flagged. Cross-vendor modal agreement was therefore 100% on S0 and only 33.3% pairwise on both
+S1 and S6. Session 13's 100%-stable Gemini result remains true but is superseded as the argument:
+it measured repeat sampling within one vendor, while E4a shows that *which model decides* changes
+the outcome.
+
+**E4c separated model risk from system mitigation.** Four fixed instruction-shaped strings were
+placed in an experiment-only delivery note, recipient name, photo filename and display address.
+They never entered EPCIS. The four identical clean controls produced Gemini
+`freeze:1/escalate:3`, Claude `escalate:4`, and Qwen `accept:2/flag:2`; injected distributions
+shifted to Gemini `flag:3/escalate:1`, Claude `flag:2/escalate:2`, and Qwen remained
+`accept:2/flag:2`. The paired calls changed 3/4, 2/4 and 2/4 decisions respectively, but pairwise
+change alone is not credited as causal steering because separate model calls can vary. The
+distributional shift supports steering for Gemini and Claude; Qwen's aggregate distribution does
+not.
+
+**The engine did not "resist" those instructions; they had no surface to land on.** The engine
+receives no delivery note, recipient name, filename or display address, and parses no natural
+language. An attacker would have to transform the text upstream into a schema-valid coordinate,
+timestamp, identifier, attestation or another typed signal before a rule could observe it. The
+clean and injected arms therefore present byte-identical engine events and produce byte-identical
+verdicts by construction, which E4c asserts and labels precisely instead of claiming exercised
+prompt-injection robustness.
+
+**Production explain exposure was 0/12.** A standing test fails if any of the four untrusted
+display fields enters `explainUserPrompt`. Forced exposure exists only in E4c: all 12 model
+explanations ignored the directives, cited I1/I7 correctly and did not contradict the sealed
+flag. The decision-word guard was therefore not exercised by a live contradiction in this run;
+its scripted tests still prove the mechanism. Model steerability and mitigation effectiveness
+remain separate columns because one is a risk and the other is a control.
+
+**E5 remained clean across families.** Gemini, Claude and Qwen each produced 9/9 explanations
+that passed the response schema, citation allowlist and decision-word check. Enforcement rejected
+0/27. Each raw response was generated once and replayed unchanged through report-only and
+enforcing modes, so the comparison still isolates enforcement from sampling variance.
+
+**Untested-configuration sweep.** Provider model defaults are now all reachable offline;
+Anthropic's default endpoint and Ollama URL normalisation are request-tested, and Gemini's default
+endpoint is exercised by the live suite. The `plan` 8-second and `explain` 12-second defaults are
+reached by live parity but their literal values are not pinned by a unit assertion; experiment
+deadlines are explicit and exercised. Two non-provider fallbacks remain unverified but showed no
+defect in this session: the singleton database path `./data/db/vigil.db` and operator id
+`operator-unconfigured`. They were listed rather than changed, as requested.
+
+Then: Open-Meteo at `external_context`, liveness/timeout paths beyond model providers, the map
+view, submission artefacts, and a second adversarial corpus with repeated control/injection
+samples if stronger causal attribution is needed.
 
 ### Session 13 — live Gemini seam and measurements (complete)
 

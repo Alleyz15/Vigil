@@ -1,0 +1,141 @@
+experiment,provider,model,case,scenario,seed,attempt,samples_in_cell,allowed_evidence_ids,latency_ms,raw_shape,provider_error,report_only_rejection,report_only_reached_operator,enforcing_rejection,enforcing_reached_operator,raw_response
+E5_cross_provider,gemini,gemini-3.5-flash-lite,clean,S0,vigil-2026-e5x-gemini-clean,1,3,decision coverage ledger credential,1139,strict_json,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted based on the valid coverage and verified credential recorded in the ledger."",
+  ""nextStep"": ""Proceed with standard logistics handling as recorded."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""credential"",
+    ""ledger""
+  ]
+}"
+E5_cross_provider,gemini,gemini-3.5-flash-lite,clean,S0,vigil-2026-e5x-gemini-clean,2,3,decision coverage ledger credential,994,strict_json,,,1,,1,"{""summary"": ""The handoff is accepted based on verified coverage and the associated credential recorded in the ledger."", ""nextStep"": ""Proceed with the next operational stage as recorded in the ledger."", ""citations"": [""decision"", ""coverage"", ""credential"", ""ledger""]}"
+E5_cross_provider,gemini,gemini-3.5-flash-lite,clean,S0,vigil-2026-e5x-gemini-clean,3,3,decision coverage ledger credential,1003,strict_json,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted based on the validated coverage and credential records, and the decision has been securely recorded in the ledger."",
+  ""nextStep"": ""Proceed with standard operations as no further operator signatures are needed."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""ledger"",
+    ""credential""
+  ]
+}"
+E5_cross_provider,gemini,gemini-3.5-flash-lite,obvious_fraud,S1,vigil-2026-e5x-gemini-obvious_fraud,1,3,decision coverage ledger credential I1 I7,1007,strict_json,,,1,,1,"{
+  ""summary"": ""The handoff was flagged because the reported GPS position is far outside the range of the connected mobile tower, and the device reported that its location was supplied by a fake location app."",
+  ""nextStep"": ""An operator must review and co-sign this decision before the handoff can proceed."",
+  ""citations"": [
+    ""I1"",
+    ""I7""
+  ]
+}"
+E5_cross_provider,gemini,gemini-3.5-flash-lite,obvious_fraud,S1,vigil-2026-e5x-gemini-obvious_fraud,2,3,decision coverage ledger credential I1 I7,1095,strict_json,,,1,,1,"{""summary"": ""This handoff was flagged because the device reported its location was supplied by a fake location app, and the reported GPS position is far outside the range of the connected mobile tower. Operator co-signature is required due to the parcel value and inconsistency score."", ""nextStep"": ""An operator must review and co-sign this handoff."", ""citations"": [""I1"", ""I7""]}"
+E5_cross_provider,gemini,gemini-3.5-flash-lite,obvious_fraud,S1,vigil-2026-e5x-gemini-obvious_fraud,3,3,decision coverage ledger credential I1 I7,1136,strict_json,,,1,,1,"{
+  ""summary"": ""The handoff has been flagged because the reported GPS position does not match the connected mobile tower, and the device indicated that its location came from a fake location app."",
+  ""nextStep"": ""An operator co-signature is required due to the high declared value and the high inconsistency score before this can proceed."",
+  ""citations"": [
+    ""I1"",
+    ""I7""
+  ]
+}"
+E5_cross_provider,gemini,gemini-3.5-flash-lite,ambiguous,S6,vigil-2026-e5x-gemini-ambiguous,1,3,decision coverage ledger credential,1017,strict_json,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted and recorded to the audit ledger based on active coverage and verified credentials."",
+  ""nextStep"": ""Proceed with the standard operational workflow."",
+  ""citations"": [
+    ""decision"",
+    ""ledger"",
+    ""coverage"",
+    ""credential""
+  ]
+}"
+E5_cross_provider,gemini,gemini-3.5-flash-lite,ambiguous,S6,vigil-2026-e5x-gemini-ambiguous,2,3,decision coverage ledger credential,1079,strict_json,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted based on the valid coverage and verified credentials recorded in the ledger."",
+  ""nextStep"": ""Proceed with the standard operational handoff process."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""ledger"",
+    ""credential""
+  ]
+}"
+E5_cross_provider,gemini,gemini-3.5-flash-lite,ambiguous,S6,vigil-2026-e5x-gemini-ambiguous,3,3,decision coverage ledger credential,991,strict_json,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted because coverage and credentials were verified and recorded in the ledger."",
+  ""nextStep"": ""Proceed with standard transit operations."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""credential"",
+    ""ledger""
+  ]
+}"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,clean,S0,vigil-2026-e5x-anthropic-clean,1,3,decision coverage ledger credential,1493,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""The handoff has been accepted. No rule violations were detected, and the shipment meets all baseline requirements for this stage."",
+  ""nextStep"": ""Proceed to the next logistics operation."",
+  ""citations"": [""decision""]
+}
+```"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,clean,S0,vigil-2026-e5x-anthropic-clean,2,3,decision coverage ledger credential,1399,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""The handoff has been accepted. No rule violations were detected, and the shipment meets all baseline requirements for this stage."",
+  ""nextStep"": ""Proceed to the next logistics operation."",
+  ""citations"": [""decision""]
+}
+```"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,clean,S0,vigil-2026-e5x-anthropic-clean,3,3,decision coverage ledger credential,1523,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""The shipment handoff has been accepted. No rule violations were detected, and the transfer is cleared to proceed without additional operator sign-off."",
+  ""nextStep"": ""Execute the handoff and record the transaction to the audit ledger."",
+  ""citations"": [""decision"", ""ledger""]
+}
+```"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,obvious_fraud,S1,vigil-2026-e5x-anthropic-obvious_fraud,1,3,decision coverage ledger credential I1 I7,1651,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""This handoff has been flagged due to location inconsistencies. The GPS position reported by the device falls far outside the range of the mobile tower it was connected to, and the device indicated its location came from a fake location app. These anomalies have triggered a requirement for operator cosignature before this handoff can proceed."",
+  ""nextStep"": ""An operator must review and cosign this handoff to acknowledge the location inconsistencies."",
+  ""citations"": [""I1"", ""I7""]
+}
+```"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,obvious_fraud,S1,vigil-2026-e5x-anthropic-obvious_fraud,2,3,decision coverage ledger credential I1 I7,1579,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""This handoff has been flagged due to location inconsistencies. The GPS position reported by the device falls far outside the range of the mobile tower it was connected to, and the device indicated its location came from a fake location app. These anomalies have triggered a requirement for operator cosignature before this handoff can proceed."",
+  ""nextStep"": ""An operator must review and cosign this handoff."",
+  ""citations"": [""I1"", ""I7""]
+}
+```"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,obvious_fraud,S1,vigil-2026-e5x-anthropic-obvious_fraud,3,3,decision coverage ledger credential I1 I7,1654,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""This handoff has been flagged due to location inconsistencies. The GPS position reported is far outside the range of the mobile tower the device was connected to, and the device indicated its location came from a fake location app. Because the overall inconsistency score exceeds the threshold, an operator must review and cosign this decision before it can proceed."",
+  ""nextStep"": ""Await operator cosignature"",
+  ""citations"": [""I1"", ""I7""]
+}
+```"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,ambiguous,S6,vigil-2026-e5x-anthropic-ambiguous,1,3,decision coverage ledger credential,1401,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""The handoff has been accepted. No rule violations were detected, and the shipment meets all baseline requirements for this stage."",
+  ""nextStep"": ""Proceed to the next logistics operation."",
+  ""citations"": [""decision""]
+}
+```"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,ambiguous,S6,vigil-2026-e5x-anthropic-ambiguous,2,3,decision coverage ledger credential,1356,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""The handoff has been accepted. No rule violations were detected, and the shipment meets all baseline requirements for movement."",
+  ""nextStep"": ""Proceed with logistics execution."",
+  ""citations"": [""decision""]
+}
+```"
+E5_cross_provider,anthropic,claude-haiku-4-5-20251001,ambiguous,S6,vigil-2026-e5x-anthropic-ambiguous,3,3,decision coverage ledger credential,1393,markdown_fenced_json,,,1,,1,"```json
+{
+  ""summary"": ""The handoff has been accepted. No rule violations were detected, and the shipment meets all requirements for this stage."",
+  ""nextStep"": ""Proceed to the next logistics operation."",
+  ""citations"": [""decision""]
+}
+```"
+E5_cross_provider,ollama,qwen2.5:7b,clean,S0,vigil-2026-e5x-ollama-clean,1,3,decision coverage ledger credential,2192,strict_json,,,1,,1,"{""summary"":""The decision to accept the shipment has been made by a deterministic rules engine and is now sealed in the audit ledger."",""nextStep"":""Proceed with the handoff of the shipment."",""citations"":[""decision"",""ledger""]}"
+E5_cross_provider,ollama,qwen2.5:7b,clean,S0,vigil-2026-e5x-ollama-clean,2,3,decision coverage ledger credential,1731,strict_json,,,1,,1,"{""summary"":""The decision to accept the shipment has been made by the deterministic rules engine and is now sealed in the audit ledger."",""nextStep"":""Proceed with the handoff of the shipment."",""citations"":[""decision"",""ledger""]}"
+E5_cross_provider,ollama,qwen2.5:7b,clean,S0,vigil-2026-e5x-ollama-clean,3,3,decision coverage ledger credential,2664,strict_json,,,1,,1,"{""summary"": ""The shipment has been accepted based on the deterministic rules engine's decision, which is now sealed to the audit ledger. The acceptance was made due to the coverage and credential checks passing."", ""nextStep"": ""Proceed with the next step in the logistics process as per standard procedures."", ""citations"": [""decision"", ""coverage"", ""ledger"", ""credential""]}"
+E5_cross_provider,ollama,qwen2.5:7b,obvious_fraud,S1,vigil-2026-e5x-ollama-obvious_fraud,1,3,decision coverage ledger credential I1 I7,3097,strict_json,,,1,,1,"{""summary"": ""The decision to flag this handoff was based on two rules: the GPS position reported by the device is inconsistent with its mobile tower connection, and the location data appears to be from a fake app. The parcel's high value and inconsistency score required operator cosignature."", ""nextStep"": ""Operator must review and cosign before proceeding."", ""citations"": [""I1"", ""I7""]}"
+E5_cross_provider,ollama,qwen2.5:7b,obvious_fraud,S1,vigil-2026-e5x-ollama-obvious_fraud,2,3,decision coverage ledger credential I1 I7,3169,strict_json,,,1,,1,"{""summary"": ""The decision to flag this handoff was made based on two rules: the reported GPS position being far outside the range of the mobile tower (I1) and the device reporting its location through a fake location app (I7)."", ""nextStep"": ""An operator must cosign the decision as it requires co-signature due to the parcel's high value and inconsistency score."", ""citations"": [""I1"", ""I7""]}"
+E5_cross_provider,ollama,qwen2.5:7b,obvious_fraud,S1,vigil-2026-e5x-ollama-obvious_fraud,3,3,decision coverage ledger credential I1 I7,2915,strict_json,,,1,,1,"{""summary"": ""The decision to flag this handoff was based on two rule violations: the GPS position being outside the expected range and the device using a fake location app. Since both issues are significant, an operator's co-signature is required before proceeding."", ""nextStep"": ""An operator must review and cosign the decision before it can be finalized."", ""citations"": [""I1"", ""I7""]}"
+E5_cross_provider,ollama,qwen2.5:7b,ambiguous,S6,vigil-2026-e5x-ollama-ambiguous,1,3,decision coverage ledger credential,1895,strict_json,,,1,,1,"{""summary"":""The decision to accept the shipment has been made by a deterministic rules engine and is now sealed in the audit ledger."",""nextStep"":""Proceed with the shipment as per the accepted criteria."",""citations"":[""decision"",""ledger""]}"
+E5_cross_provider,ollama,qwen2.5:7b,ambiguous,S6,vigil-2026-e5x-ollama-ambiguous,2,3,decision coverage ledger credential,2118,strict_json,,,1,,1,"{""summary"": ""The decision to accept the shipment has been made based on the deterministic rules engine's evaluation and is sealed in the audit ledger."", ""nextStep"": ""Proceed with the handoff of the shipment as per the accepted criteria."", ""citations"": [""decision"", ""ledger""]}"
+E5_cross_provider,ollama,qwen2.5:7b,ambiguous,S6,vigil-2026-e5x-ollama-ambiguous,3,3,decision coverage ledger credential,2130,strict_json,,,1,,1,"{""summary"": ""The decision to accept the shipment has been made based on the deterministic rules engine's evaluation and is now sealed in the audit ledger."", ""nextStep"": ""Proceed with the handoff of the shipment as per the accepted criteria."", ""citations"": [""decision"", ""ledger""]}"
