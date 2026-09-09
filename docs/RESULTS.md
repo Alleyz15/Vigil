@@ -35,7 +35,8 @@ did not move.
 queued uploads, missed scans, clock drift, redeliveries, stale addresses — parameterised at four
 levels and documented in [DATASET.md](./DATASET.md#the-environmental-noise-model). Level 0 is the
 old noise-free dataset and is reported alongside, so what changed is visible rather than
-asserted. E2 was rerun after the I4/I5 change; E1 and E5 remain unchanged from session 9.
+asserted. E2 was rerun after the I4/I5 change; E1 remains unchanged from session 9. E4 and E5
+were measured against live Gemini in session 13; E1, E2, E3 and E6 were not rerun then.
 
 ---
 
@@ -251,29 +252,83 @@ from `eventTime` and server-stamped `recordTime` without using Vigil's verdicts.
 
 ---
 
-## E4 — LLM-only verdict instability
-
-**NOT RUN.** Requires `GEMINI_API_KEY`, which was not set.
+## Live Gemini seam preflight
 
 ```bash
-GEMINI_API_KEY=... npx tsx scripts/experiments/e4-llm-instability.ts
+npm run test:llm:live
 ```
 
-This experiment puts the same event to a model five times, asking it to decide, and reports how
-often the answer changes. It is the empirical support for the architecture's central claim.
+The live suite passed **7/7**, including connectivity, deterministic `plan` fallback, accepted
+`explain`, and a parity run whose sealed verdict is byte-identical with and without Gemini. On the
+final recorded run, `plan` exceeded its 20-second integration deadline and selected tools with the
+same deterministic heuristic used offline; `explain` returned a schema-valid live response. That
+timeout is the fallback working, not a successful plan completion. Both ledger chains verify and
+commit to the same event payload and verdict; their wall-clock `recordedAt` fields and therefore
+their hash bytes are expected to differ between separate runs.
 
-**It cannot be simulated.** Substituting a fake model would measure the fake. A stability number
-invented that way would be worse than no number, so this section reports nothing rather than a
-placeholder.
+The first live attempt found two configuration bugs before it measured a model. The provider and
+`.env.example` still defaulted to retired `gemini-2.0-flash`, and `.env` declared
+`GEMINI_API_KEY` twice, with an empty second value overriding the real key. The model default had
+been unreachable while the live suite skipped for six sessions. **A default no test can reach is
+unverified code, not configuration.** Both defects are now covered by the offline construction
+test or by the dedicated env-loading command.
 
-**The deciding prompt exists only in the experiment script**, never in `lib/llm`. No production
-module contains a function that asks a model for a verdict, even unused. This experiment exists
-to show that path is unreliable; building it into the codebase to prove that would be
-self-defeating.
+Availability diagnostics selected the model before E4/E5: the authenticated inventory listed
+`gemini-3.8-flash`, but it produced no completion within 120 seconds; `gemini-3.5-flash` returned
+503 high demand; and `gemini-2.5-flash-lite` returned 404 with guidance for new users to move to
+3.5 Flash-Lite. `gemini-3.5-flash-lite` succeeded in 39.8 seconds at low reasoning and 1.1 seconds
+at minimal reasoning on the same smoke prompt. The final configuration is therefore
+**`gemini-3.5-flash-lite` at `minimal`**, not a silent alias. These are point-in-time provider
+observations, not benchmark results. Google documents the current model and reasoning controls in
+the [Gemini model documentation](https://ai.google.dev/gemini-api/docs/models) and
+[OpenAI compatibility guide](https://ai.google.dev/gemini-api/docs/openai).
 
-**What would falsify the architecture's premise.** A model returning the same verdict 5/5 times
-across every sampled event would mean determinism is not buying what we claim. That result would
-be worth reporting honestly.
+---
+
+## E4 — LLM-only verdict instability
+
+**Does one model change its decision when the evidence does not change?**
+
+```bash
+npm run experiment:e4                 # results/e4-llm-instability.csv
+```
+
+Model: **`gemini-3.5-flash-lite`**, reasoning effort `minimal`, temperature `0`.
+Three fixed delivery events × five independent calls = **15 attempts**.
+
+| Case | Decisions | Top-1 | Top-2 | Pairwise disagreement | Engine, measured separately |
+|---|---|---:|---:|---:|---|
+| S0 clean | accept 5/5 | **100%** | 100% | **0%** | accept |
+| S1 obvious spoofing | flag 5/5 | **100%** | 100% | **0%** | flag |
+| S6 degraded/ambiguous | accept 5/5 | **100%** | 100% | **0%** | accept |
+
+**The instability prediction was wrong.** This Gemini model was perfectly stable on all three
+fixtures, including the case preregistered as ambiguous, and agreed with Vigil's separately
+computed decision 15/15 times. That weakens the proposed empirical argument that repeated model
+calls are inherently unstable. It is reported as found rather than reframed as instability.
+
+**Method.** The model received EPCIS timestamps, recipient coordinates, GPS, independently
+resolved cell/WiFi locations, motion, integrity, battery and proof-of-delivery observations. It
+received **no engine score, rule id, rule label or sealed verdict**. Otherwise agreement would
+measure the model paraphrasing Vigil's conclusion rather than deciding from evidence. The
+deciding prompt remains local to `scripts/experiments/e4-llm-instability.ts`; rule 1c still keeps
+that function out of production code.
+
+All 15 responses were strict JSON with the expected field. There were no refusals, schema-invalid
+answers, unexpected fields, markdown fences, trailing prose, rate limits or provider errors.
+Latency ranged from **0.79 s to 18.93 s**, with a **6.65 s median**; the ambiguous case had the
+widest spread (0.81–18.93 s).
+
+**What this does not show.** Fifteen calls over three synthetic events at temperature zero are
+not a general reliability estimate, and agreement is not proof of correctness. This is one
+hosted model, one vendor, one account and one point in time. Until Claude or another model family
+is measured, *"the model is unstable"* can only mean *"this named model was unstable"* — and this
+named model was not unstable here.
+
+**What would falsify it.** Repeating these fixed model/fixture cells and obtaining more than one
+valid decision in a cell would falsify the measured perfect stability. A broader event set can
+also show that these three cases were unrepresentative; it must not be described as a replication
+of this fixed test.
 
 ---
 
@@ -282,29 +337,44 @@ be worth reporting honestly.
 **How much of what a model says survives the citation check?**
 
 ```bash
-npx tsx scripts/experiments/e5-citation-hallucination.ts   # results/e5-citation-hallucination.csv
+npm run experiment:e5                 # results/e5-citation-hallucination.csv
 ```
 
-n = 12 samples. **Synthetic panel — `GEMINI_API_KEY` not set.**
+n = **15 live responses**: five each for S0 clean, S1 obvious spoofing and S6 degraded evidence.
+Model: **`gemini-3.5-flash-lite`**, reasoning effort `minimal`.
 
-| Mode | Reached operator | Attempts | Refused | Rate | bad_citation | decision_contradiction |
-|---|---|---|---|---|---|---|
-| Report-only (before) | **12/12** | 12 | 9 | 75.0% | 6 | 3 |
-| Enforcing (after) | **3/12** | 12 | 9 | 75.0% | 6 | 3 |
+| Mode | Reached operator | Attempts | Refused | Rate | bad citation | contradiction | schema invalid | provider error |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Report-only (before) | **15/15** | 15 | 0 | **0.0%** | 0 | 0 | 0 | 0 |
+| Enforcing (after) | **15/15** | 15 | 0 | **0.0%** | 0 | 0 | 0 | 0 |
 
-**What this shows.** The counters are identical in both modes — enforcement does not change what
-is *detected*, it changes what is *allowed through*. Without it, all twelve explanations reach an
-operator including six citing evidence the run never collected and three asserting an outcome
-the sealed verdict contradicts. With it, three do.
+**The live hallucination prediction was not supported.** Gemini cited only evidence collected in
+the corresponding run, never contradicted the sealed decision, and satisfied the strict response
+schema in all 15 attempts. Enforcement therefore changed nothing in this sample. All responses
+were strict JSON; there were no plausible-but-uncollected ids, unexpected fields, markdown fences,
+trailing prose, refusals, rate limits or provider errors. Latency ranged from **0.91 s to 10.23 s**
+with a **1.29 s median**.
 
-**What this does not show.** **This is mechanism validation, not a model measurement.** The
-panel is 75% bad by construction, so the 75% refusal rate is a property of the fixture. It shows
-the check catches what is put in front of it. It says **nothing** about how often a real model
-invents a citation — that number is a property of the model and requires a key.
+**Why each response was processed twice rather than generated twice.** Gemini produced one raw
+response per attempt. That exact byte string was replayed through report-only and enforcing modes.
+Making two model calls would confound the enforcement effect with the model's own variance, so any
+difference would be uninterpretable. The detection counters are asserted identical; only whether
+rejected prose reaches an operator is allowed to differ.
 
-**What would falsify it.** A response citing invented evidence that survived enforcement, or a
-correctly-negated sentence ("this was *not* approved") being refused. The first is a hole; the
-second is over-refusal. `lib/llm/llm.test.ts` guards both.
+**What this supersedes.** Session 9's 12-response synthetic panel measured the mechanism and was
+75% invalid by construction. Its 75% refusal rate was a fixture property, not a model statistic;
+it is intentionally replaced by this 0/15 live measurement. The scripted rejection cases remain
+as tests proving the guard catches bad citations and contradictions when presented.
+
+**What this does not show.** Zero observed rejections is not a zero population rate. The prompts
+are short, schema-constrained and contain explicit allowed ids; longer contexts, adversarial text
+and other model families are unmeasured. This result belongs to this exact Gemini model, not to
+LLMs generally. A second vendor family is planned.
+
+**What would falsify it.** A further response from this fixed setup containing an invented id or
+contradictory decision word would falsify the observed zero rate. A bad response that survives
+enforcement would be more serious: it would falsify the architectural guard itself, not merely
+this sample. `lib/llm/llm.test.ts` retains explicit cases for both failure classes.
 
 ---
 

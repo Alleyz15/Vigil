@@ -1,13 +1,121 @@
-experiment,source,sample,samples_in_cell,injected_hallucination,report_only_rejection,report_only_hallucinated,enforced_rejection,enforced_fell_back
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",0,12,0,bad_citation (report-only),C1,bad_citation,1
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",1,12,1,,,,0
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",2,12,1,bad_citation (report-only),C1,bad_citation,1
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",3,12,1,"decision_contradiction (report-only): ""approved""",,"decision_contradiction: ""approved""",1
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",4,12,0,bad_citation (report-only),C1,bad_citation,1
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",5,12,1,,,,0
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",6,12,1,bad_citation (report-only),C1,bad_citation,1
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",7,12,1,"decision_contradiction (report-only): ""approved""",,"decision_contradiction: ""approved""",1
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",8,12,0,bad_citation (report-only),C1,bad_citation,1
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",9,12,1,,,,0
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",10,12,1,bad_citation (report-only),C1,bad_citation,1
-E5,"synthetic panel (mechanism validation, NOT a model measurement)",11,12,1,"decision_contradiction (report-only): ""approved""",,"decision_contradiction: ""approved""",1
+experiment,model,case,scenario,seed,attempt,samples_in_cell,allowed_evidence_ids,latency_ms,raw_shape,provider_error,report_only_rejection,report_only_hallucinated_ids,report_only_reached_operator,enforcing_rejection,enforcing_reached_operator,raw_response
+E5,gemini-3.5-flash-lite,clean,S0,vigil-2026-e5-clean,1,5,decision coverage ledger credential,1650,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted based on the verified credential and coverage status, and the decision is permanently recorded in the ledger."",
+  ""nextStep"": ""Proceed with the standard operational workflow as the handoff is complete."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""ledger"",
+    ""credential""
+  ]
+}"
+E5,gemini-3.5-flash-lite,clean,S0,vigil-2026-e5-clean,2,5,decision coverage ledger credential,2836,strict_json,,,,1,,1,"{""summary"": ""The handoff is accepted based on the validated coverage, ledger, and credential."", ""nextStep"": ""Proceed with standard logistics processing."", ""citations"": [""decision"", ""coverage"", ""ledger"", ""credential""]}"
+E5,gemini-3.5-flash-lite,clean,S0,vigil-2026-e5-clean,3,5,decision coverage ledger credential,1044,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted because all verification checks met the required criteria."",
+  ""nextStep"": ""Proceed with the standard operational workflow."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""ledger"",
+    ""credential""
+  ]
+}"
+E5,gemini-3.5-flash-lite,clean,S0,vigil-2026-e5-clean,4,5,decision coverage ledger credential,1294,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted as the coverage, credentials, and ledger verification all met the required standards."",
+  ""nextStep"": ""Proceed with the standard operational handover."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""credential"",
+    ""ledger""
+  ]
+}"
+E5,gemini-3.5-flash-lite,clean,S0,vigil-2026-e5-clean,5,5,decision coverage ledger credential,1041,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted because coverage and credentials are verified, and the transaction is recorded on the ledger."",
+  ""nextStep"": ""Proceed with the next operational phase as authorized by the ledger entry."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""credential"",
+    ""ledger""
+  ]
+}"
+E5,gemini-3.5-flash-lite,obvious_fraud,S1,vigil-2026-e5-obvious_fraud,1,5,decision coverage ledger credential I1 I7,914,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff was flagged because the reported GPS position is far outside the range of the connected mobile tower, and the device reported that its location was supplied by a fake location app."",
+  ""nextStep"": ""An operator co-signature is required before proceeding further."",
+  ""citations"": [
+    ""I1"",
+    ""I7""
+  ]
+}"
+E5,gemini-3.5-flash-lite,obvious_fraud,S1,vigil-2026-e5-obvious_fraud,2,5,decision coverage ledger credential I1 I7,958,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff was flagged because the reported GPS position is far outside the range of the connected mobile tower, and the device reported that its location was supplied by a fake location app."",
+  ""nextStep"": ""An operator must review and co-sign this decision before it can proceed."",
+  ""citations"": [
+    ""I1"",
+    ""I7""
+  ]
+}"
+E5,gemini-3.5-flash-lite,obvious_fraud,S1,vigil-2026-e5-obvious_fraud,3,5,decision coverage ledger credential I1 I7,947,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff was flagged because the reported GPS position is far outside the range of the connected mobile tower, and the device reported that its location was supplied by a fake location app."",
+  ""nextStep"": ""An operator co-signature is required before proceeding due to the high declared value and inconsistency score."",
+  ""citations"": [
+    ""I1"",
+    ""I7""
+  ]
+}"
+E5,gemini-3.5-flash-lite,obvious_fraud,S1,vigil-2026-e5-obvious_fraud,4,5,decision coverage ledger credential I1 I7,1306,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff was flagged because the reported GPS position is far outside the range of the connected mobile tower, and the device reported that its location was supplied by a fake location app."",
+  ""nextStep"": ""An operator must review and co-sign this decision before proceeding."",
+  ""citations"": [
+    ""I1"",
+    ""I7""
+  ]
+}"
+E5,gemini-3.5-flash-lite,obvious_fraud,S1,vigil-2026-e5-obvious_fraud,5,5,decision coverage ledger credential I1 I7,9379,strict_json,,,,1,,1,"{""summary"": ""The handoff was flagged because the device reported its location was supplied by a fake location app, and the reported GPS position is far outside the range of the connected mobile tower."", ""nextStep"": ""An operator co-signature is required before proceeding."", ""citations"": [""I1"", ""I7""]}"
+E5,gemini-3.5-flash-lite,ambiguous,S6,vigil-2026-e5-ambiguous,1,5,decision coverage ledger credential,1048,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted as supported by the verification record."",
+  ""nextStep"": ""Proceed with standard logistics routing."",
+  ""citations"": [
+    ""decision"",
+    ""ledger""
+  ]
+}"
+E5,gemini-3.5-flash-lite,ambiguous,S6,vigil-2026-e5-ambiguous,2,5,decision coverage ledger credential,2182,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted because all operational verification checks passed successfully."",
+  ""nextStep"": ""Proceed with the standard release procedure."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""ledger"",
+    ""credential""
+  ]
+}"
+E5,gemini-3.5-flash-lite,ambiguous,S6,vigil-2026-e5-ambiguous,3,5,decision coverage ledger credential,10229,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted as supported by the verification record."",
+  ""nextStep"": ""Proceed with the standard release procedure."",
+  ""citations"": [
+    ""decision"",
+    ""ledger""
+  ]
+}"
+E5,gemini-3.5-flash-lite,ambiguous,S6,vigil-2026-e5-ambiguous,4,5,decision coverage ledger credential,9861,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted because all verification criteria and credentials were successfully met."",
+  ""nextStep"": ""The transaction is finalized on the ledger and ready for completion."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""ledger"",
+    ""credential""
+  ]
+}"
+E5,gemini-3.5-flash-lite,ambiguous,S6,vigil-2026-e5-ambiguous,5,5,decision coverage ledger credential,1128,strict_json,,,,1,,1,"{
+  ""summary"": ""The handoff has been accepted as supported by the verification data."",
+  ""nextStep"": ""Proceed with standard processing."",
+  ""citations"": [
+    ""decision"",
+    ""coverage"",
+    ""ledger"",
+    ""credential""
+  ]
+}"

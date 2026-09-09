@@ -10,11 +10,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:llm:live": "node --env-file-if-exists=.env ./node_modules/vitest/vitest.mjs run lib/llm/integration.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.include='lib/engine/**' --coverage.include='lib/pattern/**' --coverage.include='lib/gate/**' --coverage.exclude='**/fixtures.ts' --coverage.exclude='**/index.ts' --coverage.exclude='**/*.test.ts'",
-    "experiments": "tsx scripts/experiments/run-all.ts",
+    "experiments": "node --env-file-if-exists=.env --import tsx scripts/experiments/run-all.ts",
+    "experiment:e4": "node --env-file-if-exists=.env --import tsx scripts/experiments/e4-llm-instability.ts",
+    "experiment:e5": "node --env-file-if-exists=.env --import tsx scripts/experiments/e5-citation-hallucination.ts",
     "qa:capture": "node scripts/qa/capture-console.mjs"
   },
   "dependencies": {

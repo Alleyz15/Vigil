@@ -1,0 +1,32 @@
+experiment,model,case,meaning,scenario,seed,attempt,samples_in_cell,event_id,temperature,latency_ms,raw_shape,model_decision,schema_invalid,provider_error,raw_response,deterministic_verdict
+E4,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4-clean,1,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,800,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4-clean,2,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,794,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4-clean,3,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,6646,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4-clean,4,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,1200,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4,gemini-3.5-flash-lite,clean,ordinary delivery with agreeing signals,S0,vigil-2026-e4-clean,5,5,c08ddfe9-e5f6-4050-857b-7fb9a6848039,0,7012,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4-obvious_fraud,1,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,9282,strict_json,flag,0,,"{""decision"": ""flag""}",flag
+E4,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4-obvious_fraud,2,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,7075,strict_json,flag,0,,"{
+  ""decision"": ""flag""
+}",flag
+E4,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4-obvious_fraud,3,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,7091,strict_json,flag,0,,"{
+  ""decision"": ""flag""
+}",flag
+E4,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4-obvious_fraud,4,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,1472,strict_json,flag,0,,"{""decision"": ""flag""}",flag
+E4,gemini-3.5-flash-lite,obvious_fraud,spoofed GPS contradicting independent sources,S1,vigil-2026-e4-obvious_fraud,5,5,c1a5fe13-bcce-4ee7-8d6b-10f47e74ecfa,0,1889,strict_json,flag,0,,"{
+  ""decision"": ""flag""
+}",flag
+E4,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4-ambiguous,1,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,18933,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4-ambiguous,2,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,1640,strict_json,accept,0,,"{""decision"": ""accept""}",accept
+E4,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4-ambiguous,3,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,7955,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4-ambiguous,4,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,16353,strict_json,accept,0,,"{
+  ""decision"": ""accept""
+}",accept
+E4,gemini-3.5-flash-lite,ambiguous,degraded underground location evidence,S6,vigil-2026-e4-ambiguous,5,5,748ab72b-0d97-4a9a-891d-cdb1822231c5,0,807,strict_json,accept,0,,"{""decision"": ""accept""}",accept

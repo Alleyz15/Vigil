@@ -1166,6 +1166,65 @@ Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, th
 the submission artefacts. Adding a genuine expressway leg to the generator is the only remaining
 test for the implied-speed threshold.
 
+### Session 13 — live Gemini seam and measurements (complete)
+
+511 offline tests passing, 4 live tests skipped without a key. The dedicated live suite passes
+7/7 with the configured key. `tsc --noEmit` clean, eslint clean, `next build` succeeds;
+`lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% branch coverage.
+
+Predictions were committed first in `ca0276b`, before any live request. No detector threshold
+moved, and E1, E2, E3 and E6 were not rerun.
+
+**The first live run found two demo-day configuration bugs.** Session 7 set the default to
+`gemini-2.0-flash`; because the integration suite skipped without a key, that retired id remained
+in production for six sessions. The local `.env` also declared `GEMINI_API_KEY` twice, and Node's
+env loader correctly let the later empty placeholder override the real value. The provider,
+`.env.example` and local ignored env are corrected, and an offline construction test now reaches
+the default. General lesson: **a default that no test can reach is not configuration; it is
+unverified code.**
+
+The authenticated inventory confirmed `gemini-3.8-flash` existed, but it did not complete within
+120 seconds on this account. `gemini-3.5-flash` returned 503 high demand; the listed
+`gemini-2.5-flash-lite` returned 404 unavailable to new users. The API-recommended
+`gemini-3.5-flash-lite` completed in 39.8 seconds at low reasoning and 1.1 seconds at minimal on
+the same smoke request. The shipped default is therefore the literal model id
+`gemini-3.5-flash-lite`, with `GEMINI_REASONING_EFFORT=minimal`. Every E4/E5 row records the model
+id. Hosted model ids and capacity move; a result that omits its model cannot be reproduced.
+
+**The live seam passed 7/7 tests.** On the final recorded run, Gemini's `plan` call exceeded the
+20-second integration deadline and the node used the deterministic heuristic; `explain` returned
+a schema-valid live response and was accepted. The timeout is real provider behaviour and the
+fallback is the seam working — it must not be described as a successful plan completion. The
+sealed verdict was byte-identical with `llm: undefined` and live Gemini. Each separately timed
+ledger chain verifies and commits to the same payload and verdict. Their `recordedAt` values and
+chain hashes differ by design because the runs happened at different wall-clock instants; the test
+compares the committed meaning, not timestamps it cannot honestly make identical.
+
+**E4 weakened the instability argument.** On three neutral fixtures × five calls, Gemini returned
+S0 `accept` 5/5, S1 `flag` 5/5 and S6 `accept` 5/5: 100% top-1 agreement and 0% pairwise
+disagreement in every cell. The ambiguous-case prediction was wrong. The prompt carried raw
+signals and independently resolved context, never Vigil scores, rule ids, labels or verdicts, so
+the model was deciding rather than paraphrasing the engine. This is one model, not a claim about
+all model families; a second vendor remains planned.
+
+**E5 measured zero live hallucination rejections.** All 15 Gemini explanations were strict JSON,
+cited only collected ids, did not contradict the sealed decision, and reached the operator in both
+report-only and enforcing modes. Each raw response was generated once and replayed byte-for-byte
+through both modes. Two independent model calls would confound enforcement with model variance,
+making their difference uninterpretable. The old 75% synthetic panel remains a mechanism test,
+not a model statistic, and RESULTS.md now says so explicitly.
+
+Across the 30 experiment responses there were **zero** malformed objects, refusals, unexpected
+fields, invented plausible ids, markdown fences, trailing prose, rate limits or provider errors.
+E4 latency was 0.79–18.93 s (median 6.65 s); E5 was 0.91–10.23 s (median 1.29 s). The 3.8 timeout,
+3.5 capacity failure and retired-model 404 are kept as preflight provider observations rather than
+mixed into those fixed experiment denominators.
+
+**Other unreachable defaults checked.** Ollama still names `llama3.1`, but that provider is an
+explicit unbuilt seam and was deliberately not exercised or changed in this Gemini-only session.
+It must be validated when the Ollama session lands. The QA browser's localhost URL is a local
+tool default, not a hosted dependency. No Claude provider exists yet, by design.
+
 ### Session 12 — motion pass and recording-resolution polish (complete)
 
 498 tests passing, 3 skipped. `tsc --noEmit` clean, eslint clean, `next build` succeeds.
