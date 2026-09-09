@@ -346,6 +346,28 @@ That is the clearest statement of why the pattern axis is not a supplement to th
 axis but a **structurally different kind of evidence** — and therefore why rule 2's ban on
 summing them is not fussiness.
 
+### 4e. Direction is part of the signal
+
+**A rule that collapses two physically different situations into one magnitude is measuring the
+wrong quantity, and no amount of retuning fixes it.** Before changing a bad threshold, check
+whether `abs(...)`, an unsigned distance, or a symmetric band has folded together mechanisms
+whose causes and bounds are different.
+
+I4/I5 exposed this exactly. `recordTime - eventTime > 0` means the server received a scan after
+the device says it happened: store-and-forward upload latency can make that gap arbitrarily long.
+`eventTime - recordTime > 0` means the device claims the event happened in the server's future:
+upload latency cannot cause that, and the benign bound comes from clock synchronisation and
+oscillator drift. **One direction is bounded by nothing; the other is bounded by physics.** Taking
+the absolute value made the old derivation wrong in the upload-delay direction and unfalsifiable
+in the clock-ahead direction.
+
+The second failure was visible without an experiment. I4 awarded exactly **30 points**, while the
+gate's `highInconsistency` cut is exactly **30** and its own derivation says one environmental
+hiccup should not cross the cut alone. I4 therefore defeated the gate's stated design by
+construction. **This was found by reading the engine and gate threshold modules against each
+other**, a check worth repeating: any rule whose points equal a gate cut deserves the same
+scrutiny and an explicit claim that the rule is reliable enough to alert on its own.
+
 ### 4b. Every rule is a contradiction between signals, not a lone heuristic
 
 This is the shape every rule in the system takes, on both axes. A lone heuristic measures one
@@ -1077,11 +1099,29 @@ shows only one applies — a sharper argument than the one it replaces.
   without this the second would derive the same eventID and the ledger would abort it as a replay
   — an honest redelivery would look like S3.
 
-### Session 11 — next
+### Session 11 — I4 semantics and tuning (in progress)
 
-**Tune I4 on the tuning half and rerun the reporting half.** That is the highest-value item in
-the repo: one threshold, a stated derivation the data contradicts, and 89% of the false positives
-behind it. Do it as its own session with the holdout discipline intact.
+The candidate is fixed from the meaning of the signal before looking at the tuning half:
+
+- **I4 becomes directional:** device time at least 30 minutes **ahead of** server receipt,
+  retaining +30. There is no benign upload mechanism in this direction, so alone-sufficient is
+  intentional. A points cut was considered and rejected because it would trade away S5's
+  single-event detection.
+- **I5 becomes directional:** server receipt at least 480 minutes **after** device time, worth
+  +10. The eight-hour boundary is an **assumption** anchored to one configured shift, not a
+  measured mobile-delay percentile. It is deliberately declared as such rather than presented
+  as a sourced tail probability.
+
+The first declaration fixes the absolute-value bug. The second gives store-and-forward delay a
+weak, falsifiable tier without claiming that 30 minutes proves tampering. Both remain one
+mutually-exclusive rule, expressed as band tables, and no other threshold moves this session.
+
+**Dataset independence limitation.** The same published clock-accuracy quantity informs the new
+I4 edge and the generator's honest handset-drift distribution. That is not a banned shared
+detector parameter — both independently cite the same claim about the world — but it means E3
+cannot independently validate the I4 boundary. E3 can test whether the corrected *direction*
+removes queued-upload false positives; it cannot establish that 30 minutes is the right
+clock-ahead edge. This limitation belongs in DATASET.md and RESULTS.md, not only here.
 
 Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, the map view, and
 the submission artefacts. Adding a genuine expressway leg to the generator is the only remaining
@@ -1090,6 +1130,30 @@ test for the implied-speed threshold.
 ---
 
 #### Predictions, recorded before any experiment was run
+
+### Session 11 — predictions (written first)
+
+**WRITTEN AND COMMITTED BEFORE THE I4/I5 IMPLEMENTATION, BEFORE THE TUNING-HALF CHECK, AND BEFORE
+ANY REPORTING-HALF RERUN.** The candidate above was derived from signal direction and stated
+physical meaning, not selected by minimising E3.
+
+1. **E3 level 3 will fall from 12.4% per leg to roughly 1–2%, and level 2 from 3.5% to well under
+   1%.** The 164 level-3 and 43 level-2 queued-upload I4 alerts should disappear because a late
+   server receipt no longer masquerades as a clock-ahead event. Remaining alerts should expose
+   the real tail: stale addresses, photo timing, H1, handset swaps and genuine cross-signal
+   contradictions.
+2. **E2 will remain 5/5 classes at 100%.** S5 sets the device event time 105 minutes ahead of the
+   server and should still fire I4 at the delivery leg. If it falls, the directional fix traded
+   away the attack it exists to detect.
+3. **E6's I3 false-positive edge will remain 50 km/h at every noise level.** I4/I5 do not feed
+   I3, so the speed-specific curve should be byte-for-byte unchanged; only the carried
+   `any_alert_rate` column should fall because unrelated queued-upload alerts disappear.
+4. **I5 will fire zero times at every current noise level.** The generator's adverse queued
+   upload tops out below 480 minutes. That is an explicit coverage gap, not evidence that the new
+   I5 boundary is correct.
+
+**Holdout discipline.** The candidate is checked first on the tuning half. Once fixed, E3, E2
+and E6 run on the reporting half only. No other threshold moves whatever those runs suggest.
 
 ### Session 10 — predictions (written first)
 
