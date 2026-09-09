@@ -1,6 +1,7 @@
 import type { Decision } from "@/lib/ledger/types";
 import type { BuiltEvent, LegName } from "../timeline";
 import type { GeneratedCourier, GeneratedParcel, GeneratedWorld } from "../world";
+import type { Episodes, NoiseLevel } from "../noise";
 import type { Rng } from "../rng";
 
 /**
@@ -32,6 +33,12 @@ export type ScenarioContext = {
   rng: Rng;
   /** Milliseconds since epoch for the first leg of the main timeline. */
   startMs: number;
+  /**
+   * How rough the world is, 0-3. Defaults to 0, the control: no environmental
+   * noise and no randomness drawn, so every expectation below stays valid
+   * without rejustification. Experiment 3 sweeps it.
+   */
+  noiseLevel?: NoiseLevel;
 };
 
 /**
@@ -55,6 +62,16 @@ export type GeneratedScenario = {
   /** Event ids whose deliveries the recipient disputed. */
   disputedEventIds: string[];
   expectation: ScenarioExpectation;
+  /**
+   * The environmental episodes the noise model drew for this shipment.
+   *
+   * GROUND TRUTH FOR THE EXPERIMENTS. Experiment 3 reports the false-positive
+   * rate per episode — of the shipments that lost a scan, how many alerted —
+   * and inferring the episode back out of the events would mean attributing an
+   * alert using the same measurement the detector made. Undefined at level 0,
+   * and for S2, which composes its legs itself.
+   */
+  noiseEpisodes?: Episodes;
   /** A second submission of an already-seen eventID, for S3. */
   replay?: { event: BuiltEvent; expectAbort: string };
 };

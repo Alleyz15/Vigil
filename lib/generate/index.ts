@@ -1,4 +1,5 @@
 export * from "./rng";
+export * from "./noise";
 export * from "./world";
 export * from "./timeline";
 export * from "./carefulness";

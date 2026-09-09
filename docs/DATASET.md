@@ -29,6 +29,11 @@ courier fleet, because we do not have one.
 | Fraudster dispute rate (S2) | ~24% | Chosen to be unmistakably out of line. Invented. |
 | Parcel declared value | RM 15–450 | Invented. |
 
+**The table above is the LEVEL-0 CONTROL.** Those bounded values are what the generator
+produces with the noise model switched off, and they are what session 9's 0% false-positive
+number was measured against. See *The environmental noise model* below for what a real
+fleet's environment looks like and what it does to that number.
+
 **What follows from this.** Detection rates measured on this data describe how the detectors
 behave on *our model of* logistics fraud. They are not estimates of real-world performance, and
 they should not be presented as such. The distributions are our assumptions; a real fleet's may
@@ -43,6 +48,118 @@ Two further honesties:
   the ones that matter.
 - **Addresses are real; everything attached to them is not.** The coordinates are geocoded
   Klang Valley locations. The recipients, parcels and couriers at those coordinates are invented.
+
+---
+
+## The environmental noise model
+
+**Added in session 10, and it replaced a number.** Experiment 3 previously reported 0% false
+positives across 240 legs. That was a floor, not a rate: the values above are all *bounded* —
+GPS 6–18 m, latency 8–90 s, a battery that declines on rails — so no clean shipment came
+anywhere near a rule, and 0% measured *"our clean data does not trip our rules."*
+
+`lib/generate/noise.ts` models the environment a real fleet works in, at four levels. **Level 0
+is the control and draws no randomness at all**, so a level-0 run is byte-identical to the
+dataset every scenario expectation was written against; the levels above it layer noise onto the
+*same* underlying shipment, so a comparison across levels is the same parcel in worse weather
+rather than two different parcels.
+
+### The rule this model lives under
+
+> **Parameters are drawn from distributions that STRADDLE the rules, never from bands chosen to
+> sit under them.**
+
+A basement fix lands at 60 m sometimes — precise enough that the location rules stay *evaluable*
+and can be wrong about an honest scan — and at 250 m other times, vague enough that they honestly
+report `not_evaluated`. **That crossing is where the false positives come from.** A band picked
+so its worst case sits just below a threshold is `0%` written in a different file, and worse than
+the original because it looks measured. This is CLAUDE.md rule 2b, and it is why no value below
+was chosen by looking at what it does to a detector.
+
+The generator still imports no threshold and names none; `lib/purity.test.ts` enforces both.
+
+### The four levels
+
+| Level | Name | The claim about the fleet |
+|---|---|---|
+| 0 | `pristine` | The control. No noise, no randomness drawn. |
+| 1 | `good` | A suburban round on a clear day. Mostly open sky, the odd lobby. |
+| 2 | `urban` | An ordinary Klang Valley round. Tower blocks, basements, patchy uplink. |
+| 3 | `adverse` | A bad day in a dense CBD: deep basements, a hub batching uploads, handsets weeks from a time sync, a replacement device. |
+
+### Every parameter, with its source
+
+**Sourced.** These are the values with something behind them.
+
+| Parameter | L1 | L2 | L3 | Source |
+|---|---|---|---|---|
+| GPS accuracy, open sky | 4–13 m | 4–15 m | 5–20 m | Merry & Bettinger 2019, *PLOS ONE* 14(7):e0219890 — an iPhone 6 against surveyed points in an urban setting, average horizontal error **7–13 m** |
+| GPS accuracy, urban canyon | 12–45 m | 15–60 m | 20–80 m | Smartphone GNSS multipath/NLOS literature: errors of **tens of metres** in built-up streets, **exceeding 50 m** where the sky view is narrow |
+| GPS accuracy, indoor | 25–90 m | 30–130 m | 40–180 m | With GNSS blocked the handset falls back to WiFi and cell; reported accuracy degrades **from metres to hundreds of metres** |
+| GPS accuracy, underground | 60–220 m | 70–320 m | 90–450 m | As above; underground on cell alone, **hundreds of metres** of error |
+| Clock drift | 1–5 s/day x 0–6 days | x 0–21 days | x 0–45 days | Free-running consumer quartz without a completed network time sync: **1–5 s/day** |
+| Recipient absent, then redelivery | 1.5% | 2.9% | 10.8% | First-attempt delivery failure **8–20%** globally (up to ~30% in Europe), of which **36%** are "recipient not home". L2 is 8% x 36%; L1 halves it; L3 takes the European end |
+| Address correction | 0.9% | 1.8% | 6.6% | Same failure rate, of which **22%** are inaccurate address information |
+
+**Assumptions.** These are labelled as such in the code and have nothing behind them but
+plausibility. They are the values a reader should press on.
+
+| Parameter | L1 | L2 | L3 | Note |
+|---|---|---|---|---|
+| Share of scans at an address that are indoor or underground | 6% | 22% | 37% | Assumption. Klang Valley is condo-dense, but we have not counted. |
+| Ordinary upload latency | 5–120 s | 5–180 s | 5–300 s | Assumption. Widened from the original 8–90 s. |
+| Share of scans with no uplink, queued for later | 2% | 7% | 14% | Assumption. **This is the parameter the headline number is most sensitive to** — see RESULTS.md E3. |
+| Queued upload delay | 2–25 min | 3–55 min | 5–110 min | Assumption. A basement, a lift lobby, a dead spot on the ring road. |
+| Photo capture to scan delay | 10–240 s | 15–540 s | 20–1200 s | Assumption. Photograph on the 25th floor, scan back at the van. |
+| Missed scan | 1.5% | 5% | 11% | Assumption. Hub scan compliance is high but not perfect. |
+| Charged mid-shift | 5% | 12% | 22% | Assumption. |
+| Handset swap mid-round | 1% | 3% | 7% | Assumption. |
+| Mid-shift charge gain | 15–45 pp | 15–55 pp | 15–60 pp | Assumption. |
+| Address correction: 70% "nearby", 30% "elsewhere" | — | — | — | **Assumption, and the one the address-correction result is most sensitive to.** A "nearby" correction sits 4% of the way to another real address — a wrong unit number. "elsewhere" is a redirect to a different address entirely. |
+
+### Two modelling decisions worth stating
+
+**The reported accuracy and the actual error are drawn separately.** A receiver's accuracy figure
+is a confidence radius, not a measurement of its own error. The true error is a Rayleigh draw
+scaled so the reported figure is its 68th percentile, so a fix can be **precise-looking and
+wrong** — which is exactly the case the location rules are asked to judge, and the case the old
+bounded generator could not produce. `lib/generate/noise.test.ts` asserts both sides of that
+crossing occur.
+
+**The clock offset is stable per handset, not per scan.** It is a property of that quartz
+crystal. A fresh draw per leg would be a random wobble, and a wobble is the shape of *tampering*
+rather than of drift — the same mistake the battery model made in session 6. A consequence falls
+out of this and it decides E6: **a constant offset cancels between two scans from the same
+handset**, so ordinary drift cannot inflate an implied speed. Only a handset swap can.
+
+### Which missed scan, and why it is drawn uniformly
+
+The missed-scan episode drops one of `sortation`, `linehaul_departure`, `linehaul_arrival` or
+`out_for_delivery`, **uniformly**. Traced against `lib/engine/custody.ts` before the model was
+written, only one of those gaps produces an impermissible transition — without the departure
+scan the parcel reports `arriving` straight out of `in_progress`. Preferring that leg would
+manufacture H1; avoiding it would hide H1. Uniform is the only honest choice, and the measured
+result is in RESULTS.md E3.
+
+### What the noise model does NOT capture
+
+- **Correlated failures.** Every draw is independent. Real GNSS error is autocorrelated over
+  seconds to minutes, and a real hub outage batches *every* parcel's upload at once rather than
+  each parcel's separately. Our uploads queue one at a time, which almost certainly
+  **understates** how bunched a real fleet's I4 flags would be.
+- **Weather and temperature.** Not modelled at all. The cold-weather battery case does not apply
+  to a Klang Valley dataset, and rain's effect on GNSS is small next to building geometry.
+- **Device heterogeneity.** One accuracy distribution stands in for a fleet's whole mix of
+  handsets, chipsets and OS versions.
+- **Operational context.** No traffic, no roadworks, no vehicle breakdown, no round reassigned
+  mid-shift, no parcel returned to the hub.
+- **Adversarial noise.** Everything here is honest. A fraudster who deliberately works where the
+  environment is bad — so that degraded evidence is expected of them — is not modelled, and is a
+  real attack.
+- **Noise on S2.** The signature scenario composes its own legs rather than using `buildTimeline`,
+  so it runs at level 0 regardless. It is a designed case about *pattern*, and the sweep does not
+  visit it.
+- **A real expressway leg.** Still absent, and still the reason E6's answer is what it is.
 
 ---
 
@@ -248,4 +365,12 @@ over it. If a threshold moves, the generator does not.
 npm test -- lib/generate     # generate every scenario and run it through the agent
 ```
 
-The seed used throughout is `vigil-2026`, with the first leg at `2026-09-07T14:30:00+08:00`.
+The seed used throughout is `vigil-2026`, with the first leg at `2026-09-07T14:30:00+08:00`,
+and the noise level defaults to 0.
+
+```ts
+const scenario = buildScenario("S0", { world, rng: makeRng(seed), startMs, noiseLevel: 2 });
+```
+
+Same seed and same level, same bytes. Level 0 with the argument omitted and level 0 stated
+explicitly are byte-identical, which is what keeps every expectation above valid.

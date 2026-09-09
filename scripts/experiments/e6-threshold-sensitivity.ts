@@ -1,6 +1,6 @@
 import {
   BASE_SEED,
-
+  type NoiseLevel,
   pct,
   prepare,
   printTable,
@@ -14,6 +14,8 @@ import {
   ingestWithApproval,
   jitterPoint,
   makeRng,
+  NOISE_LEVELS,
+  NOISE_PROFILES,
   offsetPoint,
 } from "@/lib/generate";
 // THE ONE ALLOWED THRESHOLD IMPORT IN scripts/experiments/.
@@ -34,6 +36,13 @@ import { DEFAULT_THRESHOLDS } from "@/lib/engine/thresholds";
  * The shipped value is derived, not chosen: the Malaysian expressway limit is
  * 110 km/h, plus a margin for GPS error at both endpoints. This experiment
  * exists to show what that derivation costs and buys.
+ *
+ * SWEPT ACROSS NOISE LEVELS since session 10. The session-9 run measured the
+ * false-positive edge against clean shipments whose GPS scatter was six to
+ * eighteen metres and whose clocks were exact, which is why the edge sat at
+ * 40-50 km/h: nothing in that data could imply a higher speed. A real fleet's
+ * environment moves both endpoints of every interval, so the edge is a curve
+ * per level rather than one point, and "why 120?" is answerable against it.
  */
 
 /**
@@ -68,9 +77,15 @@ function withSpeedLimit(kmh: number) {
  * implied speeds rather than one value — a single speed would produce a step
  * function and tell us nothing about the shape.
  */
-async function runSpeedAttack(seed: string, claimedKmAway: number, speedLimit: number) {
+async function runSpeedAttack(
+  seed: string,
+  claimedKmAway: number,
+  speedLimit: number,
+  noiseLevel: NoiseLevel,
+) {
   const run = await prepare("S0", seed, {
     deps: { thresholds: { engine: withSpeedLimit(speedLimit) } },
+    noiseLevel,
   });
 
   try {
@@ -122,9 +137,10 @@ async function runSpeedAttack(seed: string, claimedKmAway: number, speedLimit: n
 }
 
 /** A clean shipment under a modified speed limit. */
-async function runCleanAtLimit(seed: string, speedLimit: number) {
+async function runCleanAtLimit(seed: string, speedLimit: number, noiseLevel: NoiseLevel) {
   const run = await prepare("S0", seed, {
     deps: { thresholds: { engine: withSpeedLimit(speedLimit) } },
+    noiseLevel,
   });
 
   try {
@@ -149,63 +165,100 @@ async function main() {
   // 30 minutes each, so km/h is twice the distance in km.
   const distances = Array.from({ length: ATTACK_SEEDS }, (_, i) => 40 + i * 5);
 
-  for (const limit of SWEEP) {
-    const attackSeeds = reportingSeeds(`${BASE_SEED}-e6a-${limit}`, ATTACK_SEEDS);
-    const cleanSeeds = reportingSeeds(`${BASE_SEED}-e6c-${limit}`, CLEAN_SEEDS);
+  for (const level of NOISE_LEVELS) {
+    for (const limit of SWEEP) {
+      const attackSeeds = reportingSeeds(`${BASE_SEED}-e6a-${limit}`, ATTACK_SEEDS);
+      const cleanSeeds = reportingSeeds(`${BASE_SEED}-e6c-${limit}`, CLEAN_SEEDS);
 
-    let detected = 0;
-    for (const [i, seed] of attackSeeds.entries()) {
-      const result = await runSpeedAttack(seed, distances[i], limit);
-      if (result.detected) detected++;
-      rows.push({
-        experiment: "E6",
-        arm: "attack",
-        speed_limit_kmh: limit,
-        seed,
-        half: "report",
-        seeds_in_cell: attackSeeds.length,
-        claimed_km: distances[i],
-        implied_speed_kmh: result.impliedSpeedKmh,
-        i3_fired: result.detected ? 1 : 0,
-        alerted: result.alerted ? 1 : 0,
+      let detected = 0;
+      for (const [i, seed] of attackSeeds.entries()) {
+        const result = await runSpeedAttack(seed, distances[i], limit, level);
+        if (result.detected) detected++;
+        rows.push({
+          experiment: "E6",
+          noise_level: level,
+          noise_name: NOISE_PROFILES[level].name,
+          arm: "attack",
+          speed_limit_kmh: limit,
+          seed,
+          half: "report",
+          seeds_in_cell: attackSeeds.length,
+          claimed_km: distances[i],
+          implied_speed_kmh: result.impliedSpeedKmh,
+          i3_fired: result.detected ? 1 : 0,
+          alerted: result.alerted ? 1 : 0,
+        });
+      }
+
+      let i3FalsePositives = 0;
+      let anyAlert = 0;
+      for (const seed of cleanSeeds) {
+        const result = await runCleanAtLimit(seed, limit, level);
+        if (result.i3) i3FalsePositives++;
+        if (result.alerted) anyAlert++;
+        rows.push({
+          experiment: "E6",
+          noise_level: level,
+          noise_name: NOISE_PROFILES[level].name,
+          arm: "clean",
+          speed_limit_kmh: limit,
+          seed,
+          half: "report",
+          seeds_in_cell: cleanSeeds.length,
+          claimed_km: "",
+          implied_speed_kmh: "",
+          i3_fired: result.i3 ? 1 : 0,
+          alerted: result.alerted ? 1 : 0,
+        });
+      }
+
+      summary.push({
+        noise: `${level} ${NOISE_PROFILES[level].name}`,
+        limit_kmh: limit,
+        n_attack: attackSeeds.length,
+        detected: `${detected}/${attackSeeds.length}`,
+        detection: pct(detected, attackSeeds.length),
+        n_clean: cleanSeeds.length,
+        i3_false_pos: `${i3FalsePositives}/${cleanSeeds.length}`,
+        i3_fp_rate: pct(i3FalsePositives, cleanSeeds.length),
+        any_alert_rate: pct(anyAlert, cleanSeeds.length),
+        shipped: limit === DEFAULT_THRESHOLDS.maxImpliedSpeedKmh ? "<- shipped" : "",
       });
     }
-
-    let falsePositives = 0;
-    for (const seed of cleanSeeds) {
-      const result = await runCleanAtLimit(seed, limit);
-      if (result.alerted) falsePositives++;
-      rows.push({
-        experiment: "E6",
-        arm: "clean",
-        speed_limit_kmh: limit,
-        seed,
-        half: "report",
-        seeds_in_cell: cleanSeeds.length,
-        claimed_km: "",
-        implied_speed_kmh: "",
-        i3_fired: result.i3 ? 1 : 0,
-        alerted: result.alerted ? 1 : 0,
-      });
-    }
-
-    summary.push({
-      limit_kmh: limit,
-      n_attack: attackSeeds.length,
-      detected: `${detected}/${attackSeeds.length}`,
-      detection: pct(detected, attackSeeds.length),
-      n_clean: cleanSeeds.length,
-      false_pos: `${falsePositives}/${cleanSeeds.length}`,
-      fp_rate: pct(falsePositives, cleanSeeds.length),
-      shipped: limit === DEFAULT_THRESHOLDS.maxImpliedSpeedKmh ? "<- shipped" : "",
-    });
   }
 
   const path = writeCsv("e6-threshold-sensitivity.csv", rows);
-  printTable("E6 — implied-speed threshold sweep (reporting half only)", summary);
+  printTable("E6 — implied-speed threshold sweep, by noise level (reporting half only)", summary);
+
+  /**
+   * WHERE THE HEADROOM RUNS OUT, per level.
+   *
+   * The false positive this sweep is about is I3 FIRING ON A CLEAN SHIPMENT.
+   * Under noise the whole-system alert rate on clean data is dominated by
+   * things this sweep does not vary — see E3 — so counting every alert here
+   * would report E3's number under E6's heading and hide the edge entirely.
+   * `any_alert_rate` is carried alongside so the difference is visible rather
+   * than assumed.
+   */
+  const edges = NOISE_LEVELS.map((level) => {
+    const atLevel = summary.filter((r) => r.noise === `${level} ${NOISE_PROFILES[level].name}`);
+    const clean = atLevel.filter((r) => r.i3_fp_rate === "0.0%").map((r) => r.limit_kmh as number);
+    return {
+      noise: `${level} ${NOISE_PROFILES[level].name}`,
+      lowest_limit_with_zero_i3_fp: clean.length ? Math.min(...clean) : "none in sweep",
+      detection_there: atLevel.find((r) => r.limit_kmh === Math.min(...clean))?.detection ?? "",
+      detection_at_shipped:
+        atLevel.find((r) => r.limit_kmh === DEFAULT_THRESHOLDS.maxImpliedSpeedKmh)?.detection ?? "",
+    };
+  });
+  printTable("  the false-positive edge, per noise level", edges);
+
   process.stdout.write(
-    `\n  attacks claim ${distances[0]}-${distances[distances.length - 1]} km in 30 min ` +
-      `(${distances[0] * 2}-${distances[distances.length - 1] * 2} km/h implied)\n  ${path}\n`,
+    `
+  attacks claim ${distances[0]}-${distances[distances.length - 1]} km in 30 min ` +
+      `(${distances[0] * 2}-${distances[distances.length - 1] * 2} km/h implied)
+  ${path}
+`,
   );
 }
 

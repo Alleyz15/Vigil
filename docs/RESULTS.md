@@ -22,8 +22,18 @@ draw every seed from the **reporting half**. The tuning half exists and was left
 no threshold was changed in this session. If a future session tunes anything, it tunes on the
 tuning half and reruns everything here.
 
-**No threshold moved as a result of these runs.** One experiment (E6) found that a *lower*
-threshold would score better on this data. It was not changed — see E6.
+**No threshold moved as a result of these runs.** Two of them arguably should move, and neither
+was touched. E6 found that a *lower* implied-speed limit would score better on this data. E3
+found that I4's 30-minute clock-divergence band rests on a claim the noise model contradicts —
+that band produces 89% of the false positives at level 3. Both are reported here and left for a
+session that tunes on the tuning half and reruns the reporting half. **Changing a threshold in
+the run that measured it is the circularity this whole discipline exists to prevent.**
+
+**E3 and E6 were rerun in session 10 against a modelled fleet environment** — degraded GPS,
+queued uploads, missed scans, clock drift, redeliveries, stale addresses — parameterised at four
+levels and documented in [DATASET.md](./DATASET.md#the-environmental-noise-model). Level 0 is the
+old noise-free dataset and is reported alongside, so what changed is visible rather than
+asserted. E1, E2 and E5 are unchanged from session 9 and still run at level 0.
 
 ---
 
@@ -111,32 +121,109 @@ injected would mean the system is catching it by accident downstream rather than
 npx tsx scripts/experiments/e3-false-positives.ts   # results/e3-false-positives.csv
 ```
 
-n = 20 seeds per scenario, reporting half only.
+n = 120 seeds per scenario per noise level, reporting half only. 960 shipments, 5,805 legs.
 
-| Scenario | Seeds | Legs | Alerts | Rate | Shipments affected |
-|---|---|---|---|---|---|
-| S0 Normal delivery | 20 | 120 | 0 | **0.0%** | 0/20 |
-| S6 GPS degradation underground | 20 | 120 | 0 | **0.0%** | 0/20 |
-| **Overall** | 40 | **240** | **0** | **0.0%** | 0/40 |
+> **The earlier number was 0% across 240 legs, and it was a floor, not a rate.** The generator's
+> clean shipments had bounded noise by construction — GPS 6–18 m, latency 8–90 s, a battery that
+> declined on rails — so nothing in them came near a rule. That 0% measured *"our clean data does
+> not trip our rules"*, which is a statement about the generator. It has been replaced by the
+> curve below, measured against a modelled fleet environment at four levels
+> ([DATASET.md](./DATASET.md#the-environmental-noise-model)). **Level 0 is that old dataset**, and
+> it still reports 0% — which is the honest way to read what the old number was.
 
-**By abort code:** none. No clean shipment triggered a hard check in any run.
+| Noise level | Seeds | Legs | Alerts | Per leg | Shipments affected | Dominant flag |
+|---|---|---|---|---|---|---|
+| 0 `pristine` (the old dataset) | 240 | 1,440 | 0 | **0.0%** | 0.0% | — |
+| 1 `good` | 240 | 1,447 | 3 | **0.2%** | 1.3% | I10 ×2 |
+| 2 `urban` | 240 | 1,439 | 50 | **3.5%** | 18.8% | I4 ×43 |
+| 3 `adverse` | 240 | 1,479 | 184 | **12.4%** | 57.1% | I4 ×164 |
 
-**On the H1 reservation.** CLAUDE.md flagged `H1 → freeze` as a possible over-refusal. On this
-data **H1 did not fire at all**, so it does not dominate the false positives. That resolves the
-reservation *for this dataset only* — and the honest reason it did not fire is that none of our
-clean scenarios contain a custody-chain gap. Real fleets have missed scans and batched uploads.
-**The reservation stays open.**
+**By abort code.** Hard aborts are a small and roughly constant minority; the rest are scored
+decisions, all of them `flag` rather than `escalate` or `freeze`.
 
-**What this does not show.** This is the weakest number here, and the reason is the generator.
-Our clean shipments have bounded noise by construction — GPS accuracy 6–18 m, upload latency
-8–90 s, deterministic battery — so none of them come anywhere near a threshold. **0% measures
-"our clean data does not trip our rules", not "real clean data would not."** It is a floor, not
-a false-positive rate.
+| Level | Alerts | `H1` freeze | No abort code (scored `flag`) |
+|---|---:|---:|---:|
+| 1 | 3 | 1 (33.3%) | 2 |
+| 2 | 50 | 4 (8.0%) | 46 |
+| 3 | 184 | 7 (3.8%) | 177 |
 
-**What would falsify it.** Clean shipments with realistic outliers — a tunnel, a dead battery, a
-device whose clock drifted, a genuinely missed scan — still producing 0% would be a real result.
-Producing 5% would tell us which rule is brittle. Neither has been run, because the generator
-does not yet emit that noise. **This is the most valuable thing to do next.**
+**By flag.**
+
+| Level | Flags raised on clean work |
+|---|---|
+| 1 | I10 ×2, H1 ×1 |
+| 2 | I4 ×43, H1 ×4, I10 ×2, I1 ×1, I11 ×1 |
+| 3 | I4 ×164, I9 ×11, H1 ×7, P5 ×7, I5 ×7, I14 ×7, I10 ×4, I1 ×4, I11 ×4, I6 ×3 |
+
+**Per episode**, from the generator's own record of what it drew — not inferred back out of the
+events, which would mean explaining the detector's output with the detector's own measurement.
+
+| Episode (level 3) | Shipments | Alerted | Rate |
+|---|---:|---:|---|
+| Recipient absent → redelivery | 33 | 20 | 60.6% |
+| Address correction mid-route | 16 | 10 | 62.5% |
+| Missed scan | 27 | 16 | 59.3% |
+| Charged mid-shift | 49 | 27 | 55.1% |
+| Handset swap | 8 | 5 | 62.5% |
+
+**What this shows.** The number depends almost entirely on how bad you think the environment is,
+and the answer to *"what is your false-positive rate?"* is therefore **0.2% per leg on a good
+day, 3.5% in ordinary urban conditions, 12.4% on a bad one**. Quoting one of those without the
+other two would be picking a number.
+
+**The dominant false positive is I4, and it exposes a threshold whose stated reason is wrong.**
+164 of 184 level-3 alerts are I4 — clock divergence of 30 minutes or more between the device's
+`eventTime` and the server's `recordTime` — produced by a handset with no uplink that queues a
+scan and uploads it later. `lib/engine/thresholds.ts` derives that 30-minute band from the claim
+that *"30 minutes cannot be explained by [drift or upload latency] and indicates the device clock
+was set, not drifted."* **The noise model contradicts that claim directly:** a basement queue
+explains it easily, and I4 is worth +30, which clears the `highInconsistency` cut of 30 on its
+own.
+
+**It was not changed.** Reporting a threshold as wrong in the session that measured it and fixing
+it in the same session is the circularity the whole discipline exists to prevent. This is now the
+top item for a session that tunes on the tuning half and reruns the reporting half.
+
+### On the H1 reservation — closed, and here is what closed it
+
+CLAUDE.md flagged `H1 → freeze` as a possible over-refusal and session 9 kept it open because
+nothing in the data exercised it: no clean scenario contained a custody-chain gap. Missed scans
+now do.
+
+Before the noise model was written, `lib/engine/custody.ts` was traced by hand and the prediction
+committed to the session log: **only one of the four missable scans produces an impermissible
+transition.** The measured result, with the dropped leg drawn uniformly so the rate falls out of
+the world model rather than being dialled in:
+
+| Missed scan | Shipments | Reached an operator | `H1` freeze |
+|---|---:|---:|---:|
+| `sortation` | 12 | 6 (50.0%) | **0** |
+| **`linehaul_departure`** | 12 | **12 (100.0%)** | **12** |
+| `out_for_delivery` | 10 | 3 (30.0%) | **0** |
+| `linehaul_arrival` | 9 | 2 (22.2%) | **0** |
+
+**H1 fired, and it did not dominate: 12 of 237 alerts across all levels, under 4% at level 3.**
+The reservation closes on that. What closed it is a property of the design that nobody would
+guess from reading the rule — **the custody table is deliberately permissive, so a fleet's missed
+scans reach H1 in exactly one place rather than everywhere.** Without the departure scan a parcel
+reports `arriving` straight out of `in_progress`, and that is the only one of the four gaps the
+table refuses.
+
+**The residual is real and is now in Known Limitations:** a hub that chronically loses its
+departure scan gets frozen every single time, 12 out of 12. H1 is not over-refusing broadly; it
+is over-refusing narrowly and completely.
+
+**What this does not show.** The rate is a function of our assumed environment, and the single
+parameter it is most sensitive to is the share of scans with no uplink (2% / 7% / 14%, an
+assumption with nothing behind it). Every draw is independent, so a real hub outage — which
+batches *every* parcel at once — would bunch these flags in a way this model does not produce.
+S2 is not in the sweep. And 12.4% is a per-*leg* rate on a six-leg shipment: 57% of level-3
+shipments raised at least one alert, which is the number an operator would actually feel.
+
+**What would falsify it.** A fleet whose real uplink availability is much better than 93% would
+push the whole curve down and make level 3 unrepresentative. A real fleet's I4 rate is the single
+measurement that would settle this, and it is measurable without any of our detectors — it is
+just `recordTime − eventTime` on their existing scan data.
 
 ---
 
@@ -205,17 +292,21 @@ second is over-refusal. `lib/llm/llm.test.ts` guards both.
 npx tsx scripts/experiments/e6-threshold-sensitivity.ts    # results/e6-threshold-sensitivity.csv
 ```
 
-n = 16 attack + 16 clean seeds per point. Attacks claim 40–115 km in 30 minutes (80–230 km/h
-implied), reporting half only.
+n = 16 attack + 16 clean seeds per point, per noise level. 15 sweep points × 4 levels = 1,920
+runs. Attacks claim 40–115 km in 30 minutes (80–230 km/h implied), reporting half only.
 
-| Limit (km/h) | Detection | False positives |
+**The false positive this sweep is about is I3 firing on a clean shipment.** Under noise the
+whole-system alert rate on clean data is dominated by things this sweep does not vary — see E3 —
+so counting every alert here would report E3's number under E6's heading and hide the edge
+entirely. Both columns are in the CSV.
+
+| Limit (km/h) | Detection | I3 false positives (identical at levels 0–3) |
 |---|---|---|
 | 20 | 100% | **93.8%** |
 | 30 | 100% | 56.3% |
 | 40 | 100% | 56.3% |
 | **50** | **100%** | **0.0%** |
-| 60 | 100% | 0.0% |
-| 70 | 100% | 0.0% |
+| 60–70 | 100% | 0.0% |
 | 80 | 93.8% | 0.0% |
 | 90 | 87.5% | 0.0% |
 | 100 | 81.3% | 0.0% |
@@ -223,29 +314,65 @@ implied), reporting half only.
 | **120 (shipped)** | **68.8%** | **0.0%** |
 | 130–160 | 62.5% → 43.8% | 0.0% |
 
-**What this shows, including the part that is inconvenient.** The false-positive edge sits
-between 40 and 50 km/h: our clean shipments never imply more than about 50 km/h. **On this data,
-50–70 km/h would be strictly better than 120** — same zero false positives, 100% detection
-instead of 68.8%.
+| Noise level | Lowest limit with zero I3 false positives | Detection there | Detection at 120 |
+|---|---|---|---|
+| 0 `pristine` | 50 km/h | 100% | 68.8% |
+| 1 `good` | 50 km/h | 100% | 68.8% |
+| 2 `urban` | 50 km/h | 100% | 68.8% |
+| 3 `adverse` | 50 km/h | 100% | 68.8% |
 
-**We did not change it.** The shipped value is derived from the real world, not from this
-dataset: the Malaysian expressway limit is 110 km/h, plus a margin for GPS error at both
-endpoints. Our synthetic line-haul never actually drives at 110, so **this data does not contain
-the case the threshold exists to tolerate**. Lowering it to 50 because the synthetic data allows
-it would be fitting to a gap in the generator — and would false-positive on the first real
-expressway run.
+### The prediction was wrong, and the reason is the finding
 
-That is the honest answer to "why 120?": *not* because it is optimal here, but because this
-dataset does not exercise the situation it is protecting against, and a number derived from a
-published speed limit survives contact with reality better than one fitted to our own fixtures.
+Session 10 predicted, before running, that *"the false-positive edge will move upward under
+noise, because clock drift plus upload batching compress the last leg's 30-minute interval."*
+**The edge did not move at all.** It sits at 50 km/h at every level, point for point.
 
-**What this does not show.** Only I3 was swept. The pattern windows are overridable via
-`deps.windows` and were left at their defaults. Detection here is a linear function of the
-attack distribution we chose — a different spread of claimed distances would move the curve.
+Two mistakes in that prediction, and both are worth keeping:
 
-**What would falsify it.** A clean shipment implying more than 50 km/h — a real line-haul leg
-would — would move the false-positive edge upward and start to justify 120 on the data itself.
-Adding a genuine expressway leg to the generator is the test.
+- **Upload batching cannot touch I3.** Queuing a scan moves `recordTime`, which the *server*
+  stamps. I3 measures the interval between two `eventTime`s, which the *device* authors. The
+  mechanism that produces 89% of E3's false positives has no path to this rule at all.
+- **Ordinary clock drift cancels.** The handset's offset is a property of its crystal and is the
+  same on both scans, so it subtracts out of the interval. Only a handset *swap* between two legs
+  changes it, and swaps are rare enough not to move a 16-seed cell.
+
+What is left is geometry, and geometry is why noise cannot move this edge: **GPS error is metres
+against a leg that is kilometres long.** Three hundred metres of displacement on a 20 km leg
+changes the implied speed by well under 1 km/h, and the sweep's grid is 10 km/h. Meanwhile the
+timeline-shaped episodes only ever *lower* implied speeds — a missed `out_for_delivery` scan
+measures the delivery against the line-haul arrival four hours earlier, and a redelivery measures
+it against the previous day.
+
+### So the answer to "why 120?" needs rewording, and it comes out stronger
+
+Session 9 wrote that the honest answer to *"why not 50?"* was that our line-haul never drives at
+110, and that **"clean shipments with realistic outliers would move the false-positive edge
+upward and start to justify 120 on the data itself."** That was the named falsification test, it
+has now been run, and **it failed.** Realistic outliers do not move the edge.
+
+The reworded answer is narrower and better supported:
+
+> The implied-speed threshold is the one number in the system that **environmental noise cannot
+> justify.** GPS error is too small relative to a line-haul leg to move it, and a device clock
+> offset cancels between two scans from the same handset. So the 70 km/h of headroom between the
+> measured edge and the shipped value is not paying for measurement error — it is paying for a
+> *journey* this dataset does not contain: a real expressway leg at 110 km/h. The threshold is
+> derived from a published speed limit and it stays there, because the alternative is fitting it
+> to a gap in our own generator that we have now confirmed noise does not fill.
+
+That is a sharper claim than session 9's, because it distinguishes the two things a margin can be
+for and shows that only one of them applies.
+
+**What this does not show.** Only I3 was swept, and only against our attack distribution — a
+different spread of claimed distances moves the detection column, though not the false-positive
+edge. The pattern windows are overridable via `deps.windows` and were left at their defaults. 16
+clean seeds per cell is too few to see a rare handset swap land on a bucket boundary.
+
+**What would falsify it.** Adding a genuine expressway leg to the generator — a line-haul that
+actually drives at 110 km/h — and finding that 120 still produces zero false positives would
+confirm the margin is sized right. Finding that it does not would mean 120 is too *low*. Either
+result is more informative than anything the current dataset can produce, and it is now the only
+outstanding test for this threshold.
 
 ---
 
@@ -257,14 +384,26 @@ Adding a genuine expressway leg to the generator is the test.
 | Capable fraud is caught by the pattern axis | 12/12, ~10 deliveries | via P2, the customer complaint |
 | Fraud with recipient collusion is **not** caught | 0/12, 40/40 completed | measured boundary, not tuned away |
 | Every modelled attack class is detected | 5/5 at 100% | the classes we designed for |
-| Clean shipments are not flagged | 0 in 240 legs | our clean data has bounded noise |
+| Clean work rarely reaches an operator | **0.2% / 3.5% / 12.4%** of legs at noise levels 1 / 2 / 3, n = 1,440+ legs each | the rate depends on how bad you think the environment is; quote all three |
+| The dominant false positive is one rule | I4, 164 of 184 level-3 alerts | its stated derivation is contradicted by the noise model. Reported, not changed |
 | Citation enforcement stops unsourced prose | 12/12 → 3/12 reaching an operator | mechanism, not a model rate |
-| The speed threshold has headroom | 0% FP from 50 km/h up | 120 is derived, not fitted |
+| The speed threshold has headroom | 0% I3 false positives from 50 km/h up, **at every noise level** | 120 is derived, not fitted — and noise cannot justify the margin |
+| `H1 → freeze` is a narrow over-refusal, not a broad one | 12 of 237 alerts; but 12/12 when the departure scan is the one lost | measured, and the residual is in Known Limitations |
 
 **The three numbers a judge should press on**, and the answers:
 
-1. *"0% false positives sounds too good."* It is — see E3. Our clean data has no outliers, so
-   this is a floor rather than a rate. The fix is named.
+1. *"What is your false-positive rate?"* There isn't one number, and anyone offering one is
+   choosing it. 0.2% of legs on a good day, 3.5% in ordinary urban conditions, 12.4% on a bad
+   one — and 89% of the bad-day alerts are a single rule whose justification we can now show is
+   wrong. See E3. The previous answer, 0%, was a floor measured against noise-free data, and it
+   was replaced rather than explained.
 2. *"Your detection is 100%."* On the five classes we modelled and built detectors for. E1 is the
    more honest measure, and it has a level that is never detected.
-3. *"Why 120 and not 50?"* Because 50 fits our generator's gap, not the road. See E6.
+3. *"Why 120 and not 50?"* Not because 120 is optimal here — 50 would be. Because the 70 km/h of
+   headroom pays for a journey this dataset does not contain, and E6 now shows that environmental
+   noise cannot pay for it either: GPS error is metres against a leg that is kilometres, and a
+   device clock offset cancels between two scans from the same handset. See E6.
+
+**One prediction in this set was wrong**, and it is left standing rather than edited: E6's edge
+was predicted to move under noise and did not. Why it did not is the more useful result — see
+*The prediction was wrong, and the reason is the finding*.

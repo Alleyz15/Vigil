@@ -10,6 +10,7 @@ import {
   buildWorld,
   createHarness,
   type IngestHarness,
+  type NoiseLevel,
   ingestScenario,
   ingestWithApproval,
   makeRng,
@@ -72,10 +73,15 @@ export type PreparedRun = {
 export async function prepare(
   id: ScenarioId,
   seed: string,
-  options: { deps?: Partial<NodeDeps> } = {},
+  options: { deps?: Partial<NodeDeps>; noiseLevel?: NoiseLevel } = {},
 ): Promise<PreparedRun> {
   const world = buildWorld(seed);
-  const scenario = buildScenario(id, { world, rng: makeRng(seed), startMs: START_MS });
+  const scenario = buildScenario(id, {
+    world,
+    rng: makeRng(seed),
+    startMs: START_MS,
+    noiseLevel: options.noiseLevel,
+  });
   const harness = createHarness(world);
 
   if (options.deps) Object.assign(harness.deps, options.deps);
@@ -111,9 +117,14 @@ export async function prepare(
  * one tower, and without the upsert the engine measures tower scans against
  * the world's original scattered addresses and fires I10 on all forty.
  */
-export async function runFullScenario(id: ScenarioId, seed: string) {
+export async function runFullScenario(id: ScenarioId, seed: string, noiseLevel?: NoiseLevel) {
   const world = buildWorld(seed);
-  const scenario = buildScenario(id, { world, rng: makeRng(seed), startMs: START_MS });
+  const scenario = buildScenario(id, {
+    world,
+    rng: makeRng(seed),
+    startMs: START_MS,
+    noiseLevel,
+  });
   const harness = createHarness(world);
 
   seedFleetBackground(harness, world, {
@@ -200,4 +211,4 @@ export function pct(numerator: number, denominator: number): string {
   return denominator === 0 ? "n/a" : `${((numerator / denominator) * 100).toFixed(1)}%`;
 }
 
-export { type ScenarioId };
+export { type ScenarioId, type NoiseLevel };

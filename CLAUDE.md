@@ -997,12 +997,95 @@ E6); report-only mode on `explainVerdict` (for E5, with a purity test asserting 
 passes it); the anti-circularity guard extended to `scripts/experiments/` with E6 named as its
 sole exception.
 
-### Session 10 — next
+### Session 10 — environmental noise, and E3's real number (complete)
 
-Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, the map view, and the
-submission artefacts. **If E3's clean-data limitation is addressed first**, that is worth more
-than any of them: adding realistic environmental noise to the generator would turn the weakest
-number in RESULTS.md into a real one.
+491 tests passing, 3 skipped. `tsc --noEmit` clean, eslint clean, `next build` succeeds. E3 and
+E6 rerun across four noise levels. **No threshold was changed. Two are now reported as wrong.**
+
+**E3's `0%` is retired.** `lib/generate/noise.ts` models a fleet's environment at four levels —
+degraded GPS, queued uploads, missed scans, clock drift, redeliveries, stale addresses, mid-shift
+charging, handset swaps — every parameter carrying a citation or the word *assumption*. The
+number is now a curve: **0.2% of legs at level 1, 3.5% at level 2, 12.4% at level 3**, n = 1,440+
+legs each, reporting half only. Level 0 is the old dataset and still reports 0%, which is the
+honest way to read what the old number was.
+
+**Level 0 is byte-identical to the pre-noise dataset**, asserted in `lib/generate/noise.test.ts`.
+`planShipmentNoise` returns `undefined` without drawing, so every scenario expectation, the S0
+regression and the reproducibility guarantee stay valid without rejustification. Levels above 0
+layer noise onto the *same* underlying shipment, so a cross-level comparison is one parcel in
+worse weather rather than two different parcels.
+
+**Against the four predictions: two held, one held with the wrong reason, one was wrong.**
+
+- **Prediction 1 held.** Non-zero and rising with the level. The escape hatch was not needed —
+  level 3 produced a real number, so nothing was turned up to manufacture one.
+- **Prediction 2 held, and the pre-run trace was exact.** H1 fired and did not dominate: 12 of
+  237 alerts, under 4% at level 3. **The reservation is closed.** The measured table matches the
+  trace written before the model existed — `linehaul_departure` 12/12 → freeze, and 0 of 31
+  across the other three legs, with the dropped leg drawn uniformly (12/12/10/9).
+- **Prediction 3 was wrong about which rule dominates.** Address corrections were predicted to
+  lead; they are 10 of 184 level-3 alerts. **I4 dominates at 164 of 184** — a handset with no
+  uplink queues a scan and uploads it half an hour later. Address correction does lead at level 1
+  (2 of 3 alerts), so the prediction was right about the *shape* and wrong about the *scale*.
+- **Prediction 4 was wrong, and the reason is the most useful thing in the session.** E6's
+  false-positive edge was predicted to move upward under noise. **It did not move at all** — 50
+  km/h at every level, point for point. Two errors in the reasoning, both worth keeping: upload
+  batching moves `recordTime`, which the server stamps, so it has no path to I3 at all; and the
+  handset clock offset is constant per device, so it cancels between two scans from the same
+  handset. What is left is geometry — **GPS error is metres against a leg that is kilometres**.
+
+**Two thresholds now look wrong, and neither was touched.**
+
+- **I4's 30-minute band.** `thresholds.ts` derives it from the claim that *"30 minutes cannot be
+  explained by [drift or upload latency]"*. The noise model contradicts that directly: a basement
+  queue explains it easily, and I4 alone is +30, which clears the gate's cut of 30. This produces
+  89% of the level-3 false positives. **Top item for the next tuning session.**
+- **The implied-speed limit**, unchanged from session 9's finding, but the answer is now better
+  supported. See below.
+
+**"Why 120?" needed rewording, and came out stronger.** Session 9 named the falsification test —
+*"clean shipments with realistic outliers would move the false-positive edge upward and start to
+justify 120 on the data itself"*. It was run and **it failed**. The reworded claim is narrower
+and better evidenced: the implied-speed threshold is the one number **environmental noise cannot
+justify**, so the 70 km/h of headroom is not paying for measurement error, it is paying for a
+journey this dataset does not contain. That distinguishes the two things a margin can be for and
+shows only one applies — a sharper argument than the one it replaces.
+
+**Design decisions worth not re-litigating:**
+
+- **The reported GPS accuracy and the actual error are drawn separately.** A receiver's accuracy
+  figure is a confidence radius, not a measurement of its own error, so the true error is a
+  Rayleigh draw scaled to make the reported figure its 68th percentile. A fix can be
+  **precise-looking and wrong**, which is the case the location rules are asked to judge and the
+  case the bounded generator could not produce. A test asserts both sides of that crossing occur.
+- **The clock offset is stable per handset, not per scan.** A per-leg draw is a wobble, and a
+  wobble is the shape of tampering rather than drift — session 6's battery mistake in a new
+  place. The cancellation this causes is what decided E6.
+- **A scenario's overrides always beat the environment.** S1's spoofed position and S6's declared
+  140 m fix survive level 3 untouched, asserted in a test. If the weather blurred them, the
+  control would stop being a control.
+- **Episodes are attributed from the generator's own record** (`GeneratedScenario.noiseEpisodes`),
+  not inferred back out of the events. Inferring "this shipment lost a scan" from the events would
+  mean explaining the detector's output using the detector's own measurement.
+- **E6 reports I3-attributable false positives, not every alert.** Under noise the whole-system
+  alert rate on clean data is dominated by things E6 does not vary, so counting every alert would
+  print E3's number under E6's heading and hide the edge. Both columns are in the CSV.
+- **Warm-up history gets the same weather as the shipment.** P3 and P5 read the courier's past;
+  a pristine baseline behind a noisy present would make the present look like a departure it is
+  not.
+- **A repeated leg name suffixes its eventID seed.** A redelivery has two `delivery` legs, and
+  without this the second would derive the same eventID and the ledger would abort it as a replay
+  — an honest redelivery would look like S3.
+
+### Session 11 — next
+
+**Tune I4 on the tuning half and rerun the reporting half.** That is the highest-value item in
+the repo: one threshold, a stated derivation the data contradicts, and 89% of the false positives
+behind it. Do it as its own session with the holdout discipline intact.
+
+Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, the map view, and
+the submission artefacts. Adding a genuine expressway leg to the generator is the only remaining
+test for the implied-speed threshold.
 
 ---
 
@@ -1087,14 +1170,21 @@ in place. Still untouched: liveness/timeout paths, the map view.
 
 ## Open reservations (decided, but revisit)
 
-**H1 → freeze is a known over-refusal.** A custody-chain jump can be a data-quality problem —
-a missed scan upstream, a hub that batches its uploads — rather than fraud, and `freeze` is the
-harshest outcome available. It is mapped that way for consistency with the other hard checks
-and because a void handoff should not be waved through.
+**~~H1 → freeze is a known over-refusal.~~ CLOSED in session 10, and here is what closed it.**
+The reservation asked whether H1 dominates the false positives. Measured against a fleet that
+misses scans: **it does not — 12 of 237 alerts across all noise levels, under 4% at level 3.**
+No fifth outcome was invented and H1 was not softened.
 
-**Measure it in experiment 3 (false-positive rate), broken out by abort code.** If H1 dominates
-the false positives, revisit before submission — most likely by softening H1 alone rather than
-by inventing a fifth outcome. Do not add a fifth outcome to work around this.
+What closed it is a property of the design worth knowing, traced by hand from
+`lib/engine/custody.ts` and committed to the log **before** the noise model was written, then
+confirmed by the run: **the custody table is deliberately permissive, so a fleet's missed scans
+reach H1 in exactly one place rather than everywhere.** Of the four missable scans, only a lost
+`linehaul_departure` produces an impermissible transition — the parcel reports `arriving`
+straight out of `in_progress`. Measured, with the dropped leg drawn uniformly: `sortation` 0/12
+H1, **`linehaul_departure` 12/12 H1**, `out_for_delivery` 0/10, `linehaul_arrival` 0/9.
+
+**The residual is in Known Limitations and is not a reason to reopen this.** H1 is not
+over-refusing broadly; it is over-refusing narrowly and completely.
 
 **The shift window is rolling, not rostered.** `DEFAULT_SHIFT_WINDOW_HOURS = 12` counts back
 from the event; a real fleet works rostered shifts that reset at a start time. The two diverge
@@ -1119,6 +1209,30 @@ config (`DEFAULT_PATTERN_WINDOW_HOURS`, `DEFAULT_SHIFT_WINDOW_HOURS`) and overri
 via `deps.windows`, so experiment 6 can sweep them.
 
 ## Known limitations (test these, don't claim them)
+
+**A hub that chronically loses its departure scan gets frozen every time.** Measured in session
+10: of the four scans a fleet can miss, only a lost `linehaul_departure` trips H1 — and when it
+is lost, **12 out of 12 shipments were frozen.** H1 does not over-refuse broadly (12 of 237
+alerts), it over-refuses narrowly and completely. A depot with a broken departure scanner would
+have its whole outbound flow voided until someone noticed. Stated, measured, not softened in the
+session that measured it.
+
+**An honest delivery to a corrected address alerts, because the system is sensitive to stale
+records as well as to fraud.** The parcel record says one address, the courier was told another
+by phone, and the delivery scan is measured against what is on file — so I10/I11 fire on work
+that was done correctly. At level 1 this is the *leading* false positive (2 of 3 alerts); at
+level 3 it is 10 of 184. **This is a real property of the approach, not a bug:** every rule in
+the system is a contradiction between two signals, and a stale record is a genuine contradiction
+— the system cannot tell "the record is wrong" from "the scan is wrong" without a third source.
+The mitigation is operational (push address corrections into the record) rather than algorithmic,
+and a judge is entitled to ask about it.
+
+**I4's 30-minute clock-divergence band rests on a claim the data contradicts.**
+`lib/engine/thresholds.ts` derives it from *"30 minutes cannot be explained by [drift or upload
+latency]"*. A handset with no uplink queuing a scan in a basement explains it easily, and I4
+alone is +30, which clears the gate's cut. It produces **89% of the level-3 false positives**.
+Reported in the session that measured it and deliberately not changed; it is the first item for a
+session that tunes on the tuning half and reruns the reporting half.
 
 **Demo keys live in environment variables. This is a stated limitation, not an oversight.**
 The operator's signing key is the thing that makes approval constitutive, and a key in an env

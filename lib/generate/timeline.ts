@@ -1,6 +1,14 @@
 import { EpcisEvent, type GeoPoint } from "@/lib/epcis";
+import {
+  type NoiseLevel,
+  type ShipmentNoise,
+  displace,
+  drawEventNoise,
+  planShipmentNoise,
+} from "./noise";
 import { type Rng, isoAt, jitterPoint } from "./rng";
 import {
+  ADDRESSES,
   type GeneratedCourier,
   type GeneratedParcel,
   type GeneratedWorld,
@@ -29,6 +37,8 @@ export type LegName =
   | "linehaul_departure"
   | "linehaul_arrival"
   | "out_for_delivery"
+  /** A first attempt that failed because nobody was in. Noise only. */
+  | "delivery_attempt"
   | "delivery";
 
 export type LegSpec = {
@@ -114,8 +124,29 @@ export type LegOverrides = {
   motionStationary?: boolean;
   integrityFailed?: boolean;
   batteryPercent?: number;
+  /** The handset was on charge when the scan was taken. */
+  batteryCharging?: boolean;
   omitPod?: boolean;
   photoExifCaptureTime?: string;
+};
+
+/**
+ * What the environment contributes to one leg.
+ *
+ * Separate from `LegOverrides` on purpose. An override is a SCENARIO'S
+ * STATEMENT — "the position reads the doorstep", "the fix is 140 m vague" — and
+ * must survive untouched. Noise is the world, and the world is allowed to blur
+ * a position the generator produced naturally but not one a scenario asserted.
+ */
+export type LegNoise = {
+  shipment: ShipmentNoise;
+  /**
+   * The address the courier is ACTUALLY at, when the parcel record is stale.
+   * Still picks up the environment's position error, unlike an override.
+   */
+  trueScanPoint?: GeoPoint;
+  /** The cell and access point observable there. */
+  sites?: { cell: string; wifi: string };
 };
 
 export type BuiltEvent = {
@@ -142,42 +173,73 @@ export function buildLegEvent(args: {
   rng: Rng;
   eventIdSeed: string;
   overrides?: LegOverrides;
+  /**
+   * Environmental noise for this leg.
+   *
+   * A SCENARIO'S OVERRIDES ALWAYS WIN. S1 sets a spoofed position and S6 sets a
+   * degraded fix; if the environment perturbed those, the scenario would stop
+   * being the case it was written to be. Noise only fills in what the scenario
+   * did not state.
+   */
+  noise?: LegNoise;
 }): BuiltEvent {
   const { world, courier, parcel, leg, legIndex, startMs, rng, eventIdSeed, overrides = {} } = args;
 
+  const shipmentNoise = args.noise?.shipment;
+  const deviceId = overrides.deviceId ?? courier.deviceId;
+
   const eventMs = startMs + leg.offsetMinutes * 60_000;
-  const eventTime = overrides.eventTime ?? isoAt(eventMs);
+  // The DEVICE authors eventTime, so it carries the handset's clock offset.
+  // Stable per handset, so it cancels between two legs from the same device —
+  // ordinary drift cannot inflate an implied speed, only a swap can.
+  const clockOffsetMs = shipmentNoise ? shipmentNoise.clockOffsetSeconds(deviceId) * 1000 : 0;
+  const eventTime = overrides.eventTime ?? isoAt(eventMs + clockOffsetMs);
   const parsedEventMs = Date.parse(eventTime);
   const baseMs = Number.isFinite(parsedEventMs) ? parsedEventMs : eventMs;
 
-  // Ordinary upload latency: seconds, comfortably inside the I5 band.
-  const recordTime = overrides.recordTime ?? isoAt(baseMs + rng.int(8, 90) * 1000);
-
   const addressIndex = addressIndexFor(parcel);
-  const sites = world.sitesByAddress[addressIndex];
-
-  const scanPoint =
-    overrides.scanPoint ??
-    (leg.where === "recipient"
-      ? jitterPoint(rng, parcel.recipientPoint, 30)
-      : leg.where === "origin_hub"
-        ? jitterPoint(rng, HUBS.kl, 40)
-        : jitterPoint(rng, HUBS.shahAlam, 40));
-
-  const isDelivery = (overrides.bizStep ?? leg.bizStep) === "urn:epcglobal:cbv:bizstep:delivering";
+  const sites = args.noise?.sites ?? world.sitesByAddress[addressIndex];
 
   // Cell and WiFi are only observable at the recipient address: the reference
   // registry covers addresses, not depots. Away from one, I1 is honestly
   // not_evaluated rather than falsely clean.
   const atAddress = leg.where === "recipient";
 
+  const env = shipmentNoise ? drawEventNoise(rng, shipmentNoise, { atAddress }) : undefined;
+
+  // Ordinary upload latency: seconds, comfortably inside the I5 band. Under
+  // noise the handset may have had no uplink at all and queued the scan.
+  //
+  // The SERVER stamps recordTime, so it is on true time: the divergence the
+  // engine measures is the upload wait MINUS the device's clock offset.
+  const recordTime =
+    overrides.recordTime ??
+    isoAt(baseMs - clockOffsetMs + (env?.uploadLatencySeconds ?? rng.int(8, 90)) * 1000);
+
+  const truePoint =
+    overrides.scanPoint ??
+    (leg.where === "recipient"
+      ? jitterPoint(rng, args.noise?.trueScanPoint ?? parcel.recipientPoint, 30)
+      : leg.where === "origin_hub"
+        ? jitterPoint(rng, HUBS.kl, 40)
+        : jitterPoint(rng, HUBS.shahAlam, 40));
+
+  // A scenario's stated position is what the scenario says it is. Only a
+  // naturally-generated one picks up the environment's error.
+  const scanPoint = env && !overrides.scanPoint ? displace(truePoint, env) : truePoint;
+
+  const isDelivery = (overrides.bizStep ?? leg.bizStep) === "urn:epcglobal:cbv:bizstep:delivering";
+
   const signals: Record<string, unknown> = {
-    deviceId: overrides.deviceId ?? courier.deviceId,
+    deviceId,
     gps: {
       point: {
         latitude: scanPoint.latitude,
         longitude: scanPoint.longitude,
-        accuracyMeters: overrides.gpsAccuracyMeters ?? rng.int(6, 18),
+        // The reported figure is a confidence radius, not a measurement of the
+        // fix's own error — `env.errorMeters` is drawn separately and lands
+        // outside it about a third of the time. That gap is the point.
+        accuracyMeters: overrides.gpsAccuracyMeters ?? env?.accuracyMeters ?? rng.int(6, 18),
       },
       fixTime: eventTime,
       speedMps: 0,
@@ -198,23 +260,32 @@ export function buildLegEvent(args: {
     },
     battery: {
       levelPercent: overrides.batteryPercent ?? batteryFor(leg),
-      charging: false,
+      charging: overrides.batteryCharging ?? false,
     },
   };
 
-  if (atAddress && !overrides.omitCell) {
+  // Underground there is no serving cell and no access point to see. That is a
+  // real absence, and the engine treats it as one.
+  const omitCell = overrides.omitCell ?? env?.omitCell ?? false;
+  const omitWifi = overrides.omitWifi ?? env?.omitWifi ?? false;
+
+  if (atAddress && !omitCell) {
     const cellId = overrides.cellSiteId ?? sites.cell;
     signals.cell = parseCellId(cellId, rng);
   }
-  if (atAddress && !overrides.omitWifi) {
+  if (atAddress && !omitWifi) {
     signals.wifi = [{ bssid: overrides.wifiBssid ?? sites.wifi, rssiDbm: rng.int(-78, -45) }];
   }
 
   if (isDelivery && !overrides.omitPod) {
     signals.pod = {
       photoSha256: hashLike(`${eventIdSeed}-photo`),
+      // The photo is taken at the door and the scan happens back at the vehicle.
+      // Both are device-authored, so the clock offset cancels and only the walk
+      // remains — up the lift, down the corridor, back to the van.
       photoExifCaptureTime:
-        overrides.photoExifCaptureTime ?? isoAt(baseMs - rng.int(10, 120) * 1000),
+        overrides.photoExifCaptureTime ??
+        isoAt(baseMs - (env?.photoDelaySeconds ?? rng.int(10, 120)) * 1000),
       otpVerified: true,
       signatureSha256: hashLike(`${eventIdSeed}-sig`),
     };
@@ -249,22 +320,187 @@ export function buildTimeline(args: {
   /** Per-leg overrides, keyed by leg name. This is how a scenario injects. */
   overrides?: Partial<Record<LegName, LegOverrides>>;
   legs?: LegSpec[];
+  /**
+   * How rough the world is. 0 is the control and draws no randomness, so a
+   * level-0 timeline is byte-identical to the pre-noise dataset that every
+   * scenario expectation was written against.
+   */
+  noiseLevel?: NoiseLevel;
 }): BuiltEvent[] {
   const { world, courier, parcel, startMs, rng, idPrefix, overrides = {}, legs = NORMAL_LEGS } = args;
 
-  return legs.map((leg, legIndex) =>
-    buildLegEvent({
+  const shipment = planShipmentNoise(rng, args.noiseLevel ?? 0);
+  const plan = shipment ? applyEpisodes(legs, shipment) : { legs, extras: new Map<number, LegOverrides>() };
+  const noiseSites = shipment?.episodes.addressCorrection
+    ? world.sitesByAddress[
+        (addressIndexFor(parcel) + shipment.episodes.addressCorrection.addressOffset) %
+          world.sitesByAddress.length
+      ]
+    : undefined;
+  const truePoint = shipment?.episodes.addressCorrection
+    ? correctedPoint(parcel, shipment.episodes.addressCorrection)
+    : undefined;
+
+  // A repeated leg name would derive the same eventID and the ledger would
+  // abort the second one as a replay — the redelivery would look like S3. Only
+  // repeats are suffixed, so a timeline without one is unchanged.
+  const seen = new Map<LegName, number>();
+
+  return plan.legs.map((leg, legIndex) => {
+    const occurrence = (seen.get(leg.name) ?? 0) + 1;
+    seen.set(leg.name, occurrence);
+    const idSeed = occurrence === 1 ? `${idPrefix}-${leg.name}` : `${idPrefix}-${leg.name}-${occurrence}`;
+
+    const atRecipient = leg.where === "recipient";
+
+    return buildLegEvent({
       world,
       courier,
       parcel,
       leg,
       legIndex,
       startMs,
-      rng: rng.derive(`${idPrefix}-${leg.name}`),
-      eventIdSeed: `${idPrefix}-${leg.name}`,
-      overrides: overrides[leg.name],
-    }),
-  );
+      rng: rng.derive(idSeed),
+      eventIdSeed: idSeed,
+      // The scenario's statement wins over the episode's.
+      overrides: { ...plan.extras.get(legIndex), ...overrides[leg.name] },
+      noise: shipment
+        ? {
+            shipment,
+            trueScanPoint: atRecipient ? truePoint : undefined,
+            sites: atRecipient ? noiseSites : undefined,
+          }
+        : undefined,
+    });
+  });
+}
+
+/**
+ * The address the parcel was actually delivered to, when the record is stale.
+ *
+ * A real address from the world, not a synthetic offset, so it has its own cell
+ * and its own access point in the registry. That matters: a courier standing at
+ * the real address sees the real address's radio environment, so I1 is
+ * genuinely CLEAR and only the distance rules have anything to say. A
+ * fabricated point would have manufactured a positioning contradiction that a
+ * stale record does not actually produce.
+ */
+function correctedPoint(
+  parcel: GeneratedParcel,
+  correction: { kind: "nearby" | "elsewhere"; addressOffset: number },
+): GeoPoint {
+  const index = (addressIndexFor(parcel) + correction.addressOffset) % ADDRESSES.length;
+  const address = ADDRESSES[index];
+  const point = { latitude: address.latitude, longitude: address.longitude };
+
+  // A wrong unit number keeps the parcel on the same round; a customer
+  // redirecting to their office does not. "nearby" pulls the corrected address
+  // most of the way back towards the recorded one.
+  if (correction.kind !== "nearby") return point;
+  return {
+    latitude: parcel.recipientPoint.latitude + (point.latitude - parcel.recipientPoint.latitude) * 0.04,
+    longitude: parcel.recipientPoint.longitude + (point.longitude - parcel.recipientPoint.longitude) * 0.04,
+  };
+}
+
+/**
+ * Turn a shipment's episodes into a leg list and per-leg overrides.
+ *
+ * These are the noise sources that are TIMELINE-SHAPED rather than
+ * event-shaped: a scan that was never submitted, a day that had to be repeated,
+ * a handset that was swapped halfway through. None of them can be expressed by
+ * perturbing a field.
+ */
+function applyEpisodes(
+  legs: LegSpec[],
+  shipment: ShipmentNoise,
+): { legs: LegSpec[]; extras: Map<number, LegOverrides> } {
+  const { episodes } = shipment;
+  let out = legs;
+
+  // A scan the fleet never submitted. Which one is drawn uniformly; see
+  // lib/generate/noise.ts for why that matters to H1.
+  if (episodes.missedLeg) {
+    const without = out.filter((leg) => leg.name !== episodes.missedLeg);
+    // Never empty the timeline: a one-leg list has no missable scan.
+    if (without.length > 0 && without.length < out.length) out = without;
+  }
+
+  // Nobody in. A failed attempt, then the round again the next day.
+  if (episodes.redelivery) out = withRedelivery(out);
+
+  const extras = new Map<number, LegOverrides>();
+
+  // The courier charged the handset partway through the round. I14 declines to
+  // judge drain on a charging device — but the level is still HIGHER at the
+  // next scan than at the last one, which is a thing a real round does.
+  if (episodes.chargedMidShift) {
+    const at = out.findIndex((leg) => leg.name === "out_for_delivery");
+    if (at >= 0) {
+      extras.set(at, {
+        batteryCharging: true,
+        batteryPercent: clampPercent(batteryFor(out[at]) + episodes.chargeGainPercentPoints),
+      });
+      for (let i = at + 1; i < out.length; i++) {
+        extras.set(i, {
+          ...extras.get(i),
+          batteryPercent: clampPercent(batteryFor(out[i]) + episodes.chargeGainPercentPoints),
+        });
+      }
+    }
+  }
+
+  // A replacement handset: a different device id, a different clock, and a
+  // battery that owes nothing to the morning.
+  if (episodes.handsetSwap) {
+    const at = out.findIndex((leg) => leg.where === "recipient");
+    if (at > 0) {
+      for (let i = at; i < out.length; i++) {
+        extras.set(i, {
+          ...extras.get(i),
+          deviceId: `${shipment.profile.name}-replacement-handset`,
+          batteryPercent: clampPercent(88 - (out[i].offsetMinutes - out[at].offsetMinutes) * 0.068),
+        });
+      }
+    }
+  }
+
+  return { legs: out, extras };
+}
+
+/** The recipient was out: a failed attempt today, the round again tomorrow. */
+function withRedelivery(legs: LegSpec[]): LegSpec[] {
+  const at = legs.findIndex((leg) => leg.name === "delivery");
+  if (at < 0) return legs;
+
+  const delivery = legs[at];
+  const attempt: LegSpec = {
+    name: "delivery_attempt",
+    // A failed attempt is not a delivery, so it carries no proof of delivery
+    // and the delivery-gated rules correctly decline to score it.
+    bizStep: "urn:epcglobal:cbv:bizstep:holding",
+    disposition: "urn:epcglobal:cbv:disp:in_possession",
+    offsetMinutes: delivery.offsetMinutes,
+    where: "recipient",
+  };
+
+  const outAgain = legs.find((leg) => leg.name === "out_for_delivery");
+  const nextDay: LegSpec[] = [
+    {
+      name: "out_for_delivery",
+      bizStep: outAgain?.bizStep ?? "urn:epcglobal:cbv:bizstep:transporting",
+      disposition: outAgain?.disposition ?? "urn:epcglobal:cbv:disp:in_possession",
+      offsetMinutes: delivery.offsetMinutes + 1440 - 30,
+      where: "destination_hub",
+    },
+    { ...delivery, offsetMinutes: delivery.offsetMinutes + 1440 },
+  ];
+
+  return [...legs.slice(0, at), attempt, ...nextDay, ...legs.slice(at + 1)];
+}
+
+function clampPercent(value: number): number {
+  return Math.max(3, Math.min(99, Math.round(value)));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -322,9 +558,11 @@ export function hashLike(seed: string): string {
  */
 function batteryFor(leg: LegSpec): number {
   // The delivery round starts on a fresh charge; the depot legs are the tail of
-  // the previous day.
-  const shiftStart = leg.offsetMinutes >= 1155 ? 1155 : 0;
-  const minutesIntoShift = leg.offsetMinutes - shiftStart;
+  // the previous day. Taken modulo a day, so a redelivery the following morning
+  // is a fresh handset rather than one that has been draining for 24 hours.
+  const withinDay = ((leg.offsetMinutes % 1440) + 1440) % 1440;
+  const shiftStart = withinDay >= 1155 ? 1155 : 0;
+  const minutesIntoShift = withinDay - shiftStart;
 
   // Roughly 4 percentage points an hour with GPS and the radio active.
   //

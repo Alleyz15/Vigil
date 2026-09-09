@@ -2,6 +2,7 @@ import { EpcisEvent } from "@/lib/epcis";
 import { CAREFULNESS, type Carefulness, forgedScanOverrides } from "../carefulness";
 import { isoAt, jitterPoint, offsetPoint } from "../rng";
 import { type BuiltEvent, buildLegEvent, buildTimeline, uuidFrom } from "../timeline";
+import { planShipmentNoise } from "../noise";
 import { ADDRESSES, addressIndexFor, epcFor, prefixFor } from "../world";
 import type { GeneratedScenario, ScenarioBuilder, ScenarioContext, ScenarioId } from "./types";
 import { buildWarmup } from "./warmup";
@@ -43,9 +44,15 @@ function setup(ctx: ScenarioContext, courierIndex: number, id: string) {
     rng,
     startMs: ctx.startMs - 6 * 60 * 60 * 1000,
     idPrefix: id,
+    noiseLevel: ctx.noiseLevel,
   });
 
-  return { courier, parcels, rng, warmup };
+  // The SAME derivation buildTimeline performs. `derive` is a pure function of
+  // the parent's seed, not of its draw state, so this is the episode plan the
+  // timeline actually got — not a second, independent draw.
+  const noiseEpisodes = planShipmentNoise(rng, ctx.noiseLevel ?? 0)?.episodes;
+
+  return { courier, parcels, rng, warmup, noiseEpisodes };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -53,7 +60,7 @@ function setup(ctx: ScenarioContext, courierIndex: number, id: string) {
 /* -------------------------------------------------------------------------- */
 
 const s0: ScenarioBuilder = (ctx) => {
-  const { courier, parcels, rng, warmup } = setup(ctx, 0, "S0");
+  const { courier, parcels, rng, warmup, noiseEpisodes } = setup(ctx, 0, "S0");
   const parcel = parcels[0];
 
   return {
@@ -72,9 +79,11 @@ const s0: ScenarioBuilder = (ctx) => {
       parcel,
       startMs: ctx.startMs,
       rng,
+      noiseLevel: ctx.noiseLevel,
       idPrefix: "S0",
     }),
     disputedEventIds: [],
+    noiseEpisodes,
     expectation: {
       exceptionAtLeg: null,
       decision: "accept",
@@ -89,7 +98,7 @@ const s0: ScenarioBuilder = (ctx) => {
 /* -------------------------------------------------------------------------- */
 
 function buildS1(ctx: ScenarioContext, carefulness: Carefulness = 0): GeneratedScenario {
-  const { courier, parcels, rng, warmup } = setup(ctx, 1, `S1-${carefulness}`);
+  const { courier, parcels, rng, warmup, noiseEpisodes } = setup(ctx, 1, `S1-${carefulness}`);
   const parcel = parcels[0];
   const profile = CAREFULNESS[carefulness];
 
@@ -116,6 +125,7 @@ function buildS1(ctx: ScenarioContext, carefulness: Carefulness = 0): GeneratedS
       parcel,
       startMs: ctx.startMs,
       rng,
+      noiseLevel: ctx.noiseLevel,
       idPrefix: `S1-${carefulness}`,
       overrides: {
         delivery: forgedScanOverrides(
@@ -128,6 +138,7 @@ function buildS1(ctx: ScenarioContext, carefulness: Carefulness = 0): GeneratedS
       },
     }),
     disputedEventIds: [],
+    noiseEpisodes,
     expectation: {
       exceptionAtLeg: "delivery",
       // High axis 1, clean pattern: question the EVENT, do not accuse the courier.
@@ -171,6 +182,8 @@ const s1: ScenarioBuilder = (ctx) => buildS1(ctx, 0);
  * CUSTOMER GOT IT. See CLAUDE.md.
  */
 const s2: ScenarioBuilder = (ctx) => {
+  // S2 composes its own legs rather than using buildTimeline, so the episode
+  // plan does not apply to it and is deliberately not reported.
   const { courier, parcels, rng, warmup } = setup(ctx, 2, "S2");
 
   // One tower. Every parcel goes to the same building, different units.
@@ -259,7 +272,7 @@ const s2: ScenarioBuilder = (ctx) => {
  * the event identifier, not the parcel identifier. Named for what it is.
  */
 const s3: ScenarioBuilder = (ctx) => {
-  const { courier, parcels, rng, warmup } = setup(ctx, 3, "S3");
+  const { courier, parcels, rng, warmup, noiseEpisodes } = setup(ctx, 3, "S3");
   const parcel = parcels[0];
 
   const timeline = buildTimeline({
@@ -269,6 +282,7 @@ const s3: ScenarioBuilder = (ctx) => {
     startMs: ctx.startMs,
     rng,
     idPrefix: "S3",
+    noiseLevel: ctx.noiseLevel,
   });
 
   const delivery = timeline[timeline.length - 1];
@@ -294,6 +308,7 @@ const s3: ScenarioBuilder = (ctx) => {
     warmup,
     timeline,
     disputedEventIds: [],
+    noiseEpisodes,
     expectation: {
       exceptionAtLeg: "delivery",
       decision: "accept",
@@ -311,7 +326,7 @@ const s3: ScenarioBuilder = (ctx) => {
 /* -------------------------------------------------------------------------- */
 
 const s4: ScenarioBuilder = (ctx) => {
-  const { courier, parcels, rng, warmup } = setup(ctx, 0, "S4");
+  const { courier, parcels, rng, warmup, noiseEpisodes } = setup(ctx, 0, "S4");
   const parcel = parcels[1];
 
   // A parcel belonging to another courier's route entirely.
@@ -333,10 +348,12 @@ const s4: ScenarioBuilder = (ctx) => {
       parcel,
       startMs: ctx.startMs,
       rng,
+      noiseLevel: ctx.noiseLevel,
       idPrefix: "S4",
       overrides: { delivery: { epc: foreignEpc } },
     }),
     disputedEventIds: [],
+    noiseEpisodes,
     expectation: {
       exceptionAtLeg: "delivery",
       decision: "freeze",
@@ -351,7 +368,7 @@ const s4: ScenarioBuilder = (ctx) => {
 /* -------------------------------------------------------------------------- */
 
 const s5: ScenarioBuilder = (ctx) => {
-  const { courier, parcels, rng, warmup } = setup(ctx, 1, "S5");
+  const { courier, parcels, rng, warmup, noiseEpisodes } = setup(ctx, 1, "S5");
   const parcel = parcels[2];
 
   const deliveryMs = ctx.startMs + 1185 * 60_000;
@@ -373,6 +390,7 @@ const s5: ScenarioBuilder = (ctx) => {
       parcel,
       startMs: ctx.startMs,
       rng,
+      noiseLevel: ctx.noiseLevel,
       idPrefix: "S5",
       overrides: {
         delivery: {
@@ -383,6 +401,7 @@ const s5: ScenarioBuilder = (ctx) => {
       },
     }),
     disputedEventIds: [],
+    noiseEpisodes,
     expectation: {
       exceptionAtLeg: "delivery",
       decision: "flag",
@@ -410,7 +429,7 @@ const s5: ScenarioBuilder = (ctx) => {
  * clean. The system says so instead of guessing.
  */
 const s6: ScenarioBuilder = (ctx) => {
-  const { courier, parcels, rng, warmup } = setup(ctx, 2, "S6");
+  const { courier, parcels, rng, warmup, noiseEpisodes } = setup(ctx, 2, "S6");
   const parcel = parcels[41];
 
   return {
@@ -432,6 +451,7 @@ const s6: ScenarioBuilder = (ctx) => {
       parcel,
       startMs: ctx.startMs,
       rng,
+      noiseLevel: ctx.noiseLevel,
       idPrefix: "S6",
       overrides: {
         delivery: {
@@ -444,6 +464,7 @@ const s6: ScenarioBuilder = (ctx) => {
       },
     }),
     disputedEventIds: [],
+    noiseEpisodes,
     expectation: {
       exceptionAtLeg: null,
       decision: "accept",

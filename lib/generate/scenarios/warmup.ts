@@ -1,5 +1,6 @@
 import type { BuiltEvent } from "../timeline";
 import { buildLegEvent } from "../timeline";
+import { type NoiseLevel, planShipmentNoise } from "../noise";
 import type { Rng } from "../rng";
 import type { GeneratedCourier, GeneratedParcel, GeneratedWorld } from "../world";
 
@@ -27,6 +28,18 @@ export function buildWarmup(args: {
   idPrefix: string;
   /** Minutes between deliveries. A real round is not a burst. */
   intervalMinutes?: number;
+  /**
+   * The weather the courier's PRIOR work happened in.
+   *
+   * A real fleet's history is as noisy as its present, and a clean history
+   * behind a noisy shipment would understate the pattern axis: P3 and P5 read
+   * the courier's past, so handing them a pristine baseline would make the
+   * present look like a departure it is not.
+   *
+   * Environment only. The timeline-shaped episodes — a missed scan, a
+   * redelivery — belong to a shipment with more than one leg.
+   */
+  noiseLevel?: NoiseLevel;
 }): BuiltEvent[] {
   const {
     world,
@@ -37,6 +50,7 @@ export function buildWarmup(args: {
     count = 14,
     idPrefix,
     intervalMinutes = 17,
+    noiseLevel = 0,
   } = args;
 
   const deliveryLeg = {
@@ -61,6 +75,10 @@ export function buildWarmup(args: {
       startMs: at,
       rng: legRng,
       eventIdSeed: `${idPrefix}-warmup-${index}`,
+      noise: (() => {
+        const shipment = planShipmentNoise(legRng, noiseLevel);
+        return shipment ? { shipment } : undefined;
+      })(),
     });
   });
 }
