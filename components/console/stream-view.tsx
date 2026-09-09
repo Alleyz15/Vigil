@@ -43,8 +43,7 @@ const NODE_INFO: Record<NodeName, { title: string; blurb: string; stub?: string 
   fetch_history: { title: "fetch_history", blurb: "axis 2 — per-courier pattern" },
   external_context: {
     title: "external_context",
-    blurb: "weather / traffic, if the plan asked",
-    stub: "Open-Meteo not wired yet",
+    blurb: "historical weather, if the plan asked",
   },
   gate: { title: "gate", blurb: "the two axes meet — the verdict" },
   explain: {
@@ -265,6 +264,12 @@ function NodeRow({ index, name, state }: { index: number; name: NodeName; state:
 
       {state.coverage && (
         <div className="mt-1.5 pl-8 text-[11px] text-muted-foreground">{state.coverage}</div>
+      )}
+
+      {name === "external_context" && state.status === "done" && state.detail && (
+        <div className="mt-1.5 pl-8 text-[11px] leading-relaxed text-sky-200">
+          {String(state.detail.summary ?? "Weather lookup was not selected.")}
+        </div>
       )}
 
       {/* Shown honestly as a stub where it is one. */}

@@ -11,6 +11,7 @@ import {
   makeRng,
   seedFleetBackground,
 } from "@/lib/generate";
+import { openMeteoProvider } from "@/lib/weather";
 
 /**
  * The console's read model.
@@ -68,6 +69,28 @@ export type LegView = {
 
   explanation: string | null;
   explanationFromFallback: boolean;
+  externalContext:
+    | {
+        status: "available";
+        summary: string;
+        condition: string;
+        precipitationMm: number;
+        resolutionKm: number;
+        retrieval: "cache" | "network";
+      }
+    | { status: "unavailable"; summary: string; reason: string }
+    | null;
+  reroute:
+    | {
+        status: "proposed";
+        proposalId: string;
+        kind: "pickup_point" | "courier_reassignment";
+        targetLabel: string;
+        targetBizLocation: string;
+        approvalState: "pending_operator_cosignature" | "approved";
+      }
+    | { status: "unavailable"; reason: string }
+    | null;
 };
 
 export type ScenarioView = {
@@ -114,6 +137,25 @@ function legFrom(ctx: AgentContext, index: number, neededCosign: boolean): LegVi
 
   // A halted run sealed nothing. Report the halt, not a decision.
   const halted = ctx.halted ? { at: ctx.halted.at, reason: ctx.halted.reason } : null;
+  const reroute =
+    ctx.reroute?.status === "proposed"
+      ? {
+          status: "proposed" as const,
+          proposalId: ctx.reroute.proposal.proposalId,
+          kind: ctx.reroute.proposal.kind,
+          targetLabel:
+            ctx.reroute.proposal.kind === "pickup_point"
+              ? ctx.reroute.proposal.target.label
+              : `Reassign to ${ctx.reroute.proposal.target.courierId}`,
+          targetBizLocation:
+            ctx.reroute.proposal.kind === "pickup_point"
+              ? ctx.reroute.proposal.target.bizLocation
+              : ctx.reroute.proposal.target.destinationBizLocation,
+          approvalState: ctx.reroute.proposal.approvalState,
+        }
+      : ctx.reroute?.status === "unavailable"
+        ? { status: "unavailable" as const, reason: ctx.reroute.reason }
+        : null;
 
   return {
     index,
@@ -143,6 +185,24 @@ function legFrom(ctx: AgentContext, index: number, neededCosign: boolean): LegVi
     flags,
     explanation: ctx.explanation ?? null,
     explanationFromFallback: ctx.explanationFromFallback ?? false,
+    externalContext:
+      ctx.externalContext?.status === "available"
+        ? {
+            status: "available",
+            summary: ctx.externalContext.summary,
+            condition: ctx.externalContext.observation.condition,
+            precipitationMm: ctx.externalContext.observation.precipitationMm,
+            resolutionKm: ctx.externalContext.observation.resolutionKm,
+            retrieval: ctx.externalContext.retrieval,
+          }
+        : ctx.externalContext
+          ? {
+              status: "unavailable",
+              summary: ctx.externalContext.summary,
+              reason: ctx.externalContext.reason,
+            }
+          : null,
+    reroute,
   };
 }
 
@@ -185,6 +245,9 @@ async function buildScenarioView(id: ScenarioId): Promise<{
   });
 
   const harness = createHarness(world);
+  // The operator console is the live integration boundary. Generator and
+  // experiments remain network-free unless they explicitly inject a provider.
+  harness.deps.weather = openMeteoProvider();
   try {
     seedFleetBackground(harness, world, {
       excludeCourierId: scenario.courier.courierId,

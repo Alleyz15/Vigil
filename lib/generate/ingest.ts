@@ -2,7 +2,15 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createMigratedDb } from "@/lib/db/migrate";
-import { couriers, disputes, events, mandates, parcels, referenceSites } from "@/lib/db/schema";
+import {
+  couriers,
+  disputes,
+  events,
+  mandates,
+  parcels,
+  pickupPoints,
+  referenceSites,
+} from "@/lib/db/schema";
 import { NonceLedger } from "@/lib/ledger";
 import { mandateToRow } from "@/lib/assemble";
 import { courierCredential, cosign, generateKeyPair } from "@/lib/credential";
@@ -14,6 +22,7 @@ import type { BuiltEvent } from "./timeline";
 import type { GeneratedScenario } from "./scenarios/types";
 import { type GeneratedWorld, prefixFor } from "./world";
 import { uuidFrom } from "./timeline";
+import { DEFAULT_PICKUP_POINTS } from "@/lib/reroute";
 
 /**
  * Run a generated scenario through the real agent.
@@ -77,6 +86,20 @@ export function createHarness(world: GeneratedWorld): IngestHarness {
       )
       .run();
   }
+
+  db.insert(pickupPoints)
+    .values(
+      DEFAULT_PICKUP_POINTS.map((point) => ({
+        pickupPointId: point.pickupPointId,
+        label: point.label,
+        address: point.label,
+        bizLocation: point.bizLocation,
+        lat: point.latitude,
+        lng: point.longitude,
+        active: point.active,
+      })),
+    )
+    .run();
 
   return {
     dir,

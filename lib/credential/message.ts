@@ -14,6 +14,15 @@ import type { Credential, SignedPayload, SignerRole } from "./types";
  */
 export function messageFor(subject: Credential["subject"], role: SignerRole): Buffer {
   const payload: SignedPayload = { ...subject, role };
+  return roleMessageFor(payload);
+}
+
+/**
+ * Canonical bytes for any constitutive credential whose schema binds `role`.
+ * Existing handoff messages call this with the exact same object as before, so
+ * adding another action credential does not change one previously signed byte.
+ */
+export function roleMessageFor(payload: Record<string, unknown>): Buffer {
   return Buffer.from(canonicalize(payload), "utf8");
 }
 

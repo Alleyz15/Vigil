@@ -8,6 +8,8 @@ import type { TraceFrame } from "./trace";
 import type { EngineResult, Flag } from "@/lib/engine/types";
 import type { PatternOutcome } from "@/lib/pattern/types";
 import type { Decision, Verdict } from "@/lib/ledger/types";
+import type { WeatherObservation } from "@/lib/weather";
+import type { RerouteOutcome } from "@/lib/reroute";
 
 /**
  * The context object the state machine threads through its eight nodes.
@@ -152,8 +154,21 @@ export type AgentContext = {
     pattern?: { evaluated: number; total: number; line: string };
   };
 
-  /** external_context */
-  externalContext?: { source: string; summary: string; raw?: unknown };
+  /** external_context — normalised fields only; never raw provider prose. */
+  externalContext?:
+    | {
+        status: "available";
+        source: "open-meteo-archive";
+        retrieval: "cache" | "network";
+        summary: string;
+        observation: WeatherObservation;
+      }
+    | {
+        status: "unavailable";
+        source: "open-meteo-archive";
+        summary: string;
+        reason: string;
+      };
 
   /** gate — credential verification, run against the gate's own threshold */
   credential?: VerificationResult;
@@ -163,6 +178,8 @@ export type AgentContext = {
   requiresCosign?: boolean;
   verdict?: Verdict;
   gateResult?: GateResult;
+  /** Post-gate next action. It cannot feed back into the sealed verdict. */
+  reroute?: RerouteOutcome;
 
   /** explain */
   explanation?: string;

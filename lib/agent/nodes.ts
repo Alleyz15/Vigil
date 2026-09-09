@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { EpcisEvent, epcsOf } from "@/lib/epcis";
+import { EpcisEvent, epcsOf, vigilSignalsOf } from "@/lib/epcis";
 import { couriers, parcels } from "@/lib/db/schema";
 import type { VigilDb } from "@/lib/db/client";
 import type { NonceLedger } from "@/lib/ledger";
@@ -23,6 +23,8 @@ import type { Credential, VerificationResult } from "@/lib/credential";
 import type { EngineInput } from "@/lib/engine/types";
 import type { PatternInput } from "@/lib/pattern/types";
 import type { GateInput } from "@/lib/gate/types";
+import type { WeatherProvider } from "@/lib/weather";
+import { assembleRerouteInput, persistReroute, proposeReroute } from "@/lib/reroute";
 import type { AgentContext, Node } from "./context";
 
 /**
@@ -34,8 +36,8 @@ import type { AgentContext, Node } from "./context";
  * pure function of assembled inputs rather than of whatever the database
  * happened to contain at the moment a rule ran.
  *
- * STILL STUBBED, deliberately: `plan` and `explain` (they arrive with the LLM),
- * and `external_context` (weather arrives with Open-Meteo). Each is marked STUB.
+ * External context is optional and corroborating. Its result never enters the
+ * engine, pattern input, GateInput or sealed verdict.
  */
 
 export type NodeDeps = {
@@ -78,6 +80,8 @@ export type NodeDeps = {
     pattern?: PatternInput["thresholds"];
     gate?: GateInput["thresholds"];
   };
+  /** Optional Open-Meteo seam. Absent means explicit unavailable context. */
+  weather?: WeatherProvider;
 };
 
 /**
@@ -334,15 +338,77 @@ export const fetchHistory: NodeFn = (ctx, deps) => {
 };
 
 /**
- * 6. external_context — STUB. Weather / traffic lookup, when `plan` asked for it.
+ * 6. external_context — weather lookup, only when `plan` asked for it.
  *
  * Exists to let the system decide NOT to escalate: heavy rain explains a stalled
  * route that otherwise looks like a fabricated one. Evidence that lowers an alarm
  * is as much a result as evidence that raises one.
  */
-export const externalContext: NodeFn = (ctx) => {
+export const externalContext: NodeFn = async (ctx, deps) => {
   if (!ctx.plan?.tools.includes("check_traffic_weather")) return;
-  ctx.externalContext = { source: "STUB", summary: "STUB: external context not implemented" };
+
+  const event = ctx.event;
+  const signals = event ? vigilSignalsOf(event) : undefined;
+  const point = signals?.gps?.point ?? ctx.parcel?.recipientPoint;
+
+  if (!event || !point) {
+    ctx.externalContext = {
+      status: "unavailable",
+      source: "open-meteo-archive",
+      reason: "missing_location",
+      summary: "Historical weather was not queried because no location was available.",
+    };
+    return;
+  }
+
+  if (!deps.weather) {
+    ctx.externalContext = {
+      status: "unavailable",
+      source: "open-meteo-archive",
+      reason: "provider_unavailable",
+      summary: "Historical weather is unavailable in this run; the verdict is unchanged.",
+    };
+    return;
+  }
+
+  try {
+    const result = await deps.weather.lookup({
+      latitude: point.latitude,
+      longitude: point.longitude,
+      hour: event.eventTime,
+    });
+
+    if (result.status === "available") {
+      const weather = result.observation;
+      ctx.externalContext = {
+        status: "available",
+        source: "open-meteo-archive",
+        retrieval: result.source,
+        observation: weather,
+        summary:
+          `Regional conditions: ${weather.condition}; ${weather.precipitationMm} mm precipitation, ` +
+          `${weather.windSpeedKmh} km/h wind, ${weather.temperatureC} °C. ` +
+          "This is approximately 9 km reanalysis context, not proof of conditions at the address.",
+      };
+      return;
+    }
+
+    ctx.externalContext = {
+      status: "unavailable",
+      source: "open-meteo-archive",
+      reason: result.reason,
+      summary: `${result.detail} The verdict is unchanged.`,
+    };
+  } catch (error) {
+    // A provider implementation is allowed to be worse behaved than the real
+    // adapter. Contain that too: optional context never halts the machine.
+    ctx.externalContext = {
+      status: "unavailable",
+      source: "open-meteo-archive",
+      reason: "provider_error",
+      summary: `Historical weather could not be loaded: ${(error as Error).message}. The verdict is unchanged.`,
+    };
+  }
 };
 
 /**
@@ -426,6 +492,16 @@ export const gate: NodeFn = (ctx, deps) => {
   // Projection for the operator console. The ledger already holds the truth.
   persistEvent(deps.db, event, ctx.courier?.known ? ctx.courier.courierId : undefined);
   persistVerdict(deps.db, event.eventID, seq, verdict, signaturesOf(deps.credential));
+
+  // POST-GATE. The handoff is already sealed before a next action is proposed.
+  // The proposal cannot alter the verdict and carries its own credential.
+  if (verdict.decision !== "accept") {
+    const rerouteInput = assembleRerouteInput(deps.db, ctx);
+    ctx.reroute = rerouteInput
+      ? proposeReroute(rerouteInput)
+      : { status: "unavailable", reason: "No authorised reroute exists for this address." };
+    if (ctx.reroute.status === "proposed") persistReroute(deps.db, ctx.reroute.proposal);
+  }
 };
 
 /**

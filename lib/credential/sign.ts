@@ -1,5 +1,5 @@
 import { createPrivateKey, generateKeyPairSync, sign as cryptoSign } from "node:crypto";
-import { messageFor } from "./message";
+import { messageFor, roleMessageFor } from "./message";
 import type { Credential, SignerRole } from "./types";
 
 /**
@@ -35,6 +35,20 @@ export function signSubject(
     type: "pkcs8",
   });
   return cryptoSign(null, messageFor(subject, role), key).toString("base64");
+}
+
+/** Sign another strict credential subject under the same courier/operator roles. */
+export function signRoleSubject(
+  subject: Record<string, unknown>,
+  role: SignerRole,
+  privateKeyB64: string,
+): string {
+  const key = createPrivateKey({
+    key: Buffer.from(privateKeyB64, "base64"),
+    format: "der",
+    type: "pkcs8",
+  });
+  return cryptoSign(null, roleMessageFor({ ...subject, role }), key).toString("base64");
 }
 
 /** Build a courier-signed credential — the token a device would submit. */

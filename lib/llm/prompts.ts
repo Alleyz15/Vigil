@@ -34,6 +34,8 @@ Rules:
 - Cite ONLY evidence ids from the list you are given. Inventing an id makes your whole answer unusable.
 - Do not describe the handoff as approved, cleared or accepted unless the decision was "accept".
 - Do not state how many checks ran; that is added separately.
+- External weather, when present, is corroborating regional context only. Never say it caused
+  or changed the sealed decision, and never claim it proves conditions at the exact address.
 - Plain language. No jargon, no rule numbers in the prose.
 
 Reply with JSON only:
@@ -83,6 +85,21 @@ export function explainUserPrompt(ctx: AgentContext, allowedIds: string[]): stri
       requiresOperatorCosignature: ctx.verdict?.requiresCosign ?? false,
       whatFired: flags,
       cosignReasons: ctx.gateResult?.cosignReasons ?? [],
+      ...(ctx.externalContext?.status === "available"
+        ? {
+            externalWeather: {
+              evidenceId: "weather",
+              condition: ctx.externalContext.observation.condition,
+              precipitationMm: ctx.externalContext.observation.precipitationMm,
+              rainMm: ctx.externalContext.observation.rainMm,
+              weatherCode: ctx.externalContext.observation.weatherCode,
+              windSpeedKmh: ctx.externalContext.observation.windSpeedKmh,
+              temperatureC: ctx.externalContext.observation.temperatureC,
+              resolutionKm: ctx.externalContext.observation.resolutionKm,
+              limitation: "regional reanalysis; not proof of conditions at the exact address",
+            },
+          }
+        : {}),
       youMayCiteOnly: allowedIds,
     },
     null,

@@ -15,6 +15,7 @@ import { epcsOf } from "@/lib/epcis";
 import { closeDb } from "@/lib/db/client";
 import type { ScenarioId } from "@/lib/generate/scenarios/types";
 import { CONSOLE_SEED, CONSOLE_START_MS } from "@/lib/console/dataset";
+import { openMeteoProvider } from "@/lib/weather";
 
 /**
  * The reasoning stream.
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
         : scenario.timeline.length - 1;
 
       const harness = createHarness(world);
+      harness.deps.weather = openMeteoProvider();
 
       try {
         const args = {

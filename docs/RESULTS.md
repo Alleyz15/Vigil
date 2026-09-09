@@ -642,6 +642,58 @@ outstanding test for this threshold.
 
 ---
 
+## Session 15 — real external context and constitutive reroute
+
+### Open-Meteo at the fixed S6 hour
+
+The preregistered request used S6's existing delivery event without moving its timestamp:
+`2026-09-08T10:15:00+08:00`, requested as the UTC hour `2026-09-08T02:00:00Z` at
+`3.1299332488, 101.7553448806`. Open-Meteo resolved that request to the grid cell centred at
+`3.1282952, 101.758064`.
+
+The result was **partly cloudy, 0 mm precipitation, 31 °C and 1.3 km/h wind**. It did not support
+the predicted heavy-rain explanation. The scenario timestamp was deliberately left unchanged.
+The useful demo is therefore sharper: the deterministic planner selected a real tool because the
+location evidence was degraded, the tool found **no regional weather explanation**, and the
+sealed result still stayed `accept` because missing evidence was represented honestly and the
+courier's pattern was clean. Weather did not manufacture the desired answer and did not move the
+decision.
+
+The first call populated the disk cache; the next call returned the same observation with
+`source: "cache"` and no network. The historical product is reanalysis at approximately **9 km
+resolution** for this date
+([Open-Meteo documentation](https://open-meteo.com/en/docs/historical-weather-api)). It describes
+regional conditions consistent or inconsistent with an
+explanation; it does **not** prove conditions inside a particular carpark.
+
+**What this does not show.** One coordinate-hour is an integration result, not evidence that
+weather generally explains degraded GNSS. The archive grid cannot resolve building-level rain or
+indoor conditions, and no traffic provider was added.
+
+**What would falsify it.** Any weather availability state changing the sealed verdict or ledger
+would falsify the dependency boundary. The available/unavailable S6 parity test currently passes.
+
+### Reroute approval
+
+Flagged handoffs now receive a deterministic nearest-authorised-pickup proposal. Escalated or
+frozen handoffs prefer an eligible alternate courier and fall back to a pickup point; when no
+mandate covers an option, the read model says **"No authorised reroute exists for this address."**
+
+Acceptance uses a separate reroute credential that binds the source event, EPC, action, exact
+target, authorising mandate and nonce. A courier-only acceptance fails cryptographic verification;
+the same proposal with courier and operator Ed25519 signatures verifies. The original EPCIS event
+and handoff credential bytes are unchanged.
+
+**What this does not show.** The prototype models the proposal and cryptographic acceptance but
+does not implement fleet dispatch optimisation, capacity balancing or an interactive approval
+workflow.
+
+**What would falsify it.** Replaying a valid signature onto a changed pickup point, replacement
+courier or mandate and still verifying would invalidate the claim. The destination-replay test
+rejects that case.
+
+---
+
 ## Summary for the proposal
 
 | Claim | Number | Caveat |

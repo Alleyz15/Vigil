@@ -167,6 +167,41 @@ describe("the shipment read model", () => {
     expect(flag?.evidence[0]).toHaveProperty("value");
   });
 
+  it("surfaces a proposed reroute as pending operator co-signature", async () => {
+    const { view } = await loadScenario("S1");
+    const exception = view.legs.at(-1)!;
+
+    expect(exception.reroute).toMatchObject({
+      status: "proposed",
+      kind: "pickup_point",
+      approvalState: "pending_operator_cosignature",
+    });
+  });
+
+  it("states when no mandate authorises a reroute instead of showing an empty panel", async () => {
+    const { view } = await loadScenario("S4");
+    const exception = view.legs.at(-1)!;
+
+    expect(exception.reroute).toEqual({
+      status: "unavailable",
+      reason: "No authorised reroute exists for this address.",
+    });
+  });
+
+  it("shows S6's real cached regional result with its resolution limit", async () => {
+    const { view } = await loadScenario("S6");
+    const delivery = view.legs.at(-1)!;
+
+    expect(delivery.decision).toBe("accept");
+    expect(delivery.externalContext).toMatchObject({
+      status: "available",
+      condition: "Partly cloudy",
+      precipitationMm: 0,
+      resolutionKm: 9,
+      retrieval: "cache",
+    });
+  });
+
   it("marks the exception leg so a view can distinguish it", async () => {
     const clean = await loadScenario("S0");
     const spoofed = await loadScenario("S1");

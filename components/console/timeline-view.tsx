@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import {
   AlertTriangle,
+  CloudRain,
   Gauge,
+  Info,
   List,
   Pause,
   Play,
   RotateCcw,
+  Route,
   SkipBack,
   SkipForward,
 } from "lucide-react";
@@ -300,7 +303,13 @@ function LegRow({
           <div className="w-44 shrink-0 text-right">
             <div className="text-xs text-muted-foreground">{leg.coverageLine ?? "—"}</div>
             {leg.neededCosign && !halted && (
-              <div className="mt-0.5 text-xs font-medium text-sky-300">operator co-signed</div>
+              <div className="mt-0.5 text-xs font-medium text-sky-300">handoff co-signed</div>
+            )}
+            {leg.reroute?.status === "proposed" && (
+              <div className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-violet-300">
+                <Route className="size-3" aria-hidden="true" />
+                reroute awaiting co-sign
+              </div>
             )}
           </div>
 
@@ -356,6 +365,56 @@ function LegDetail({ leg }: { leg: LegView }) {
               </li>
             ))}
           </ul>
+        </Section>
+      )}
+
+      {leg.externalContext && (
+        <Section title="External context">
+          <div className="rounded-md border border-sky-500/25 bg-sky-500/[0.05] px-3 py-2">
+            <div className="flex items-center gap-2 text-[13px] font-medium text-sky-200">
+              <CloudRain className="size-4" aria-hidden="true" />
+              {leg.externalContext.status === "available"
+                ? `${leg.externalContext.condition} · ${leg.externalContext.precipitationMm} mm`
+                : "Historical weather unavailable"}
+              {leg.externalContext.status === "available" && (
+                <span
+                  className="inline-flex cursor-help items-center"
+                  title={`Open-Meteo historical reanalysis is approximately ${leg.externalContext.resolutionKm} km resolution. It indicates regional conditions and does not prove conditions at this address.`}
+                  aria-label={`Weather limitation: approximately ${leg.externalContext.resolutionKm} kilometre regional reanalysis, not proof at this address.`}
+                >
+                  <Info className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+              {leg.externalContext.summary}
+            </p>
+          </div>
+        </Section>
+      )}
+
+      {leg.reroute && (
+        <Section title="Safe reroute">
+          {leg.reroute.status === "proposed" ? (
+            <div className="rounded-md border border-violet-500/30 bg-violet-500/[0.06] px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-[13px] font-medium text-violet-200">
+                  <Route className="size-4" aria-hidden="true" />
+                  {leg.reroute.targetLabel}
+                </div>
+                <span className="rounded border border-dashed border-violet-400/50 px-2 py-1 font-mono text-[10px] uppercase text-violet-200">
+                  nothing approved · operator co-sign required
+                </span>
+              </div>
+              <div className="mt-1 font-mono text-[11px] text-muted-foreground">
+                {leg.reroute.kind.replaceAll("_", " ")} · {leg.reroute.targetBizLocation}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-md border border-zinc-500/30 bg-zinc-500/[0.05] px-3 py-2 text-[13px] text-muted-foreground">
+              {leg.reroute.reason}
+            </div>
+          )}
         </Section>
       )}
 

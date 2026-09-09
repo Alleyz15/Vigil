@@ -579,6 +579,15 @@ lib/
     plan.ts              tool selection + the REAL deterministic heuristic
     explain.ts           citation validation, decision-word check, fallback
     providers/           gemini.ts, anthropic.ts, ollama.ts, fake.ts
+  weather/               OPEN-METEO ADAPTER. Optional context, never a verdict input.
+    types.ts             validated query, observation, cache and result shapes
+    open-meteo.ts        archive request + exact coordinate/hour disk cache
+    wmo.ts               deterministic labels; provider prose never crosses the boundary
+  reroute/               POST-GATE NEXT ACTION. Deterministic and separately co-signed.
+    propose.ts           mandate-aware pickup/reassignment selection
+    credential.ts        exact-action Ed25519 credential; courier + operator required
+    assemble.ts          database rows into the pure proposal input
+    persist.ts           queryable proposal and approval-state projection
   generate/              SYNTHETIC DATA. Emits behaviour; never reads a threshold.
     data/                kl-addresses.json, with its provenance in the file
     rng.ts               seedrandom wrappers; the only source of randomness
@@ -738,6 +747,7 @@ npm run typecheck    # tsc --noEmit  (run `npm run build` first: Next generates 
 npm run lint
 npm run test:coverage # engine + pattern + gate; must stay at 100% branch
 node scripts/fetch-addresses.mjs  # refresh the geocoded address cache (one-off)
+npm run weather:cache:s6 # fill/check the fixed S6 Open-Meteo archive cache
 npm run db:generate  # regenerate migrations after editing lib/db/schema.ts
 npm run db:migrate
 ```
@@ -1202,6 +1212,48 @@ Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, th
 the submission artefacts. Adding a genuine expressway leg to the generator is the only remaining
 test for the implied-speed threshold.
 
+### Session 15 — Open-Meteo and constitutive reroute (complete)
+
+544 tests passing, 7 live-provider tests skipped. `tsc --noEmit` clean, eslint clean,
+`next build` succeeds; `lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% branch
+coverage. No detector threshold moved and no experiment was rerun.
+
+**The preregistered S6 weather result was negative, and it was kept.** The fixed delivery at
+`2026-09-08T10:15:00+08:00` queried Open-Meteo's historical archive at the scenario's existing
+coordinate. The returned grid cell reported **partly cloudy, 0 mm precipitation, 31 °C and 1.3
+km/h wind**. The timestamp was not moved to find rain. The first request populated the committed
+cache; the second returned the same observation with `source: "cache"` and no network.
+
+That changes the demo line, not the architecture: the deterministic heuristic selected a real
+tool because S6's location evidence was degraded, the tool found no regional benign explanation,
+and the sealed result remained `accept` because the event represented missing evidence honestly
+and the courier's pattern was clean. Available, unavailable and throwing weather providers seal
+byte-identical verdicts and matching ledger meaning in tests.
+
+**The approximately 9 km archive resolution is visible at the claim site.** RESULTS.md states it,
+and the timeline's weather row carries a tooltip saying this is regional reanalysis, not proof of
+conditions at the address. The adapter zod-validates the response and passes only numeric fields
+plus local deterministic WMO labels into `explain`; provider prose has no path to the model.
+
+**Reroute is a post-gate action, not a fifth outcome.** `flag` chooses the nearest pickup point
+authorised by the current mandate; `escalate` and `freeze` prefer a lexically stable eligible
+alternate courier, then fall back to a pickup point. No candidate yields the explicit result
+"No authorised reroute exists for this address." The UI displays that reason instead of an empty
+panel.
+
+Reroute acceptance has its own sidecar credential binding the source event, EPC, exact action and
+target, authorising mandate and nonce. It uses the same shared Ed25519 role-verification path as
+handoffs while preserving every existing handoff message byte. Courier-only acceptance is
+cryptographically invalid; adding the operator signature verifies; transplanting that signature
+onto another destination fails. The proposal is persisted separately from EPCIS and cannot feed
+back into the already sealed handoff verdict.
+
+**Against the predictions:** all dependency and credential boundaries held. The deliberately
+unpredicted weather condition was no rain. The 1920x1080 browser capture shows the exception row
+with separate "handoff co-signed" and "reroute awaiting co-sign" states, and the live SSE stream
+shows the cache-backed Open-Meteo observation at `external_context` before the unchanged gate
+result. No result CSV changed.
+
 ### Session 14 — three model families and adversarial E4 (complete)
 
 524 offline tests passing, 7 live tests skipped without provider configuration. The dedicated
@@ -1664,6 +1716,17 @@ config (`DEFAULT_PATTERN_WINDOW_HOURS`, `DEFAULT_SHIFT_WINDOW_HOURS`) and overri
 via `deps.windows`, so experiment 6 can sweep them.
 
 ## Known limitations (test these, don't claim them)
+
+**Historical weather is regional context, not address-level evidence.** Open-Meteo's archive
+uses approximately 9 km reanalysis for the S6 date. A matching rain observation would establish
+only that regional conditions were consistent with a benign explanation; the measured S6 hour
+actually reported no rain. Neither result can establish what happened inside a basement carpark,
+and neither is allowed to move a verdict.
+
+**Pickup points are a small static prototype registry, not a live fleet network.** "Nearest" is
+computed correctly among the active rows on file, but capacity, opening hours, road travel time
+and dispatch load are not modelled. Courier reassignment checks active mandate scope and stable
+ordering; it is not route optimisation.
 
 **A hub that chronically loses its departure scan gets frozen every time.** Measured in session
 10: of the four scans a fleet can miss, only a lost `linehaul_departure` trips H1 — and when it

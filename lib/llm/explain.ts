@@ -33,6 +33,8 @@ const CONTEXT_IDS = ["decision", "coverage", "ledger", "credential"] as const;
 export function collectEvidenceIds(ctx: AgentContext): Set<string> {
   const ids = new Set<string>(CONTEXT_IDS);
 
+  if (ctx.externalContext?.status === "available") ids.add("weather");
+
   for (const flag of ctx.engineResult?.hardFailures ?? []) ids.add(flag.id);
   for (const flag of ctx.engineResult?.flags ?? []) ids.add(flag.id);
   for (const flag of ctx.patternOutcome?.flags ?? []) ids.add(flag.id);
@@ -122,6 +124,7 @@ export function structuredExplanation(ctx: AgentContext): string {
   // verbatim - never re-derived and never re-worded by a model.
   if (ctx.coverage?.inconsistency?.line) parts.push(`Evidence: ${ctx.coverage.inconsistency.line}.`);
   if (verdict.requiresCosign) parts.push("An operator co-signature is required.");
+  if (ctx.externalContext) parts.push(`Corroborating context: ${ctx.externalContext.summary}`);
 
   return parts.join(" ");
 }

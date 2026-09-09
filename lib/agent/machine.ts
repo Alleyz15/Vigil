@@ -170,7 +170,21 @@ function summarize(node: Node, ctx: AgentContext) {
 
     case "external_context":
       return {
-        detail: ctx.externalContext ? { source: ctx.externalContext.source } : { skipped: true },
+        detail: ctx.externalContext
+          ? {
+              source: ctx.externalContext.source,
+              status: ctx.externalContext.status,
+              summary: ctx.externalContext.summary,
+              ...(ctx.externalContext.status === "available"
+                ? {
+                    retrieval: ctx.externalContext.retrieval,
+                    condition: ctx.externalContext.observation.condition,
+                    precipitationMm: ctx.externalContext.observation.precipitationMm,
+                    resolutionKm: ctx.externalContext.observation.resolutionKm,
+                  }
+                : { reason: ctx.externalContext.reason }),
+            }
+          : { skipped: true },
       };
 
     case "gate":
@@ -182,6 +196,15 @@ function summarize(node: Node, ctx: AgentContext) {
           cosignReasons: ctx.gateResult?.cosignReasons ?? [],
           limitFlags: (ctx.gateResult?.limitFlags ?? []).map((f) => f.id),
           ledgerSeq: ctx.ledger?.status === "recorded" ? ctx.ledger.seq : null,
+          reroute:
+            ctx.reroute?.status === "proposed"
+              ? {
+                  status: ctx.reroute.status,
+                  proposalId: ctx.reroute.proposal.proposalId,
+                  kind: ctx.reroute.proposal.kind,
+                  approvalState: ctx.reroute.proposal.approvalState,
+                }
+              : ctx.reroute,
         },
       };
 

@@ -239,3 +239,54 @@ export const disputes = sqliteTable(
     index("disputes_raised_idx").on(t.raisedAt),
   ],
 );
+
+/** Fixed operational destinations that a flagged parcel may be returned to. */
+export const pickupPoints = sqliteTable(
+  "pickup_points",
+  {
+    pickupPointId: text("pickup_point_id").primaryKey(),
+    label: text("label").notNull(),
+    address: text("address").notNull(),
+    bizLocation: text("biz_location").notNull(),
+    lat: real("lat").notNull(),
+    lng: real("lng").notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+  },
+  (t) => [uniqueIndex("pickup_points_biz_location_uidx").on(t.bizLocation)],
+);
+
+/**
+ * Post-gate reroute proposals and their constitutive approval state.
+ *
+ * This is not EPCIS evidence and is not folded into the handoff verdict. The
+ * credential JSON binds the exact action and can be re-verified independently.
+ */
+export const rerouteProposals = sqliteTable(
+  "reroute_proposals",
+  {
+    proposalId: text("proposal_id").primaryKey(),
+    sourceEventId: text("source_event_id")
+      .notNull()
+      .references(() => events.eventId),
+    epc: text("epc").notNull(),
+    currentCourierId: text("current_courier_id").notNull(),
+    kind: text("kind", { enum: ["pickup_point", "courier_reassignment"] }).notNull(),
+    targetId: text("target_id").notNull(),
+    targetLabel: text("target_label").notNull(),
+    targetBizLocation: text("target_biz_location").notNull(),
+    targetLat: real("target_lat").notNull(),
+    targetLng: real("target_lng").notNull(),
+    authorizingMandateId: text("authorizing_mandate_id").notNull(),
+    approvalState: text("approval_state", {
+      enum: ["pending_operator_cosignature", "approved"],
+    })
+      .notNull()
+      .default("pending_operator_cosignature"),
+    credentialJson: text("credential_json"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("reroute_proposals_event_uidx").on(t.sourceEventId),
+    index("reroute_proposals_state_idx").on(t.approvalState, t.createdAt),
+  ],
+);

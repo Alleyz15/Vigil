@@ -376,6 +376,19 @@ So the generator emits **behaviour** ("one parcel every twenty seconds", "the co
 basement carpark", "the recipient agrees not to complain") and the detectors compute statistics
 over it. If a threshold moves, the generator does not.
 
+### Weather is not generated evidence
+
+The S6 event does not contain rain because the scenario needs it, and the generator never calls a
+weather service. `external_context` separately queries Open-Meteo for the event's fixed coordinate
+and hour, then caches the validated numeric response under `data/weather/open-meteo/`. This keeps
+the scenario reproducible and prevents an experiment rerun from acquiring a network dependency.
+
+The cached S6 response is regional historical reanalysis at approximately **9 km resolution**
+([Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api)).
+It is not a measurement at the carpark and it cannot establish whether that specific entrance was
+wet. The production explanation receives only numeric observations and deterministic local WMO
+labels; no provider-authored prose crosses the model boundary.
+
 ---
 
 ## Reproducing
@@ -393,3 +406,11 @@ const scenario = buildScenario("S0", { world, rng: makeRng(seed), startMs, noise
 
 Same seed and same level, same bytes. Level 0 with the argument omitted and level 0 stated
 explicitly are byte-identical, which is what keeps every expectation above valid.
+
+The committed S6 weather cache can be checked or filled once with:
+
+```bash
+npm run weather:cache:s6
+```
+
+The command prints `source: "cache"` after the first successful archive request.

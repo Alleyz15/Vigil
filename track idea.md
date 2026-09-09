@@ -578,7 +578,7 @@ crypto.createHash('sha256')   // 账本哈希链
 
 | API | 用途 | Key |
 |---|---|:---:|
-| **Open-Meteo** | 天气，用在 **S6 假阳性场景** | 不需要 |
+| **Open-Meteo** | 历史天气，给 **S6** 提供区域性佐证；只解释、不参与 verdict | 不需要 |
 | OSM Nominatim / Overpass | 地址反查、道路数据 | 不需要 |
 | 模拟的完整性证明 | Play Integrity 替身，标注 mocked | — |
 
@@ -740,11 +740,11 @@ vitest
 
 ### Brief 对照后必须补的
 
-- [ ] **完整运单时间线视图** —— brief 字面要求「from normal activity to a meaningful exception」，不改会被扣「minimum working outcome」
+- [x] **完整运单时间线视图** —— brief 字面要求「from normal activity to a meaningful exception」，不改会被扣「minimum working outcome」
 - [ ] **补厚身份维度** —— brief 方向 03 是「cross-check scans, **identity** and location」三样，目前身份最薄（只有 I6 + mandate 作用域）
-- [ ] **加 reroute 作为第三种 next action** —— brief 明示的三种之一，且 reroute 也要走 co-sign
-- [ ] **接 Open-Meteo** —— 用在 S6 假阳性场景
-- [ ] **写合成数据集文档** —— brief 要求 "documented clearly"
+- [x] **加 reroute 作为第三种 next action** —— brief 明示的三种之一，且 reroute 也要走 co-sign
+- [x] **接 Open-Meteo** —— S6 固定时刻实测为多云、无降雨；真实负结果保留，verdict 不受影响
+- [x] **写合成数据集文档** —— brief 要求 "documented clearly"
 - [ ] **引用 CISA 供应链风险资源** —— brief 列出的三个参考之一，目前只用了 GS1 两个
 
 ### 内容缺口
