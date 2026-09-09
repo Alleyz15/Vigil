@@ -132,6 +132,27 @@ and a detection rate measured on it would stay high even if the rule were nonsen
 basement carpark", "the recipient agrees not to complain". **The detectors compute statistics.**
 If a threshold moves, the generator does not.
 
+### 2b. Noise parameters must straddle the rules, never sit under them
+
+The same guard, aimed at the failure mode that is easiest to commit by accident.
+
+**Parameters are drawn from distributions that straddle the rules, not from bands chosen to sit
+under them.** Basement GPS accuracy is a long-tailed draw: it lands at 60 m sometimes — under the
+"too vague to judge" line, so the location rules stay *evaluable* and can fire on a genuine drift
+— and at 250 m other times, over it, so they honestly report `not_evaluated`. **That crossing is
+where the false positives come from, and rigging it away reproduces the exact problem the noise
+model exists to fix.**
+
+A noise band picked so that its worst case lands just below a threshold is not a model of the
+world. It is `0%` written in a different file, and it is worse than the original because it looks
+like it was measured.
+
+**So: a future session must not tune the noise model "to reduce spurious alerts."** Every
+parameter carries a citation or the literal word **assumption** in `lib/generate/noise.ts` and in
+DATASET.md, and it is changed only when the claim about the world is wrong — never because of
+what it does to a number downstream. Swapping *"our clean data does not trip our rules"* for
+*"our noisy data happens to trip our rules"* leaves the circularity exactly where it was.
+
 ### 3. Approval is constitutive, not decorative
 
 Operator approval is **not** `approved = true` in a table. A high-risk handoff requires a
@@ -987,7 +1008,56 @@ number in RESULTS.md into a real one.
 
 #### Predictions, recorded before any experiment was run
 
-### Session 9 — predictions (written first)
+### Session 10 — predictions (written first)
+
+**WRITTEN AND COMMITTED BEFORE THE NOISE MODEL WAS BUILT AND BEFORE ANYTHING WAS RERUN**, so the
+log shows they were not retrofitted. Session 10 replaces E3's `0%` floor by giving the generator
+realistic environmental noise, parameterised by level, and rerunning E3 and E6 across it.
+
+1. **E3's false-positive rate will be non-zero and will rise monotonically with noise level** —
+   low single digits per leg at level 1, roughly 5–15% at level 3. **If it is still 0% at level 3,
+   the honest conclusion is that the noise model is too gentle, and that is what gets reported.**
+   The model does not get turned up until it produces a quotable number: swapping *"our clean data
+   does not trip our rules"* for *"our noisy data happens to trip our rules"* would leave the
+   circularity exactly where it was. See rule 2b.
+2. **H1 will fire, and will not dominate.** Traced below. **If it does dominate, it is reported
+   and the session stops.** H1 is not softened in the session that measured it — that is a
+   separate session with a rerun on the reporting half.
+3. **I10/I11 from a mid-route address correction will be the largest single contributor**, ahead
+   of I4/I5 from batched uploads. If so, that is a **Known Limitation**, not just an E3 row: an
+   honest delivery to a corrected address alerts, because the system is sensitive to stale records
+   as well as to fraud, and a judge could reasonably ask about it.
+4. **E6's false-positive edge will move upward** under noise. The current 40–50 km/h edge comes
+   from the last leg — 30 minutes from the destination hub to the recipient — and clock drift plus
+   upload batching compress that interval and inflate its implied speed. I expect the edge to rise
+   but **not** reach 120, which makes *"why 120?"* **stronger** (part of the margin is now
+   justified by the data) without vindicating it.
+
+**Holdout: nothing is tuned this session.** Reporting half only, as before. **If any detector
+threshold looks wrong under noise, it is reported and left alone.**
+
+#### The H1 trace, written before the noise model (rule 4d's cheap check)
+
+Reading `PERMITTED_TRANSITIONS` in `lib/engine/custody.ts` against `NORMAL_LEGS`, **most single
+missed scans do not trip H1**:
+
+| Dropped leg | previous disposition → this bizStep | H1 |
+|---|---|---|
+| sortation | `active` → `departing` | permitted |
+| **linehaul_departure** | `in_progress` → `arriving` | **NOT permitted → H1 fires** |
+| linehaul_arrival | `in_transit` → `transporting` | permitted |
+| out_for_delivery | `in_possession` → `delivering` | permitted |
+
+**The custody table is deliberately permissive, so a fleet's missed scans reach H1 in exactly one
+place rather than everywhere.** That is a real property of the design and nobody would guess it
+from reading the rule: H1's own comment says an unmodelled disposition imposes no constraint,
+because H1 aborts a handoff outright and must only fire where we are confident. The consequence
+is that the *gap* it catches is the missing **departure** scan specifically — a parcel that
+reports arriving somewhere it never left.
+
+**The dropped leg is therefore drawn uniformly over those four middle legs.** H1's rate must fall
+out of the world model, not be dialled in by preferring the leg that fires it — in either
+direction.
 
 **PREDICTIONS, WRITTEN BEFORE ANY EXPERIMENT WAS RUN.** Recorded here first so the log shows
 they were not retrofitted to the results. A result that contradicts one of these is a finding
