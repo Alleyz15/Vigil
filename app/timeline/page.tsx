@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function TimelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ scenario?: string }>;
+  searchParams: Promise<{ scenario?: string; frame?: string }>;
 }) {
   const params = await searchParams;
   const requested = params.scenario as ScenarioId | undefined;
@@ -21,11 +21,11 @@ export default async function TimelinePage({
       <header className="mb-5">
         <div className="flex items-start justify-between gap-8">
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight">
+            <h1 className="text-xl font-semibold tracking-tight">
               <span className="font-mono text-muted-foreground">{view.id}</span>{" "}
               <span className="ml-1">{view.title}</span>
             </h1>
-            <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               {view.description}
             </p>
           </div>
@@ -63,7 +63,15 @@ export default async function TimelinePage({
 
       {/* Keyed on the scenario so a switch remounts and playback restarts,
           rather than an effect reaching in to reset state. */}
-      <TimelineView key={view.id} scenario={view} />
+      <TimelineView
+        key={`${view.id}-${params.frame ?? "playback"}`}
+        scenario={view}
+        initialLeg={
+          params.frame === "exception" && view.exceptionLegIndex !== null
+            ? view.exceptionLegIndex
+            : undefined
+        }
+      />
     </div>
   );
 }

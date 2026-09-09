@@ -3,6 +3,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentContext } from "@/lib/agent/context";
 import type { NodeDeps } from "@/lib/agent/nodes";
+import { closeDb } from "@/lib/db/client";
 import {
   type GeneratedScenario,
   type ScenarioId,
@@ -74,6 +75,12 @@ export type PreparedRun = {
   dispose: () => void;
 };
 
+/** Release every resource owned by a generated harness, in dependency order. */
+export function disposeHarness(harness: IngestHarness): void {
+  closeDb(harness.deps.db);
+  rmSync(harness.dir, { recursive: true, force: true });
+}
+
 /**
  * Stand up a world and seal the courier's warm-up history.
  *
@@ -115,7 +122,7 @@ export async function prepare(
     harness,
     scenario,
     args,
-    dispose: () => rmSync(harness.dir, { recursive: true, force: true }),
+    dispose: () => disposeHarness(harness),
   };
 }
 
@@ -144,7 +151,7 @@ export async function runFullScenario(id: ScenarioId, seed: string, noiseLevel?:
   });
 
   const run = await ingestScenario(scenario, harness);
-  return { ...run, dispose: () => rmSync(harness.dir, { recursive: true, force: true }) };
+  return { ...run, dispose: () => disposeHarness(harness) };
 }
 
 /** Run a scenario's own legs, after preparation. */

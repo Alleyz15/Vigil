@@ -34,8 +34,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="flex min-h-screen">
           <aside className="w-60 shrink-0 border-r border-border/60 bg-card/30 px-4 py-5">
             <Link href="/" className="block">
-              <div className="font-mono text-sm font-semibold tracking-tight">VIGIL</div>
-              <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
+              <div className="font-mono text-base font-semibold tracking-tight">VIGIL</div>
+              <div className="mt-0.5 text-xs leading-tight text-muted-foreground">
                 handoff trust verifier
               </div>
             </Link>
@@ -47,13 +47,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   href={item.href}
                   className="block rounded-md px-2.5 py-2 transition-colors hover:bg-accent/60"
                 >
-                  <div className="text-[13px] leading-tight">{item.label}</div>
-                  <div className="text-[11px] leading-tight text-muted-foreground">{item.hint}</div>
+                  <div className="text-sm leading-tight">{item.label}</div>
+                  <div className="text-xs leading-tight text-muted-foreground">{item.hint}</div>
                 </Link>
               ))}
             </nav>
 
-            <div className="mt-8 border-t border-border/60 pt-4 text-[11px] leading-relaxed text-muted-foreground">
+            <div className="mt-8 border-t border-border/60 pt-4 text-xs leading-relaxed text-muted-foreground">
               <div className="font-medium text-foreground/80">Two roles</div>
               <div>courier · operator</div>
               <div className="mt-3 font-medium text-foreground/80">Data</div>

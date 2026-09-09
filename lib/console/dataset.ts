@@ -1,5 +1,6 @@
 import { rmSync } from "node:fs";
 import type { AgentContext } from "@/lib/agent/context";
+import { closeDb } from "@/lib/db/client";
 import {
   SCENARIO_IDS,
   type ScenarioId,
@@ -233,6 +234,7 @@ async function buildScenarioView(id: ScenarioId): Promise<{
       points,
     };
   } finally {
+    closeDb(harness.deps.db);
     rmSync(harness.dir, { recursive: true, force: true });
   }
 }

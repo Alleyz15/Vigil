@@ -176,9 +176,7 @@ export function StreamView({
             <span className="font-mono">of {legCount}</span>
           </label>
 
-          {preparing && (
-            <span className="ml-auto animate-pulse text-[12px] text-sky-300">{preparing}…</span>
-          )}
+          {preparing && <span className="ml-auto text-[13px] text-sky-300">{preparing}…</span>}
         </div>
 
         <ol className="mt-4 space-y-1.5">
@@ -192,18 +190,18 @@ export function StreamView({
         <ResultPanel result={result} />
 
         <div className="rounded-lg border border-border/60 bg-card/40 p-4">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">
             Thoughts ({thoughts.length})
           </div>
           {thoughts.length === 0 ? (
-            <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
               The only frame a model ever authors. None yet — no model is configured, so the
               deterministic paths ran instead.
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
               {thoughts.map((t, i) => (
-                <li key={i} className="text-[12px] leading-relaxed">
+                <li key={i} className="text-[13px] leading-relaxed">
                   <span className="font-mono text-[10px] text-muted-foreground">{t.node}</span>
                   <div>{t.text}</div>
                 </li>
@@ -236,8 +234,8 @@ function NodeRow({ index, name, state }: { index: number; name: NodeName; state:
         <span className="w-5 font-mono text-[11px] tabular-nums text-muted-foreground">
           {index + 1}
         </span>
-        <span className="font-mono text-[13px]">{info.title}</span>
-        <span className="text-[12px] text-muted-foreground">{info.blurb}</span>
+        <span className="font-mono text-sm">{info.title}</span>
+        <span className="text-[13px] text-muted-foreground">{info.blurb}</span>
 
         <span className="ml-auto flex items-center gap-3">
           {state.score !== undefined && (
@@ -283,7 +281,7 @@ function StatusDot({ status }: { status: NodeState["status"] }) {
       className={cn(
         "size-2 rounded-full transition-colors duration-200",
         status === "pending" && "bg-zinc-600",
-        status === "running" && "animate-pulse bg-sky-400",
+        status === "running" && "bg-sky-400",
         status === "done" && "bg-emerald-400",
         status === "error" && "bg-rose-400",
       )}
@@ -294,7 +292,7 @@ function StatusDot({ status }: { status: NodeState["status"] }) {
 function ResultPanel({ result }: { result: ResultState | null }) {
   if (!result) {
     return (
-      <div className="rounded-lg border border-dashed border-border/60 p-4 text-[12px] text-muted-foreground">
+      <div className="rounded-lg border border-dashed border-border/60 p-4 text-[13px] text-muted-foreground">
         The result frame arrives last, whether or not the run completed.
       </div>
     );
@@ -310,14 +308,14 @@ function ResultPanel({ result }: { result: ResultState | null }) {
 
   return (
     <div className="rounded-lg border border-border/60 bg-card/40 p-4">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Result</div>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground">Result</div>
 
       <div className="mt-2">
         <VerdictBadge kind={kind} />
       </div>
 
       {halted && (
-        <div className="mt-3 rounded-md border border-sky-500/30 bg-sky-500/[0.06] px-3 py-2 text-[12px] leading-relaxed">
+        <div className="mt-3 rounded-md border border-sky-500/30 bg-sky-500/[0.06] px-3 py-2 text-[13px] leading-relaxed">
           <div className="font-medium text-sky-300">
             Stopped at <span className="font-mono">{result.halted!.at}</span>
           </div>
@@ -337,7 +335,7 @@ function ResultPanel({ result }: { result: ResultState | null }) {
         patternEvaluable={result.patternScore !== undefined}
       />
 
-      <dl className="mt-4 space-y-1 text-[12px]">
+      <dl className="mt-4 space-y-1 text-[13px]">
         <Row label="basis" value={result.basis ?? "—"} />
         <Row label="co-signature" value={result.requiresCosign ? "required" : "not required"} />
         <Row label="flags" value={result.flags.length > 0 ? result.flags.join(", ") : "none"} />

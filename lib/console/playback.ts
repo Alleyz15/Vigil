@@ -11,6 +11,7 @@
  */
 
 export type PlaybackStatus = "idle" | "playing" | "paused" | "done";
+export type PlaybackSpeed = 0.75 | 1 | 1.5;
 
 export type PlaybackState = {
   /** How many legs are revealed. 0 = none yet, legCount = all of them. */
@@ -50,6 +51,11 @@ export function playbackReducer(state: PlaybackState, action: PlaybackAction): P
       // Playing from the end restarts, rather than sitting on "done" doing
       // nothing — pressing play should always play something.
       if (state.revealed >= state.legCount) {
+        return { ...state, revealed: 1, cursor: 0, status: "playing" };
+      }
+      // The control must feel immediate. Waiting a full reading interval before
+      // showing leg one makes a working demo look stalled.
+      if (state.revealed === 0 && state.legCount > 0) {
         return { ...state, revealed: 1, cursor: 0, status: "playing" };
       }
       return { ...state, status: "playing" };
@@ -122,10 +128,19 @@ export function shouldTick(state: PlaybackState): boolean {
  * the thing the viewer is here to see, and a pace that treats it like any other
  * leg makes the whole play-through pointless.
  */
-export function tickIntervalMs(state: PlaybackState, exceptionIndex: number | null): number {
+export function tickIntervalMs(
+  state: PlaybackState,
+  exceptionIndex: number | null,
+  speed: PlaybackSpeed = 1,
+): number {
   const atException = state.cursor !== null && state.cursor === exceptionIndex;
-  if (atException) return 2_600;
-  if (state.legCount > 20) return 260;
-  if (state.legCount > 10) return 520;
-  return 900;
+  const baseMs = atException
+    ? 3_400
+    : state.legCount > 20
+      ? 420
+      : state.legCount > 10
+        ? 850
+        : 1_900;
+
+  return Math.round(baseMs / speed);
 }

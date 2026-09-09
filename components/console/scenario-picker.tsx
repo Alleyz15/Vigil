@@ -42,6 +42,7 @@ export function ScenarioPicker({
         const search = new URLSearchParams(params?.toString() ?? "");
         search.set("scenario", next);
         search.delete("leg");
+        search.delete("frame");
         router.push(`${basePath}?${search.toString()}`);
       }}
     >

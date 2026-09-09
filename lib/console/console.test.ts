@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadScatter, loadScenario } from "./dataset";
 import {
+  type PlaybackSpeed,
   type PlaybackState,
   initialPlayback,
   playbackReducer,
@@ -29,16 +30,20 @@ describe("timeline playback", () => {
     expect(start()).toEqual({ revealed: 0, status: "idle", cursor: null, legCount: 6 });
   });
 
-  it("reveals one leg per tick while playing", () => {
-    const state = run(start(), { type: "play" }, { type: "tick" }, { type: "tick" });
-    expect(state.revealed).toBe(2);
-    expect(state.cursor).toBe(1);
+  it("reveals the first leg immediately, then one leg per tick", () => {
+    const started = playbackReducer(start(), { type: "play" });
+    expect(started.revealed).toBe(1);
+    expect(started.cursor).toBe(0);
+
+    const state = run(started, { type: "tick" }, { type: "tick" });
+    expect(state.revealed).toBe(3);
+    expect(state.cursor).toBe(2);
     expect(state.status).toBe("playing");
   });
 
   it("ignores ticks that arrive while paused", () => {
     const state = run(start(), { type: "play" }, { type: "tick" }, { type: "pause" }, { type: "tick" });
-    expect(state.revealed).toBe(1);
+    expect(state.revealed).toBe(2);
     expect(state.status).toBe("paused");
   });
 
@@ -63,7 +68,7 @@ describe("timeline playback", () => {
   it("hands control to the viewer when they step by hand", () => {
     const state = run(start(), { type: "play" }, { type: "tick" }, { type: "next" });
     expect(state.status).toBe("paused");
-    expect(state.revealed).toBe(2);
+    expect(state.revealed).toBe(3);
   });
 
   /**
@@ -103,6 +108,19 @@ describe("timeline playback", () => {
     const elsewhere: PlaybackState = { revealed: 3, status: "playing", cursor: 2, legCount: 6 };
 
     expect(tickIntervalMs(atException, 5)).toBeGreaterThan(tickIntervalMs(elsewhere, 5));
+  });
+
+  it("holds a readable 1.9 seconds per ordinary short-timeline leg at recording speed", () => {
+    const ordinary: PlaybackState = { revealed: 3, status: "playing", cursor: 2, legCount: 6 };
+
+    expect(tickIntervalMs(ordinary, 5, 1)).toBe(1_900);
+  });
+
+  it("scales pacing for the three presentation speeds without changing playback state", () => {
+    const ordinary: PlaybackState = { revealed: 3, status: "playing", cursor: 2, legCount: 6 };
+    const speeds: PlaybackSpeed[] = [0.75, 1, 1.5];
+
+    expect(speeds.map((speed) => tickIntervalMs(ordinary, 5, speed))).toEqual([2_533, 1_900, 1_267]);
   });
 
   it("accelerates a long timeline so forty legs are watchable", () => {

@@ -44,9 +44,24 @@ function quadrant(x: number, y: number, xLimit: number, yLimit: number): string 
  * points into an observation series would claim data we do not have.
  */
 const TRIO = [
-  { value: [0, 80], name: "escalate", note: "investigate the courier" },
-  { value: [80, 0], name: "flag", note: "re-check the event" },
-  { value: [40, 40], name: "freeze", note: "stop the scope" },
+  {
+    value: [0, 80],
+    name: "ESCALATE",
+    note: "investigate the courier",
+    label: { position: "right", offset: [8, 0] },
+  },
+  {
+    value: [80, 0],
+    name: "FLAG",
+    note: "re-check the event",
+    label: { position: "top", offset: [0, -5] },
+  },
+  {
+    value: [40, 40],
+    name: "FREEZE",
+    note: "stop the scope",
+    label: { position: "right", offset: [8, 0] },
+  },
 ];
 
 export function GateExplorer({
@@ -83,18 +98,18 @@ export function GateExplorer({
       // Instant. Any easing on the recolour reads as lag.
       animation: false,
       backgroundColor: "transparent",
-      grid: { left: 64, right: 190, top: 28, bottom: 56 },
+      grid: { left: 72, right: 250, top: 42, bottom: 64 },
       xAxis: {
         min: GUTTER - 6,
         max: AXIS_MAX,
         name: "single-event inconsistency",
         nameLocation: "middle",
         nameGap: 30,
-        nameTextStyle: { color: "#a1a1aa", fontSize: 11 },
+        nameTextStyle: { color: "#d4d4d8", fontSize: 13, fontWeight: 600 },
         axisLine: { lineStyle: { color: "#3f3f46" } },
         axisLabel: {
           color: "#71717a",
-          fontSize: 10,
+          fontSize: 11,
           formatter: (v: number) => (v < 0 ? "n/e" : String(v)),
         },
         splitLine: { lineStyle: { color: "#27272a" } },
@@ -103,11 +118,11 @@ export function GateExplorer({
         min: GUTTER - 6,
         max: AXIS_MAX,
         name: "pattern",
-        nameTextStyle: { color: "#a1a1aa", fontSize: 11 },
+        nameTextStyle: { color: "#d4d4d8", fontSize: 13, fontWeight: 600 },
         axisLine: { lineStyle: { color: "#3f3f46" } },
         axisLabel: {
           color: "#71717a",
-          fontSize: 10,
+          fontSize: 11,
           formatter: (v: number) => (v < 0 ? "n/e" : String(v)),
         },
         splitLine: { lineStyle: { color: "#27272a" } },
@@ -116,7 +131,7 @@ export function GateExplorer({
         trigger: "item",
         backgroundColor: "#18181b",
         borderColor: "#3f3f46",
-        textStyle: { color: "#e4e4e7", fontSize: 11 },
+        textStyle: { color: "#e4e4e7", fontSize: 13 },
         formatter: (params: { data: [number, number, ScatterPoint | undefined]; seriesName: string }) => {
           const p = params.data?.[2];
           if (!p) return params.seriesName;
@@ -198,18 +213,24 @@ export function GateExplorer({
         {
           name: "reference points (illustrative)",
           type: "scatter",
-          symbolSize: 16,
+          symbolSize: 24,
           symbol: "diamond",
           data: TRIO.map((t) => ({ ...t, value: t.value })),
-          itemStyle: { color: "transparent", borderColor: "#e4e4e7", borderWidth: 1.6 },
+          itemStyle: { color: "#18181b", borderColor: "#fafafa", borderWidth: 2.4 },
           label: {
             show: true,
-            position: "right",
-            distance: 10,
-            color: "#e4e4e7",
-            fontSize: 10,
+            distance: 12,
+            color: "#fafafa",
+            fontSize: 13,
+            fontWeight: 600,
+            lineHeight: 18,
+            backgroundColor: "rgba(9, 9, 11, 0.92)",
+            borderColor: "#52525b",
+            borderWidth: 1,
+            borderRadius: 3,
+            padding: [5, 7],
             formatter: (p: { data: { value: number[]; name: string; note: string } }) =>
-              `${p.data.value[0]} + ${p.data.value[1]} = 80 → ${p.data.name}\n${p.data.note}`,
+              `${p.data.name}  (${p.data.value[0]}, ${p.data.value[1]})\nSame sum · ${p.data.note}`,
           },
           tooltip: {
             formatter: "Reference point, not an observation.",
@@ -225,7 +246,7 @@ export function GateExplorer({
       <div className="rounded-lg border border-border/60 bg-card/40 p-2">
         <ReactECharts
           option={option}
-          style={{ height: 560 }}
+          style={{ height: 620 }}
           notMerge
           lazyUpdate={false}
           opts={{ renderer: "canvas" }}
@@ -238,7 +259,7 @@ export function GateExplorer({
 
       <aside className="space-y-4">
         <div className="rounded-lg border border-border/60 bg-card/40 p-4">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">
             Thresholds
           </div>
 
@@ -255,7 +276,7 @@ export function GateExplorer({
             hint="above this, the courier's shape is wrong"
           />
 
-          <div className="mt-4 grid grid-cols-2 gap-1.5 text-[11px]">
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
             {(["accept", "flag", "escalate", "freeze"] as const).map((q) => (
               <div key={q} className="flex items-center gap-1.5">
                 <span
@@ -269,12 +290,12 @@ export function GateExplorer({
         </div>
 
         <div className="rounded-lg border border-border/60 bg-card/40 p-4">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">
             {hovered ? "Hovered" : "Dataset"}
           </div>
 
           {hovered ? (
-            <div className="mt-2 space-y-1 text-[12px]">
+            <div className="mt-2 space-y-1.5 text-[13px]">
               <div className="font-mono">
                 {hovered.scenarioId} · leg {hovered.legIndex + 1}
               </div>
@@ -290,7 +311,7 @@ export function GateExplorer({
               />
             </div>
           ) : (
-            <dl className="mt-2 space-y-1 text-[12px]">
+            <dl className="mt-2 space-y-1.5 text-[13px]">
               <Stat label="events" value={counts.total} />
               <Stat label="both axes evaluated" value={counts.bothEvaluated} />
               <Stat label="pattern not evaluated" value={counts.patternUnknown} />
@@ -299,7 +320,7 @@ export function GateExplorer({
           )}
         </div>
 
-        <div className="rounded-lg border border-border/60 bg-card/40 p-4 text-[12px] leading-relaxed text-muted-foreground">
+        <div className="rounded-lg border border-border/60 bg-card/40 p-4 text-[13px] leading-relaxed text-muted-foreground">
           <p>
             Points in the shaded bands could not be evaluated on that axis. They are drawn outside
             the scale rather than at zero — plotting them at the origin would claim a measurement
@@ -329,8 +350,8 @@ function ThresholdSlider({
   return (
     <div className="mt-3">
       <div className="flex items-baseline justify-between">
-        <span className="text-[12px]">{label}</span>
-        <span className="font-mono text-[12px] tabular-nums">{value}</span>
+        <span className="text-[13px]">{label}</span>
+        <span className="font-mono text-[13px] tabular-nums">{value}</span>
       </div>
       <input
         type="range"
@@ -340,7 +361,7 @@ function ThresholdSlider({
         onChange={(e) => onChange(Number(e.target.value))}
         className="mt-1 w-full accent-sky-400"
       />
-      <div className="text-[11px] leading-tight text-muted-foreground">{hint}</div>
+      <div className="text-xs leading-tight text-muted-foreground">{hint}</div>
     </div>
   );
 }
@@ -377,7 +398,7 @@ function Unknown({
         <span className="text-muted-foreground">{label}</span>
         <span className="italic text-muted-foreground">not evaluated</span>
       </div>
-      <div className="mt-0.5 text-[11px] leading-snug text-zinc-400">{reason}</div>
+      <div className="mt-0.5 text-xs leading-snug text-zinc-400">{reason}</div>
     </div>
   );
 }

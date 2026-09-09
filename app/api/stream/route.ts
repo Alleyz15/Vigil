@@ -12,6 +12,7 @@ import {
 } from "@/lib/generate";
 import { cosign, courierCredential } from "@/lib/credential";
 import { epcsOf } from "@/lib/epcis";
+import { closeDb } from "@/lib/db/client";
 import type { ScenarioId } from "@/lib/generate/scenarios/types";
 import { CONSOLE_SEED, CONSOLE_START_MS } from "@/lib/console/dataset";
 
@@ -145,6 +146,7 @@ export async function GET(request: Request) {
       } catch (err) {
         send(`event: error\ndata: ${JSON.stringify({ message: (err as Error).message })}\n\n`);
       } finally {
+        closeDb(harness.deps.db);
         rmSync(harness.dir, { recursive: true, force: true });
         controller.close();
       }

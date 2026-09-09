@@ -470,7 +470,9 @@ in the submission. The cost of keeping it required is one explicit field per fix
 - Node built-in `crypto` for Ed25519 and sha256 — no external crypto library
 - `@turf/turf` for geo math, `seedrandom` for reproducible synthetic data
 - Tailwind 4 + shadcn/ui, ECharts for the two-axis gate explorer, native `EventSource` for SSE
-- **No animation libraries** — no framer-motion, no GSAP, no three.js
+- `motion` only, and only for timeline leg entrance, custom-row layout transitions and verdict
+  badge changes. Gate threshold feedback and the SSE sequence are deliberately animation-free;
+  no GSAP or three.js. See the Console conventions for the reasons.
 - vitest
 
 ### Dependency decisions
@@ -660,6 +662,23 @@ like a rendering bug rather than a structural one.
 **The split:** Radix components keep their own `data-state` animation. `motion` is for our own
 lists and cards only. `CollapsibleContent` in `timeline-view.tsx` is the reference case — it
 sits inside a `motion.li` but is not itself wrapped.
+
+This is now the **sixth architectural constraint enforced by the suite**. `lib/purity.test.ts`
+fails if either `gate-explorer.tsx` or `stream-view.tsx` imports `motion`, renders a `motion.*`
+element, or introduces `AnimatePresence`. Reading the policy is optional; violating it is not.
+
+### Recording pace and capture
+
+The six-leg timeline uses **1.9 seconds per ordinary leg at 1x**, reveals leg one immediately,
+and holds longer on the exception. The `0.75x / 1x / 1.5x` control separates a slower review
+pace, the recording default, and live presentation. Long timelines still compress so S2's forty
+handoffs remain watchable. Speed changes timing only; the pure playback reducer still owns what
+each tick means.
+
+`npm run qa:capture` renders the three console routes in local Chrome at an explicit
+**1920x1080** viewport and writes reproducible frames under `docs/screenshots/session-12/`.
+The timeline capture uses `/timeline?scenario=S1&frame=exception`, a narrow demo deep link that
+opens the real exception leg and its sealed evidence; it does not fabricate a display fixture.
 
 ### The verdict is never recomputed in the browser
 
@@ -1146,6 +1165,43 @@ the four missable scans and H1 fires 0/31.
 Then: Open-Meteo at `external_context` (the S6 beat), liveness/timeout paths, the map view, and
 the submission artefacts. Adding a genuine expressway leg to the generator is the only remaining
 test for the implied-speed threshold.
+
+### Session 12 — motion pass and recording-resolution polish (complete)
+
+498 tests passing, 3 skipped. `tsc --noEmit` clean, eslint clean, `next build` succeeds.
+`lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% branch coverage.
+
+The approved `motion` dependency was already installed; this session completed its deliberately
+narrow use rather than adding a second animation system. Timeline legs enter with a short tween,
+custom rows use a non-spring layout transition when evidence expands, and verdict badges change
+state with a short fade/scale. Reduced-motion preferences turn those effects off. The gate keeps
+ECharts `animation: false`; the SSE sequence has no entrance animation or decorative pulse, so
+its visible timing remains computation timing. Radix/shadcn lifecycle ownership is unchanged.
+
+**The play-through now reads at recording speed.** Play reveals the first leg immediately, then
+holds ordinary six-leg events for 1.9 seconds and the exception for 3.4 seconds at 1x. A compact
+`0.75x / 1x / 1.5x` control keeps 1x as the recording default and 1.5x available for live
+presenting. The timing function is pure and tested independently of React.
+
+**The two argument frames were checked at 1920x1080.** The S1 exception has a persistent amber
+edge, an `EXCEPTION DETECTED` label, both axes, coverage and verdict visible in one frame. The
+gate's three diamonds are 24 px, outlined, and directly label action, coordinates and operational
+meaning against an opaque backing. No labels overlap or clip. The 10-12 px operational copy that
+looked weak under recording compression was raised selectively to 12-14 px across the three
+views. Captures are committed under `docs/screenshots/session-12/`; regenerate with
+`npm run qa:capture` while the local server is running.
+
+**Halted still means nothing was sealed.** A pending co-signature uses its own blue dashed badge
+and a separate `HALTED · NOTHING SEALED` marker, not a verdict colour. Its expanded text states
+that no ledger decision exists.
+
+**E6's lingering process was cumulative resource leakage.** The shared experiment disposer
+deleted each temporary ledger directory but never closed the in-memory better-sqlite3 client.
+E6 creates thousands of harnesses, so those owned clients accumulated until process shutdown.
+`closeDb()` now closes the actual Drizzle client before directory removal; every E1-E6 entry point
+already uses that shared disposer. The console dataset and SSE route close their owned clients as
+well. A 24-run lifecycle smoke exited normally with every client closed. No experiment was rerun
+and no result CSV changed.
 
 ---
 

@@ -589,7 +589,7 @@ Brief 点名了 mapping / weather / identity / sensor 四类 API，我们占了�
 | `simple-statistics` | 方差、z-score、百分位 — 模式分靠它 |
 | `vitest` | 单元测试 + 实验批跑脚本 |
 
-### 前端（零动画库）
+### 前端（受限动画：只用 `motion`）
 
 | 选型 | 用途 |
 |---|---|
@@ -599,8 +599,16 @@ Brief 点名了 mapping / weather / identity / sensor 四类 API，我们占了�
 | `react-leaflet` + OSM 瓦片 | 地图，免 key |
 | `lucide-react` | 图标 |
 | **原生 `EventSource`** | SSE 实时推理流，不需要库 |
+| **`motion`** | 只用于时间线节点入场、展开自有卡片时的布局过渡、判决徽章状态变化 |
 
-演示只占 15%，所以不装动画库。唯一值得投入的是 SSE 那条流。
+动画不是统一的视觉装饰，而是按证据的含义受限使用：
+
+- **允许**：时间线节点在播放时入场、自有卡片展开时的布局过渡、判决徽章状态变化。
+- **双轴门探索器禁止动画**：拖阈值时必须立刻重着色；缓动会被读成延迟，破坏「我拖，它现在就变」的证据价值。ECharts 保持 `animation: false`。
+- **SSE 推理流禁止入场动画**：节点本来就有真实执行时间；装饰动画会让观众分不清延迟来自计算还是表演，反而削弱 Agentic AI 证据。
+- **flag 展开不弹跳**：操作员一班会重复点几十次。shadcn/Radix 自己管理 `data-state` 生命周期，绝不再套 `AnimatePresence`，避免双重卸载造成 ghosting。
+
+所以只装一个 `motion`，不装 GSAP；这里没有滚动叙事，两套动画库只有负担。
 
 ### 部署
 
@@ -640,6 +648,7 @@ simple-statistics
 echarts-for-react
 react-leaflet + leaflet
 lucide-react
+motion
 
 vitest
 
@@ -647,7 +656,7 @@ vitest
 （SSE 用原生 EventSource，不装）
 ```
 
-**十三个依赖，全部免费，总成本接近零。**
+依赖全部免费，总成本接近零；`motion` 的使用面由测试锁死，不会扩散到门探索器或 SSE 流。
 
 三个最容易被低估的：`@turf/turf`（地理检测的正确性）、`seedrandom`（实验可复现是 evidence of value 的前提）、Open-Meteo（唯一能演出「找证据后决定不升级」的免费 API）。
 

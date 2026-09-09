@@ -23,8 +23,8 @@ export default async function StreamPage({
   return (
     <div>
       <header className="mb-5">
-        <h1 className="text-lg font-semibold tracking-tight">Reasoning stream</h1>
-        <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-muted-foreground">
+        <h1 className="text-xl font-semibold tracking-tight">Reasoning stream</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
           One event through the eight agent nodes, streamed over SSE as they execute. The delays
           between nodes are the nodes running — nothing here is replayed from a recording, and no
           entrance animation is added, so the timing you see is the timing that happened.

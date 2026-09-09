@@ -16,8 +16,8 @@ export default async function GatePage() {
   return (
     <div>
       <header className="mb-5">
-        <h1 className="text-lg font-semibold tracking-tight">Gate explorer</h1>
-        <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-muted-foreground">
+        <h1 className="text-xl font-semibold tracking-tight">Gate explorer</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
           Every event across all seven scenarios, on two independent axes. Drag either threshold
           and watch the same events redistribute across four different actions. The axes are never
           added together — a courier at (0, 80) and one at (80, 0) have the same total and need

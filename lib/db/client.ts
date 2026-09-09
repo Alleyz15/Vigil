@@ -24,6 +24,11 @@ export function createDb(path: string) {
   return drizzle(sqlite, { schema });
 }
 
+/** Close an owned database connection. Safe to call more than once. */
+export function closeDb(database: VigilDb): void {
+  if (database.$client.open) database.$client.close();
+}
+
 let singleton: VigilDb | undefined;
 
 /** Process-wide database, created on first use. */

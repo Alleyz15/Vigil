@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,23 +21,24 @@ const STYLES: Record<VerdictKind, { label: string; className: string }> = {
   // Dashed, because nothing was sealed. It reads as an open state rather than
   // an outcome, which is exactly what it is.
   pending: {
-    label: "awaiting co-signature",
-    className: "bg-sky-500/10 text-sky-300 ring-sky-500/40 ring-dashed",
+    label: "pending co-signature",
+    className: "bg-sky-500/15 text-sky-200 ring-sky-400/50 ring-dashed",
   },
   halted: { label: "halted — nothing sealed", className: "bg-zinc-500/10 text-zinc-300 ring-zinc-500/30" },
 };
 
 export function VerdictBadge({ kind, className }: { kind: VerdictKind; className?: string }) {
   const style = STYLES[kind];
+  const reduceMotion = useReducedMotion();
 
   return (
     <motion.span
       // Keyed on the kind so a change animates; this is one of the three places
       // motion is allowed. Radix is never wrapped in AnimatePresence.
       key={kind}
-      initial={{ opacity: 0, scale: 0.96 }}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.16, ease: "easeOut" }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.16, ease: "easeOut" }}
       className={cn(
         "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap",
         style.className,

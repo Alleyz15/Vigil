@@ -466,6 +466,21 @@ describe("the two axes are never combined into one number", () => {
     }
   });
 
+  it("keeps decorative motion out of the gate explorer and SSE stream", () => {
+    const bannedViews = [
+      join(LIB, "..", "components", "console", "gate-explorer.tsx"),
+      join(LIB, "..", "components", "console", "stream-view.tsx"),
+    ];
+
+    for (const path of bannedViews) {
+      const source = stripComments(readFileSync(path, "utf8"));
+      expect(
+        /from\s+["']motion(?:\/react)?["']|\bAnimatePresence\b|<motion\./.test(source),
+        `${path} imports decorative motion. Gate threshold feedback must remain instantaneous, and the SSE sequence must show real computation timing rather than animation timing.`,
+      ).toBe(false);
+    }
+  });
+
   it("catches a violation when one is introduced", () => {
     // Guards the guard: a stripComments bug that ate everything would make the
     // checks above pass vacuously.

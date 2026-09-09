@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { halfOf, seedsForHalf, tuningSeeds } from "@/scripts/experiments/harness";
+import { buildWorld, createHarness } from "@/lib/generate";
+import { disposeHarness, halfOf, seedsForHalf, tuningSeeds } from "@/scripts/experiments/harness";
 
 describe("experiment holdout seed selection", () => {
   it("selects only the requested half and keeps tune/report seeds disjoint", () => {
@@ -18,5 +19,16 @@ describe("experiment holdout seed selection", () => {
 
     expect(seeds).toHaveLength(12);
     expect(seeds.every((seed) => halfOf(seed) === "tune")).toBe(true);
+  });
+});
+
+describe("experiment resource lifecycle", () => {
+  it("closes the SQLite client before removing a harness", () => {
+    const harness = createHarness(buildWorld("experiment-disposal-test"));
+    const client = harness.deps.db.$client;
+
+    expect(client.open).toBe(true);
+    disposeHarness(harness);
+    expect(client.open).toBe(false);
   });
 });
