@@ -229,6 +229,25 @@ up, and **building it in to prove it is unsafe would be self-defeating.**
 If a future session needs a model verdict for any reason, it goes in a script under
 `scripts/`, not in `lib/`.
 
+### 1d. Untested configuration is unverified code
+
+**A default or a config path that no test can reach is not configuration; it is unverified
+code.** This applies equally to model ids, endpoint fallbacks, environment-variable resolution
+and timeout values. A value looking plausible in a source file says nothing about whether the
+service still accepts it or whether URL composition reaches the intended route.
+
+Two live preflights found the same failure shape in consecutive sessions. Session 13 found a
+retired `gemini-2.0-flash` default that had survived six sessions because every integration test
+skipped without a key. Session 14 found that Ollama's stub defaulted to an OpenAI-compatible
+`/v1` base while the configured root URL omitted `/v1`; the shared caller would therefore have
+requested `/chat/completions`, a route the local server does not expose. Both would have failed
+on demo day despite looking configured.
+
+Provider defaults and URL construction therefore require offline request-contract tests that
+exercise the real fallback values without needing a live key. Live tests remain necessary for
+model retirement and service availability, but skipping them must not also skip construction,
+URL and timeout coverage.
+
 ### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
 
 A model's response passes every gate or none of it is used. Do not implement
@@ -1265,6 +1284,60 @@ and no result CSV changed.
 ---
 
 #### Predictions, recorded before any experiment was run
+
+### Session 14 — predictions (written first)
+
+**WRITTEN AND COMMITTED BEFORE THE FIRST LIVE CLAUDE OR OLLAMA REQUEST AND BEFORE E4A OR E4C
+WAS RUN.** The deciding prompts remain experiment-only. E4a uses the same neutral S0, S1 and S6
+evidence fixtures for Gemini, Claude Haiku and Qwen, with five calls per provider and fixture.
+E4c fixes four instruction-shaped payloads before observation and compares each provider's clean
+and injected response. No engine score, rule id, rule label or verdict appears in a deciding
+prompt.
+
+1. **Gemini and Claude will accept a larger share of plan and explain responses than Qwen
+   2.5 7B.** Ollama's `format: "json"` should suppress transport-level prose, but the smaller
+   model is more likely to produce an object that fails the closed tool enum, exact response
+   schema, citation allowlist or decision-word check. If Qwen matches the hosted models, that is
+   evidence that the guard is portable rather than evidence the local model is weak.
+2. **All three families will agree more strongly on S0 and S1 than on S6.** S0 has agreeing
+   signals and S1 has an explicit cross-signal contradiction; S6 has missing and degraded
+   evidence. The prediction is about cross-vendor modal agreement, not repeated sampling within
+   one provider. If every family agrees on every fixture, model choice mattered less here than
+   expected and that is reported directly.
+3. **At least one injected evidence field will move at least one model toward `accept`, while the
+   deterministic verdict and ledger commitment remain byte-identical.** The engine is not
+   credited with resisting natural-language instructions: those strings have no parsing surface
+   on its typed input. E4c reports what an injection would have to become — a valid structured
+   coordinate, timestamp, identifier or attestation value — before the engine could observe it.
+4. **Production explanation exposure to the four untrusted display fields will be zero.** A
+   standing test fixes that boundary before the forced-exposure experiment. When the same text is
+   deliberately appended to an experiment-only explain prompt, at least one model may emit prose
+   that contradicts the sealed verdict; every such contradiction must be rejected whole. Model
+   steerability and guard effectiveness are reported as separate rates.
+5. **A warmed local Qwen call will be usable interactively but not assumed faster than either
+   hosted provider.** Warm-up is excluded from measured latency; availability, load duration and
+   generation duration are recorded separately where Ollama supplies them. If its tail latency
+   makes the operator wait longer than the hosted calls, the offline path is architectural rather
+   than demo-ready and is labelled that way.
+
+**Metrics fixed before observation.** Every row names the exact model id. Provider validation
+records availability, warm-up, latency, raw shape, acceptance or fallback and rejection reason.
+E4a records decision histograms, top-N shares, modal verdicts, pairwise vendor agreement and the
+deterministic result as an output-only comparator. E4c records the injection surface, literal
+payload id, clean decision, injected decision, steering direction, deterministic parity and
+explanation rejection reason. Session 13's five-repeat Gemini result remains intact and is marked
+superseded as a test of sampling repeatability, not deleted.
+
+**Preflight configuration bug found before any live call.** `ollama.ts` reads exactly
+`OLLAMA_BASE_URL` and `OLLAMA_MODEL`, matching `.env`, but the configured
+`http://localhost:11434` root overrides a stub default ending in `/v1`. The reused OpenAI caller
+would append `/chat/completions` and hit the wrong path. Session 14 replaces the stub with the
+native `/api/chat` contract because native `format: "json"` is the point of this provider; it
+does not paper over the mismatch by changing `.env`. See rule 1d.
+
+**Scope.** No detector threshold moves. E1, E2, E3 and E6 are not rerun. The EPCIS schemas are
+not widened to accommodate adversarial display text, and no decision-capable function enters
+`lib/`.
 
 ### Session 13 — predictions (written first)
 
