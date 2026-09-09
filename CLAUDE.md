@@ -1207,6 +1207,51 @@ and no result CSV changed.
 
 #### Predictions, recorded before any experiment was run
 
+### Session 13 — predictions (written first)
+
+**WRITTEN AND COMMITTED BEFORE THE FIRST LIVE GEMINI REQUEST.** E4 will use three neutral
+evidence fixtures — S0 clean, S1 obvious fraud and S6 ambiguous degradation — with five
+independent calls per fixture. The prompt contains the event observations only: no engine
+verdict, no rule ids and no rule labels. E5 will use five calls over each of the same three
+fixtures. Every E5 raw response is generated once, then replayed unchanged through report-only
+and enforcing modes, so the before/after difference measures enforcement rather than two
+different samples from the model.
+
+1. **The clean and obvious-fraud E4 cases will have high top-1 agreement, while the ambiguous
+   degraded-signal case will have lower agreement or more than one distinct decision.** This is
+   a directional prediction, not an outcome the experiment is required to produce. If all three
+   are stable, the honest finding is that this Gemini model was stable on these fixtures.
+2. **Structured response mode will make transport-level malformed JSON, markdown fences and
+   trailing prose uncommon.** Schema-invalid fields, plausible-but-uncollected citation ids or
+   decision contradictions may still be rejected above the provider. A zero count for any
+   failure class is reported as zero, not replaced with a synthetic example.
+3. **Every live provider failure will reach the same deterministic heuristic or structured
+   fallback used offline.** If a malformed response, refusal, timeout or rate limit escapes that
+   path, the experiment stops and the seam is fixed before E4 or E5 is reported.
+4. **The live parity fixture will seal a byte-identical verdict and ledger chain with
+   `llm: undefined` and with Gemini.** A mismatch means the architectural seam is broken; the
+   assertion does not move.
+
+**Metrics fixed before observation.** E4 reports the full decision histogram, distinct-decision
+count, top-1 share, top-2 cumulative share and pairwise disagreement for each five-call cell,
+plus provider errors and latency per attempt. E5 reports attempts, accepted responses and whole-
+response rejections by `bad_citation`, `decision_contradiction`, `schema_invalid` and
+`provider_error`, before and after enforcement over the exact same raw responses. Every result
+row names the exact hosted model id; a result without it is not reproducible after model
+retirement.
+
+**Preflight bug found before calling the API.** Session 7 set the provider default to
+`gemini-2.0-flash`, but the live suite skipped while no key existed. That model was later retired,
+so an unreachable default sat in production code for six sessions and would have failed on demo
+day. The general lesson is broader than Gemini: **a default that no test can reach is not
+configuration; it is unverified code.** Session 13 checks the other provider defaults for the
+same shape and records the selected live model explicitly.
+
+**Scope.** These measurements describe one named Gemini model, not model families in general.
+Until a second vendor is measured, *"the model is unstable"* can only mean *"this model was
+unstable on these fixtures."* Claude and Ollama remain future work. No detector threshold moves,
+and E1, E2, E3 and E6 are not rerun.
+
 ### Session 11 — predictions (written first)
 
 **WRITTEN AND COMMITTED BEFORE THE I4/I5 IMPLEMENTATION, BEFORE THE TUNING-HALF CHECK, AND BEFORE
