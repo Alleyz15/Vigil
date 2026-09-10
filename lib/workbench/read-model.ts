@@ -1,5 +1,6 @@
 import { canonicalHash } from "@/lib/ledger";
 import type { TokenState } from "@/lib/recipient/token";
+import type { ToolConsideration } from "@/lib/llm/plan";
 import { epcsOf } from "@/lib/epcis";
 import type { AgentContext } from "@/lib/agent/context";
 import type { BuiltEvent, GeneratedScenario, GeneratedWorld } from "@/lib/generate";
@@ -92,6 +93,12 @@ export type HandoffDetail = {
   actions: ActionView[];
   timeline: HandoffSummary[];
   map: ShipmentMapModel;
+  /**
+   * Every tool the deterministic planner weighed, and why each was or was not
+   * taken. Rejected alternatives are part of the answer: an agent that shows
+   * only what it chose is asking to be trusted, not offering to be checked.
+   */
+  planConsidered: ToolConsideration[];
   plan: {
     selectedTools: string[];
     source: "model" | "heuristic" | "unavailable";

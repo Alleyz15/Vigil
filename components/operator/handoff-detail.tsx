@@ -11,6 +11,7 @@ import { AxisPair } from "./axis-pair";
 import { detailStatusMessage, traceNodeStates } from "./handoff-detail-model";
 import { OperatorActions } from "./operator-actions";
 import { ProvenanceLabel } from "./provenance-label";
+import { PlanAlternatives, RerouteAlternatives } from "./rejected-alternatives";
 import { ShipmentMap } from "./shipment-map";
 import { HandoffStateBadge } from "./status-badge";
 import { StreamView } from "@/components/console/stream-view";
@@ -260,6 +261,22 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             ) : (
               <p className="mt-2 text-xs font-medium leading-5 text-muted-foreground">{rerouteReason}</p>
             )}
+            <div className="mt-4 border-t pt-4">
+              <RerouteAlternatives reroute={detail.reroute ?? null} />
+            </div>
+          </section>
+
+          {/*
+            WHAT THE AGENT CONSIDERED AND DID NOT CHOOSE.
+            Sits next to the outcome rather than in a separate view, because the
+            option set is only meaningful beside the option taken.
+          */}
+          <section className="rounded-md border bg-card p-4">
+            <PlanAlternatives
+              considered={detail.planConsidered}
+              source={detail.plan.source}
+              selectedTools={detail.plan.selectedTools}
+            />
           </section>
 
           <section className="rounded-md border bg-card p-4">

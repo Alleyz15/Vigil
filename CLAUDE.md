@@ -2088,6 +2088,29 @@ upload-delay boundary is an explicit shift-anchored **assumption**; this dataset
 minutes, so the rule fired zero times. Both need field telemetry before either threshold can be
 claimed as measured.
 
+**The operator can read a recipient's confirmation link. In production they must not.**
+The link **is** the credential — it is a scoped capability, not a pointer to something protected
+by a separate login — so displaying it to staff hands them the recipient's answer. The prototype
+surfaces it on the detail page of **the one handoff already on screen**, never as a listing: an
+endpoint enumerating tokens would hand out every capability at once, which is indefensible in a
+project about custody of evidence. Production delivers the link to the recipient's own channel and
+shows staff at most whether it was sent, opened or answered. A judge who sees an operator reading
+recipient links will ask about this, and the honest answer is that it is a demo affordance we
+scoped deliberately rather than a design we defend.
+
+**Silence is an observation, never an assertion.** `no_response` is written only by
+`expireConfirmations` when a window closes, and the recipient API **rejects it with a 400** if a
+caller supplies it. Anyone holding the link could otherwise record "they never replied" on the
+recipient's behalf — and since silence is a signal, that would let the holder of a capability
+manufacture evidence about the person the capability belongs to.
+
+**A positive confirmation must never be written to `disputes`, and the second reason is the one
+that gets missed.** The obvious harm is that it corrupts P2's numerator. The less obvious one is
+that **the fleet baseline P2 compares against is computed from the same table** — so a "received"
+row stored there would raise the denominator's dispute rate for every courier, including the
+honest ones the comparison exists to protect. Someone reasoning only about the numerator could
+conclude a mislabelled row is harmless. It is not.
+
 **`seedDraftIdentity` is a deliberate second implementation, and it can drift.**
 `lib/workbench/service.ts` duplicates ~20 lines of `seedIdentityReferences` from
 `lib/generate/ingest.ts`, which is not exported and which session 17B was scoped out of touching.

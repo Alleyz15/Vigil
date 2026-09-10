@@ -504,7 +504,11 @@ export const gate: NodeFn = (ctx, deps) => {
     const rerouteInput = assembleRerouteInput(deps.db, ctx);
     ctx.reroute = rerouteInput
       ? proposeReroute(rerouteInput)
-      : { status: "unavailable", reason: "No authorised reroute exists for this address." };
+      : {
+          status: "unavailable",
+          reason: "No authorised reroute exists for this address.",
+          considered: [],
+        };
     if (ctx.reroute.status === "proposed") persistReroute(deps.db, ctx.reroute.proposal);
   }
 };

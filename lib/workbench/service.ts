@@ -31,6 +31,7 @@ import { OperatorActionRequest, type CaseState, type OperatorActionRequest as Ac
 import { isQueueState, transitionCase } from "./state";
 import { buildShipmentMapModel } from "./map-model";
 import { courierOutcome, type CourierOutcome } from "./courier";
+import { considerTools } from "@/lib/llm/plan";
 import { recipientChannelFingerprint } from "@/lib/identity/channel";
 import {
   answerConfirmation,
@@ -650,6 +651,7 @@ export class OperatorWorkbench {
       actions: [...entry.actions],
       timeline,
       map: buildShipmentMapModel(entry.scenario, entry.world),
+      planConsidered: considerTools(entry.current),
       plan: {
         selectedTools: entry.current.plan?.tools ?? [],
         source: entry.current.plan

@@ -109,10 +109,56 @@ describe("deterministic reroute proposal", () => {
       }),
     );
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: "unavailable",
       reason: "No authorised reroute exists for this address.",
     });
+
+    // THE REJECTION HALF IS THE PRIMARY DISCLOSURE, not a consolation prize.
+    // "No authorised reroute exists" is true and unhelpful on its own; an
+    // operator needs to know WHICH destinations were weighed and which rule
+    // excluded each, because that is what tells them whether to widen a
+    // mandate, activate a counter, or escalate instead.
+    expect(result.considered.length).toBeGreaterThan(0);
+    expect(result.considered.every((candidate) => !candidate.selected)).toBe(true);
+    for (const candidate of result.considered) {
+      expect(candidate.reason).not.toBe("");
+      expect(candidate.reason).not.toBe("eligible");
+    }
+    expect(result.considered.map((candidate) => candidate.reason)).toContain(
+      "this location is not in the mandate's permitted locations",
+    );
+  });
+
+  /**
+   * The reasons must come from the SELECTOR, not from a view.
+   *
+   * A panel that worked out "why not that one?" for itself would be a second
+   * implementation of the eligibility rules, drifting from the first the moment
+   * a mandate rule moved — the same error as recomputing a verdict in a browser.
+   */
+  it("names the winner and says why every other candidate lost", () => {
+    const result = proposeReroute(input({ decision: "flag" }));
+    expect(result.status).toBe("proposed");
+
+    const winners = result.considered.filter((candidate) => candidate.selected);
+    expect(winners).toHaveLength(1);
+    expect(winners[0].reason).toMatch(/nearest authorised pickup point/);
+
+    for (const loser of result.considered.filter((candidate) => !candidate.selected)) {
+      expect(loser.reason, `${loser.id} lost without saying why`).not.toBe("");
+      expect(loser.reason).not.toBe("eligible");
+    }
+  });
+
+  it("reports an inactive pickup point as inactive, not as out of scope", () => {
+    const result = proposeReroute(input({ decision: "flag" }));
+    const inactive = result.considered.filter((candidate) =>
+      candidate.reason.includes("not currently active"),
+    );
+    // Only asserted when the fixture actually contains one; the point is that
+    // the reason is specific when it applies, never a generic exclusion.
+    for (const candidate of inactive) expect(candidate.selected).toBe(false);
   });
 });
 

@@ -63,10 +63,29 @@ export type RerouteInput = {
   alternateCouriers: { courierId: string; mandate: CourierMandate }[];
 };
 
+/**
+ * One candidate the selector looked at, and what happened to it.
+ *
+ * PRODUCED BY THE SELECTOR, never re-derived by a view. The exclusion reasons
+ * are the filter predicates' own words — mandate expired, EPC prefix out of
+ * scope, location not covered, farther than the winner. A panel that worked out
+ * "why not that one?" for itself would be a second implementation of the
+ * eligibility rules, drifting from the first the moment a mandate rule moved.
+ */
+export type RerouteCandidate = {
+  kind: "pickup_point" | "courier_reassignment";
+  id: string;
+  label: string;
+  selected: boolean;
+  /** Why it won, or why it lost. Always populated. */
+  reason: string;
+  distanceMeters?: number;
+};
+
 export type RerouteOutcome =
-  | { status: "not_applicable"; reason: string }
-  | { status: "unavailable"; reason: string }
-  | { status: "proposed"; proposal: RerouteProposal };
+  | { status: "not_applicable"; reason: string; considered: RerouteCandidate[] }
+  | { status: "unavailable"; reason: string; considered: RerouteCandidate[] }
+  | { status: "proposed"; proposal: RerouteProposal; considered: RerouteCandidate[] };
 
 export const RerouteCredentialSubject = z.strictObject({
   v: z.literal(1),
