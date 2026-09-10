@@ -1,42 +1,82 @@
 experiment,noise_level,noise_name,scenario,seed,half,seeds_in_cell,leg,decision,abort_code,flags,episodes,missed_leg
+E3,1,good,S0,vigil-2026-e3-S0-103,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,1,good,S0,vigil-2026-e3-S0-176,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I1 I11,address_correction,
 E3,1,good,S0,vigil-2026-e3-S0-208,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I10,address_correction,
+E3,1,good,S0,vigil-2026-e3-S0-216,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,1,good,S0,vigil-2026-e3-S0-224,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I1 I11,address_correction,
 E3,1,good,S6,vigil-2026-e3-S6-36,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan,linehaul_departure
+E3,1,good,S6,vigil-2026-e3-S6-93,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
+E3,1,good,S6,vigil-2026-e3-S6-98,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
+E3,1,good,S6,vigil-2026-e3-S6-167,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,2,urban,S0,vigil-2026-e3-S0-1,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I10,address_correction,
+E3,2,urban,S0,vigil-2026-e3-S0-15,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
+E3,2,urban,S0,vigil-2026-e3-S0-64,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,missed_scan handset_swap,out_for_delivery
+E3,2,urban,S0,vigil-2026-e3-S0-103,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,2,urban,S0,vigil-2026-e3-S0-120,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I10,address_correction,
+E3,2,urban,S0,vigil-2026-e3-S0-142,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,2,urban,S0,vigil-2026-e3-S0-159,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan handset_swap,linehaul_departure
-E3,2,urban,S0,vigil-2026-e3-S0-176,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I1 I6 I11,address_correction handset_swap,
+E3,2,urban,S0,vigil-2026-e3-S0-159,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,missed_scan handset_swap,linehaul_departure
+E3,2,urban,S0,vigil-2026-e3-S0-176,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I1 I6 I11 I16,address_correction handset_swap,
 E3,2,urban,S0,vigil-2026-e3-S0-208,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I10,address_correction,
+E3,2,urban,S0,vigil-2026-e3-S0-216,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,2,urban,S0,vigil-2026-e3-S0-224,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I1 I11,address_correction charged_mid_shift,
+E3,2,urban,S6,vigil-2026-e3-S6-5,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,2,urban,S6,vigil-2026-e3-S6-36,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan,linehaul_departure
+E3,2,urban,S6,vigil-2026-e3-S6-42,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I14 I16,charged_mid_shift attestation_degraded,
+E3,2,urban,S6,vigil-2026-e3-S6-71,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I14 I16,charged_mid_shift attestation_degraded,
+E3,2,urban,S6,vigil-2026-e3-S6-93,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
+E3,2,urban,S6,vigil-2026-e3-S6-98,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
+E3,2,urban,S6,vigil-2026-e3-S6-167,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
+E3,2,urban,S6,vigil-2026-e3-S6-205,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,3,adverse,S0,vigil-2026-e3-S0-1,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I10,address_correction,
 E3,3,adverse,S0,vigil-2026-e3-S0-14,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan,linehaul_departure
-E3,3,adverse,S0,vigil-2026-e3-S0-18,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I14,missed_scan handset_swap,out_for_delivery
-E3,3,adverse,S0,vigil-2026-e3-S0-64,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9,missed_scan redelivery handset_swap,out_for_delivery
+E3,3,adverse,S0,vigil-2026-e3-S0-15,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,charged_mid_shift handset_swap,
+E3,3,adverse,S0,vigil-2026-e3-S0-18,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I14 I16,missed_scan handset_swap,out_for_delivery
+E3,3,adverse,S0,vigil-2026-e3-S0-20,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I16,attestation_degraded,
+E3,3,adverse,S0,vigil-2026-e3-S0-43,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,charged_mid_shift handset_swap,
+E3,3,adverse,S0,vigil-2026-e3-S0-64,tune,120,urn:epcglobal:cbv:bizstep:holding,flag,,I6 I16,missed_scan redelivery handset_swap,out_for_delivery
+E3,3,adverse,S0,vigil-2026-e3-S0-64,tune,120,urn:epcglobal:cbv:bizstep:transporting,flag,,I6 I16,missed_scan redelivery handset_swap,out_for_delivery
+E3,3,adverse,S0,vigil-2026-e3-S0-64,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9 I16,missed_scan redelivery handset_swap,out_for_delivery
+E3,3,adverse,S0,vigil-2026-e3-S0-68,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I15,stale_recipient_channel,
 E3,3,adverse,S0,vigil-2026-e3-S0-99,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,charged_mid_shift,
+E3,3,adverse,S0,vigil-2026-e3-S0-103,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,3,adverse,S0,vigil-2026-e3-S0-120,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I10 I14,address_correction charged_mid_shift,
+E3,3,adverse,S0,vigil-2026-e3-S0-136,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I15,stale_recipient_channel,
+E3,3,adverse,S0,vigil-2026-e3-S0-142,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,3,adverse,S0,vigil-2026-e3-S0-143,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,charged_mid_shift,
 E3,3,adverse,S0,vigil-2026-e3-S0-159,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan handset_swap,linehaul_departure
-E3,3,adverse,S0,vigil-2026-e3-S0-176,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I1 I6 I11,address_correction handset_swap,
-E3,3,adverse,S0,vigil-2026-e3-S0-205,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9,charged_mid_shift handset_swap,
+E3,3,adverse,S0,vigil-2026-e3-S0-159,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,missed_scan handset_swap,linehaul_departure
+E3,3,adverse,S0,vigil-2026-e3-S0-172,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I14 I16,charged_mid_shift attestation_degraded,
+E3,3,adverse,S0,vigil-2026-e3-S0-176,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I1 I6 I11 I16,address_correction handset_swap,
+E3,3,adverse,S0,vigil-2026-e3-S0-205,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9 I16,charged_mid_shift handset_swap,
 E3,3,adverse,S0,vigil-2026-e3-S0-208,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I10,address_correction,
-E3,3,adverse,S0,vigil-2026-e3-S0-216,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9,handset_swap,
+E3,3,adverse,S0,vigil-2026-e3-S0-213,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I16,attestation_degraded,
+E3,3,adverse,S0,vigil-2026-e3-S0-216,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9 I16,handset_swap,
 E3,3,adverse,S0,vigil-2026-e3-S0-224,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I1 I9 I11,address_correction charged_mid_shift,
+E3,3,adverse,S0,vigil-2026-e3-S0-228,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I14 I16,charged_mid_shift attestation_degraded,
+E3,3,adverse,S6,vigil-2026-e3-S6-5,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,3,adverse,S6,vigil-2026-e3-S6-13,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,redelivery charged_mid_shift,
 E3,3,adverse,S6,vigil-2026-e3-S6-21,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,redelivery charged_mid_shift,
 E3,3,adverse,S6,vigil-2026-e3-S6-29,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,charged_mid_shift,
 E3,3,adverse,S6,vigil-2026-e3-S6-36,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan,linehaul_departure
+E3,3,adverse,S6,vigil-2026-e3-S6-42,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I14 I16,charged_mid_shift attestation_degraded,
 E3,3,adverse,S6,vigil-2026-e3-S6-54,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan charged_mid_shift,linehaul_departure
+E3,3,adverse,S6,vigil-2026-e3-S6-55,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,3,adverse,S6,vigil-2026-e3-S6-58,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan,linehaul_departure
 E3,3,adverse,S6,vigil-2026-e3-S6-61,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,missed_scan,out_for_delivery
-E3,3,adverse,S6,vigil-2026-e3-S6-97,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9,address_correction charged_mid_shift handset_swap,
-E3,3,adverse,S6,vigil-2026-e3-S6-98,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9,handset_swap,
+E3,3,adverse,S6,vigil-2026-e3-S6-65,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
+E3,3,adverse,S6,vigil-2026-e3-S6-71,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I14 I16,charged_mid_shift attestation_degraded,
+E3,3,adverse,S6,vigil-2026-e3-S6-97,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9 I16,address_correction charged_mid_shift handset_swap,
+E3,3,adverse,S6,vigil-2026-e3-S6-98,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9 I16,handset_swap,
 E3,3,adverse,S6,vigil-2026-e3-S6-104,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,missed_scan,out_for_delivery
 E3,3,adverse,S6,vigil-2026-e3-S6-108,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,charged_mid_shift,
-E3,3,adverse,S6,vigil-2026-e3-S6-131,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9,handset_swap,
+E3,3,adverse,S6,vigil-2026-e3-S6-131,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9 I16,handset_swap,
 E3,3,adverse,S6,vigil-2026-e3-S6-163,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan,linehaul_departure
+E3,3,adverse,S6,vigil-2026-e3-S6-167,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,3,adverse,S6,vigil-2026-e3-S6-175,tune,120,urn:epcglobal:cbv:bizstep:arriving,freeze,H1,H1,missed_scan,linehaul_departure
+E3,3,adverse,S6,vigil-2026-e3-S6-179,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
 E3,3,adverse,S6,vigil-2026-e3-S6-186,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,charged_mid_shift,
-E3,3,adverse,S6,vigil-2026-e3-S6-195,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9,address_correction handset_swap,
+E3,3,adverse,S6,vigil-2026-e3-S6-195,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I9 I16,address_correction handset_swap,
 E3,3,adverse,S6,vigil-2026-e3-S6-196,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I14,charged_mid_shift,
+E3,3,adverse,S6,vigil-2026-e3-S6-205,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I6 I16,handset_swap,
+E3,3,adverse,S6,vigil-2026-e3-S6-237,tune,120,urn:epcglobal:cbv:bizstep:delivering,flag,,I9 I16,charged_mid_shift attestation_degraded,

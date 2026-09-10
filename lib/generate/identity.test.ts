@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { rmSync } from "node:fs";
 import { closeDb } from "@/lib/db/client";
-import { vigilSignalsOf } from "@/lib/epcis";
+import { EpcisEvent, vigilSignalsOf } from "@/lib/epcis";
 import { buildIdentityCase, type IdentityCaseId } from "./identity-cases";
 import { buildWorld } from "./world";
 import { makeRng } from "./rng";
@@ -55,6 +55,31 @@ describe("generated identity evidence", () => {
     expect(final.engineResult?.coverage.notEvaluated.map((entry) => entry.id)).not.toEqual(
       expect.arrayContaining(["I15", "I16"]),
     );
+  });
+
+  it("does not alert on a temporary attestation downgrade without another contradiction", async () => {
+    const ctx = context();
+    const scenario = buildScenario("S0", ctx);
+    const delivery = scenario.timeline.at(-1)!;
+    const rawSignals = (
+      delivery.raw.sensorElementList as Array<{ "vigil:signals": Record<string, unknown> }>
+    )[0]["vigil:signals"];
+    rawSignals.integrity = {
+      ...(rawSignals.integrity as Record<string, unknown>),
+      deviceRecognitionVerdicts: ["MEETS_BASIC_INTEGRITY"],
+    };
+    delivery.event = EpcisEvent.parse(delivery.raw);
+
+    const harness = createHarness(ctx.world);
+    harnesses.push(harness);
+    const run = await ingestScenario(scenario, harness);
+    const final = run.legs.at(-1)!;
+
+    expect(final.engineResult?.flags).toEqual([
+      expect.objectContaining({ id: "I16", points: 20 }),
+    ]);
+    expect(final.decision).toBe("accept");
+    expect(final.requiresCosign).toBe(false);
   });
 });
 

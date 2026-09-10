@@ -1,0 +1,85 @@
+experiment,scenario,label,seed,half,seeds_in_cell,detected,detected_at_leg,total_legs,flags
+E2,S1,GPS spoofing,vigil-2026-e2-S1-0,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-4,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-5,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-8,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-9,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-10,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-13,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-14,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-17,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-21,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-22,tune,12,1,6,6,I1 I7
+E2,S1,GPS spoofing,vigil-2026-e2-S1-23,tune,12,1,6,6,I1 I7
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-1,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-2,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-5,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-6,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-12,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-13,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-14,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-17,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-18,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-20,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-21,tune,12,1,8,40,P2
+E2,S2,Batch scanning a condo tower,vigil-2026-e2-S2-24,tune,12,1,8,40,P2
+E2,S3,Event ID reuse,vigil-2026-e2-S3-1,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-2,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-5,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-6,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-12,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-13,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-17,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-21,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-22,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-25,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-26,tune,12,1,7,6,H4
+E2,S3,Event ID reuse,vigil-2026-e2-S3-28,tune,12,1,7,6,H4
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-2,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-3,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-6,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-7,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-12,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-13,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-16,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-17,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-22,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-23,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-26,tune,12,1,6,6,H2
+E2,S4,Out-of-scope scan,vigil-2026-e2-S4-27,tune,12,1,6,6,H2
+E2,S5,Clock tampering,vigil-2026-e2-S5-2,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-3,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-5,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-6,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-11,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-12,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-15,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-16,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-18,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-19,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-20,tune,12,1,6,6,I4
+E2,S5,Clock tampering,vigil-2026-e2-S5-23,tune,12,1,6,6,I4
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-0,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-1,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-2,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-5,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-6,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-7,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-8,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-9,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-10,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-13,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-14,tune,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-17,tune,12,1,6,6,I15
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-2,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-3,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-6,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-7,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-12,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-13,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-16,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-17,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-21,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-22,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-26,tune,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-27,tune,12,1,6,6,I6 I16

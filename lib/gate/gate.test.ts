@@ -93,7 +93,7 @@ describe("quadrant boundaries", () => {
  *
  * This is the case no per-event system can see, and the reason the two axes are
  * kept apart. Every single handoff this courier submits is clean — scored, on
- * the full fourteen checks, at zero. Any system that adjudicates event by event
+ * the full sixteen checks, at zero. Any system that adjudicates event by event
  * accepts all twelve of them, and would accept the next twelve too.
  *
  * What is wrong is not in any handoff. It is in the SHAPE of them: they arrive

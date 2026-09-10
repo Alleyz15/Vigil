@@ -59,3 +59,27 @@ E2,S5,Clock tampering,vigil-2026-e2-S5-14,report,12,1,6,6,I4
 E2,S5,Clock tampering,vigil-2026-e2-S5-17,report,12,1,6,6,I4
 E2,S5,Clock tampering,vigil-2026-e2-S5-21,report,12,1,6,6,I4
 E2,S5,Clock tampering,vigil-2026-e2-S5-22,report,12,1,6,6,I4
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-3,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-4,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-11,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-12,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-15,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-16,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-19,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-22,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-23,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-26,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-27,report,12,1,6,6,I15
+E2,recipient_channel_substitution,OTP sent to a different recipient channel,vigil-2026-e2-recipient_channel_substitution-31,report,12,1,6,6,I15
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-0,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-1,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-4,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-5,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-8,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-9,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-10,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-11,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-14,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-15,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-18,report,12,1,6,6,I6 I16
+E2,replacement_weak_handset,Unbound weak replacement handset,vigil-2026-e2-replacement_weak_handset-19,report,12,1,6,6,I6 I16

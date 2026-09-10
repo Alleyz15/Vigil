@@ -28,6 +28,8 @@ courier fleet, because we do not have one.
 | Fleet dispute rate (background) | ~0% | The background fleet is clean by construction, so the baseline is a floor, not an observation. |
 | Fraudster dispute rate (S2) | ~24% | Chosen to be unmistakably out of line. Invented. |
 | Parcel declared value | RM 15–450 | Invented. |
+| Recipient phone | Deterministic synthetic Malaysian E.164 number | Invented; no real recipient appears. |
+| Enrolled handset assurance | `MEETS_DEVICE_INTEGRITY` | Prototype policy choice, not a fleet measurement. |
 
 **The table above is the LEVEL-0 CONTROL.** Those bounded values are what the generator
 produces with the noise model switched off, and they are what session 9's 0% false-positive
@@ -125,6 +127,8 @@ plausibility. They are the values a reader should press on.
 | Missed scan | 1.5% | 5% | 11% | Assumption. Hub scan compliance is high but not perfect. |
 | Charged mid-shift | 5% | 12% | 22% | Assumption. |
 | Handset swap mid-round | 1% | 3% | 7% | Assumption. |
+| Stale registered recipient channel | 0.3% | 1% | 3% | Assumption. The OTP reaches a current number while the parcel record retains the old one. |
+| Temporary attestation downgrade to BASIC | 0.5% | 2% | 5% | Assumption. A valid enrolled handset may temporarily lose the stronger label for operational reasons. |
 | Mid-shift charge gain | 15–45 pp | 15–55 pp | 15–60 pp | Assumption. |
 | Address correction: 70% "nearby", 30% "elsewhere" | — | — | — | **Assumption, and the one the address-correction result is most sensitive to.** A "nearby" correction sits 4% of the way to another real address — a wrong unit number. "elsewhere" is a redirect to a different address entirely. |
 
@@ -170,6 +174,14 @@ result is in RESULTS.md E3.
   to a Klang Valley dataset, and rain's effect on GNSS is small next to building geometry.
 - **Device heterogeneity.** One accuracy distribution stands in for a fleet's whole mix of
   handsets, chipsets and OS versions.
+- **Identity episode rates.** The stale-channel and temporary-attestation rates are assumptions,
+  not fleet measurements. Their draws are independent of each other and of address freshness,
+  whereas real stale records and replacement-device use are likely correlated with depot,
+  customer and process quality.
+- **Voluntary OTP relay.** The model can generate a challenge delivered to the wrong registered
+  channel; it cannot make a genuinely delivered code reveal whether the recipient typed it or
+  read it aloud to an impostor. NIST SP 800-63B describes manually transferred out-of-band
+  secrets as not phishing-resistant. That is a system boundary, not missing synthetic noise.
 - **Operational context.** No traffic, no roadworks, no vehicle breakdown, no round reassigned
   mid-shift, no parcel returned to the hub.
 - **Adversarial noise.** Everything here is honest. A fraudster who deliberately works where the
@@ -268,7 +280,7 @@ S0, S2 and S6 carry the argument.
 
 Both look, on a dashboard, like a delivery whose location story is odd. One is a courier
 defrauding forty customers; the other is a courier in a basement carpark. **In both, every
-single event scores zero on all fourteen single-event checks.** A per-event system sees the same
+single event scores zero on all sixteen single-event checks.** A per-event system sees the same
 thing in both and can only treat them the same way.
 
 They diverge on axis 2, and only there:
@@ -278,7 +290,7 @@ They diverge on axis 2, and only there:
   Neither exists inside any single event.
 - **S6** is left alone, because a degraded GPS fix *reports its own uncertainty* and a missing
   cell observation is *missing* rather than contradictory. The location rules return
-  `not_evaluated`, the coverage line drops from 13/14 to 10/14, and the operator is told how
+  `not_evaluated`, the coverage line drops from 14/16 to 12/16, and the operator is told how
   much evidence there actually was.
 
 **A fraudster can fake WHERE. They cannot fake HOW FAST, or WHETHER THE CUSTOMER GOT IT.**
@@ -319,13 +331,32 @@ engine decides that by finding contradictions across signals.
 | `motion` | Accelerometer summary over the preceding window | I2 |
 | `integrity.attestationSource` | **Always `"mocked"` in this dataset** | I8 |
 | `integrity.verdict` / `rootDetected` / `appTampered` | Simulated Play Integrity output | I8 |
+| `integrity.deviceRecognitionVerdicts[]` | Exact Play Integrity recognition labels (`MEETS_BASIC_INTEGRITY`, `MEETS_DEVICE_INTEGRITY`, `MEETS_STRONG_INTEGRITY`) | I16 |
 | `battery.levelPercent` / `charging` | Handset battery | I14 |
 | `pod.photoSha256` / `photoExifCaptureTime` | Proof-of-delivery photo hash and EXIF time | I9, I12 |
 | `pod.otpVerified` / `signatureSha256` | OTP and recipient signature | I12 |
+| `pod.otp.challengeId` / `verificationReceiptId` | Opaque references to the independent verifier transaction; never the OTP itself | I15 |
 
 **`attestationSource` is always `"mocked"`.** The prototype simulates Play Integrity, and a
 simulated attestation that is indistinguishable from a real one inside our own dataset would be
 precisely the forgery this project claims to detect.
+
+### Identity reference data outside EPCIS
+
+The event cannot certify its own identity claims. Generated ingestion therefore writes two
+independent server-side records before the event reaches the assembler:
+
+- `otp_challenges` binds the opaque challenge and verification receipt to the parcel EPC, a
+  one-way fingerprint of the registered recipient channel, validity times and the consuming
+  event ID. No OTP or reusable digest of it is stored in EPCIS or this row.
+- `device_enrollments` binds a device ID to a courier and the Play Integrity recognition level
+  that device was enrolled to satisfy. I16 compares that policy with the live labels; the
+  attestation cannot rewrite its own enrollment.
+
+The experiment-only identity cases are not added to the public S0–S6 picker. One delivers an OTP
+to a different channel; the other uses a known replacement handset that is unbound to the courier
+and returns only `MEETS_BASIC_INTEGRITY`. They are generated from the same seeded world and run
+through the same EPCIS schema, SQLite assemblers, credential verifier and agent as every scenario.
 
 ---
 

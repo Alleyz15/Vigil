@@ -41,6 +41,11 @@ old noise-free dataset and is reported alongside, so what changed is visible rat
 asserted. E2 was rerun after the I4/I5 change; E1 remains unchanged from session 9. Session 13
 measured Gemini; session 14 added Claude Haiku and local Qwen, cross-vendor E4a, adversarial E4c
 and cross-provider E5. E1, E2, E3 and E6 were not rerun in either model session.
+Session 16 added independent recipient/device identity evidence, checked E2 and E3 on the tuning
+half, fixed the implementation in `695cf3d`, and only then reran both on the reporting half.
+One post-run trace corrected the experiment-only replacement enrollment from the current courier
+to another courier in `8185703`; E2 was rerun on both halves and remained byte-for-byte equivalent
+in its reported outcome. E3 does not build that case and was unaffected.
 
 ---
 
@@ -105,14 +110,28 @@ n = 12 seeds per class, reporting half only.
 | S3 Event ID reuse | 12/12 | 100% | 7.0 (the replay) | H4 | hard check |
 | S4 Out-of-scope scan | 12/12 | 100% | 6.0 | H2 | hard check |
 | S5 Clock tampering | 12/12 | 100% | 6.0 | I4 | single-event |
+| OTP sent to a different recipient channel | 12/12 | 100% | 6.0 | **I15** | single-event identity |
+| Unbound weak replacement handset | 12/12 | 100% | 6.0 | **I6, I16** | single-event identity |
 
 **What this shows.** Every modelled class is caught. The interesting row is **S2**: caught at
 leg 8 by **P2 alone, with no single-event rule firing at all**. Every one of those forty events
-scored zero on all fourteen single-event checks. A per-event system accepts all of them.
+scored zero on all sixteen single-event checks. A per-event system accepts all of them.
+
+**What the identity rows mean.** I15 does not score possession of an OTP. It compares the
+event's opaque challenge/receipt IDs with a separately stored verifier transaction bound to the
+parcel EPC, registered recipient-channel fingerprint, expiry and consuming event. NIST
+[SP 800-63B](https://pages.nist.gov/800-63-4/sp800-63b.html) is also the boundary: a manually
+transferred out-of-band secret is not phishing-resistant, so a recipient voluntarily reading a
+valid code aloud remains undetectable. I16 compares exact Play Integrity recognition labels with
+server-side device enrollment. Google's
+[verdict documentation](https://developer.android.com/google/play/integrity/verdicts) defines
+`MEETS_BASIC_INTEGRITY`, `MEETS_DEVICE_INTEGRITY` and `MEETS_STRONG_INTEGRITY`; I16 is +20 and
+cannot reach the gate alone because a weaker label can have operational causes.
 
 **What this does not show.** 100% across the board is what you get when you test the attacks you
-designed the detectors against. These are the five classes we modelled; it says nothing about a
-sixth we did not think of. The detection rate is only meaningful read alongside E3.
+designed the detectors against. These are the seven classes we modelled; it says nothing about an
+eighth we did not think of. The detection rate is only meaningful read alongside E3. In
+particular, I15 cannot detect a recipient voluntarily reading a genuinely delivered OTP aloud.
 
 **What would falsify it.** A class detected at a later leg than the one where its exception was
 injected would mean the system is catching it by accident downstream rather than at the event.
@@ -130,6 +149,8 @@ npx tsx scripts/experiments/e3-false-positives.ts   # results/e3-false-positives
 ```
 
 n = 120 seeds per scenario per noise level, reporting half only. 960 shipments, 5,805 legs.
+Session 16 uses the same seeds and denominators as session 11, so the identity cost is directly
+comparable rather than inferred from a different sample.
 
 > **The earlier number was 0% across 240 legs, and it was a floor, not a rate.** The generator's
 > clean shipments had bounded noise by construction — GPS 6–18 m, latency 8–90 s, a battery that
@@ -142,26 +163,26 @@ n = 120 seeds per scenario per noise level, reporting half only. 960 shipments, 
 | Noise level | Seeds | Legs | Alerts | Per leg | Shipments affected | Dominant flag |
 |---|---|---|---|---|---|---|
 | 0 `pristine` (the old dataset) | 240 | 1,440 | 0 | **0.0%** | 0.0% | — |
-| 1 `good` | 240 | 1,447 | 3 | **0.2%** | 1.3% | I10 ×2 |
-| 2 `urban` | 240 | 1,439 | 7 | **0.5%** | 2.9% | H1 ×4 |
-| 3 `adverse` | 240 | 1,479 | 18 | **1.2%** | 7.5% | H1 ×7 |
+| 1 `good` | 240 | 1,447 | 6 | **0.4%** | 2.5% | I15 ×2 / I10 ×2 |
+| 2 `urban` | 240 | 1,439 | 13 | **0.9%** | 5.4% | H1 ×4 |
+| 3 `adverse` | 240 | 1,479 | 32 | **2.2%** | 13.3% | I16 ×11 |
 
 **By abort code.** Hard aborts are a small and roughly constant minority; the rest are scored
 decisions, all of them `flag` rather than `escalate` or `freeze`.
 
 | Level | Alerts | `H1` freeze | No abort code (scored `flag`) |
 |---|---:|---:|---:|
-| 1 | 3 | 1 (33.3%) | 2 |
-| 2 | 7 | 4 (57.1%) | 3 |
-| 3 | 18 | 7 (38.9%) | 11 |
+| 1 | 6 | 1 (16.7%) | 5 |
+| 2 | 13 | 4 (30.8%) | 9 |
+| 3 | 32 | 7 (21.9%) | 25 |
 
 **By flag.**
 
 | Level | Flags raised on clean work |
 |---|---|
-| 1 | I10 ×2, H1 ×1 |
-| 2 | H1 ×4, I10 ×2, I1 ×1, I11 ×1 |
-| 3 | H1 ×7, I10 ×4, I14 ×4, I1 ×4, I9 ×4, I11 ×4, P5 ×2, I6 ×1 |
+| 1 | I15 ×2, I10 ×2, H1 ×1, I6 ×1, I16 ×1 |
+| 2 | H1 ×4, I6 ×3, I16 ×3, I15 ×3, I10 ×2, I1 ×1, I11 ×1 |
+| 3 | I16 ×11, I6 ×8, H1 ×7, I15 ×6, I9 ×5, I14 ×4, I10 ×4, I1 ×4, I11 ×4, P5 ×2 |
 
 **Per episode**, from the generator's own record of what it drew — not inferred back out of the
 events, which would mean explaining the detector's output with the detector's own measurement.
@@ -173,11 +194,20 @@ events, which would mean explaining the detector's output with the detector's ow
 | Missed scan | 27 | 10 | 37.0% |
 | Charged mid-shift | 49 | 5 | 10.2% |
 | Handset swap | 8 | 1 | 12.5% |
+| Stale recipient channel | 6 | 6 | 100.0% |
+| Temporary attestation downgrade | 15 | 5 | 33.3% |
 
-**What this shows.** After correcting the clock rule, ordinary work reaches an operator on
-**0.2% of legs on a good day, 0.5% in ordinary urban conditions, and 1.2% on an adverse day**.
-The tuning half independently landed at 0.3% / 0.5% / 2.0%, so the reporting curve was not a
-lucky half selected after the change. Quote the curve, not one preferred point.
+**What this shows.** With identity evidence enabled, ordinary work reaches an operator on
+**0.4% of legs on a good day, 0.9% in ordinary urban conditions, and 2.2% on an adverse day**.
+The tuning half landed at 0.6% / 1.4% / 3.6%; no parameter moved afterward. Quote the curve, not
+one preferred point.
+
+**What identity cost.** Against the same reporting seeds, the pre-identity run had 3 / 7 / 18
+alerts at levels 1 / 2 / 3; the final run has 6 / 13 / 32, an increase of **23 alerting legs**.
+All 23 new rows carry I15 or I16. Stale channels appeared in 11, replacement handsets in 11,
+temporary attestation downgrade in two, and one row carried both a stale channel and a replacement
+handset. Prediction 3 said stale channels would lead; it was wrong because they tied replacement
+devices. I16 never alerted alone: where no I6 existed, it needed I9 or I14 corroboration.
 
 ### The I4/I5 change: from an absolute magnitude to two physical directions
 
@@ -212,7 +242,7 @@ On the reporting half, I4 fell from 164 to **zero** level-3 alerts and I5 also f
 times. The latter is not validation: the generator's longest queued upload is 110 minutes, well
 below I5's assumed 480-minute edge.
 
-### On the H1 reservation — reopened by the smaller denominator
+### On the H1 reservation — closed by the final denominator
 
 CLAUDE.md flagged `H1 → freeze` as a possible over-refusal and session 9 kept it open because
 nothing in the data exercised it: no clean scenario contained a custody-chain gap. Missed scans
@@ -230,9 +260,9 @@ the world model rather than being dialled in:
 | `out_for_delivery` | 10 | 0 (0.0%) | **0** |
 | `linehaul_arrival` | 9 | 1 (11.1%) | **0** |
 
-**H1 is now 12 of 28 alerts across all levels, and the largest remaining abort code.** At level 2
-it is 4 of 7 alerts, so the script's share-based dominance check fires; at level 3 it is 7 of 18.
-That is a denominator effect exposed by removing 207 false I4 alerts, not a change in H1: its
+**H1 is now 12 of 51 alerts across all levels and does not dominate any noise cell.** It is 1/6,
+4/13 and 7/32 at levels 1–3. Session 16 therefore closes the share-based reservation without
+changing H1. Its
 absolute rate is four freezes across 1,439 level-2 legs and seven across 1,479 level-3 legs. The
 known narrow over-refusal remains exactly what session 10 measured — **the custody table is
 deliberately permissive, so a fleet's missed scans reach H1 in exactly one place rather than
@@ -246,13 +276,16 @@ is over-refusing narrowly and completely.
 generator's drift range and the new I4 boundary. That shared source is not a detector threshold
 leaking into the generator, but it means E3 cannot independently validate the 30-minute I4 edge;
 it tests the corrected **direction**, not the boundary. I5 is wholly unexercised. Every noise draw
-is independent, S2 is not in the sweep, and 1.2% per leg still means 7.5% of level-3 shipments
+is independent, S2 is not in the sweep, and 2.2% per leg still means 13.3% of level-3 shipments
 raised at least one alert.
 
 **What would falsify it.** Fleet telemetry containing honest device-ahead offsets near or above
 30 minutes would falsify I4's reliability claim. A controlled offline-field dataset with uploads
 held for eight hours or more would test I5; this dataset cannot. Either measurement can be made
-from `eventTime` and server-stamped `recordTime` without using Vigil's verdicts.
+from `eventTime` and server-stamped `recordTime` without using Vigil's verdicts. Fleet measurements
+showing materially different recipient-channel staleness, replacement-handset or attestation-
+downgrade rates would also falsify the identity false-positive cost reported here; those episode
+rates are declared assumptions, not measured fleet frequencies.
 
 ---
 
@@ -701,24 +734,25 @@ rejects that case.
 | Careless fraud is caught immediately | 12/12, 0 deliveries completed | 5 modelled classes only |
 | Capable fraud is caught by the pattern axis | 12/12, ~10 deliveries | via P2, the customer complaint |
 | Fraud with recipient collusion is **not** caught | 0/12, 40/40 completed | measured boundary, not tuned away |
-| Every modelled attack class is detected | 5/5 at 100% | the classes we designed for |
-| Clean work rarely reaches an operator | **0.2% / 0.5% / 1.2%** of legs at noise levels 1 / 2 / 3, n = 1,440+ legs each | the rate depends on how bad you think the environment is; quote all three |
+| Every modelled attack class is detected | 7/7 at 100% | the classes we designed for |
+| Identity evidence has a measurable operator cost | +23 alerting legs on the same E3 seeds | 11 stale-channel, 11 replacement-device, 2 degraded-attestation; one overlaps |
+| Clean work rarely reaches an operator | **0.4% / 0.9% / 2.2%** of legs at noise levels 1 / 2 / 3, n = 1,440+ legs each | the rate depends on how bad you think the environment is; quote all three |
 | The clock rule was measuring the wrong quantity | I4 fell from 164 to 0 level-3 alerts after preserving direction | E3 validates the direction fix, not the 30-minute edge; I5 remains unexercised |
 | Model choice changes LLM-only verdicts | 33.3% pairwise vendor agreement on S1 and S6 | all models were internally 5/5 stable; three fixtures only |
 | Instruction-shaped fields can shift model decisions | Gemini and Claude distributions moved toward lower severity | paired calls include sampling variance; Qwen's aggregate distribution did not move |
 | Live explanation enforcement | 27/27 passed across three families | no live bad output exercised the guard; scripted tests do |
 | Production explain injection surface | 0/12 untrusted fields exposed | absence of a channel, not proof of model robustness |
 | The speed threshold has headroom | 0% I3 false positives from 50 km/h up, **at every noise level** | 120 is derived, not fitted — and noise cannot justify the margin |
-| `H1 → freeze` is a narrow over-refusal, not a broad one | 12 of 28 remaining alerts; 12/12 when the departure scan is the one lost | now the largest residual by share; its absolute leg rate remains low |
+| `H1 → freeze` is a narrow over-refusal, not a broad one | 12 of 51 final alerts; 12/12 when the departure scan is the one lost | no longer dominates a noise cell; its narrow operational failure remains |
 
 **The four numbers a judge should press on**, and the answers:
 
 1. *"What is your false-positive rate?"* There isn't one number, and anyone offering one is
-   choosing it. 0.2% of legs on a good day, 0.5% in ordinary urban conditions, 1.2% on a bad
+   choosing it. 0.4% of legs on a good day, 0.9% in ordinary urban conditions, 2.2% on a bad
    one. See E3. The previous 0% floor was replaced by environmental noise; the first noisy result
    then exposed I4's wrong absolute-value shape, which was fixed on the tuning half and reported
    again rather than silently retained.
-2. *"Your detection is 100%."* On the five classes we modelled and built detectors for. E1 is the
+2. *"Your detection is 100%."* On the seven classes we modelled and built detectors for. E1 is the
    more honest measure, and it has a level that is never detected.
 3. *"Why 120 and not 50?"* Not because 120 is optimal here — 50 would be. Because the 70 km/h of
    headroom pays for a journey this dataset does not contain, and E6 now shows that environmental

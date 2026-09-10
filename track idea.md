@@ -169,7 +169,7 @@ Brief 明确允许：**「run locally with synthetic delivery data that you docu
 |---|---|:---:|
 | 1. 设备完整性证明 | Play Integrity、mock location 检测、硬件密钥库签名 | 模拟 |
 | 2. **交叉信号一致性** | GPS vs 基站 vs WiFi vs 加速度计的矛盾检测 | ✅ 核心 |
-| 3. 收件人独立通道 | OTP 走另一条网络到另一台设备；异步确认 | 部分 |
+| 3. 收件人独立通道 | OTP 走另一条网络到另一台设备；异步确认 | 部分：检测错误通道/回执绑定；主动转述不可见 |
 | 4. 物理邻近证明 | NFC / BLE 签名挑战，不依赖 GPS | 不做 |
 | 5. **统计与经济层** | 信任分、争议率、抽样复核；给风险定价而非验证每一次 | ✅ 核心 |
 | 6. 结构性消除 | 改按「收件人确认」计件；包裹柜 | 写进 roadmap |
@@ -188,7 +188,9 @@ Brief 明确允许：**「run locally with synthetic delivery data that you docu
 | **why** | `bizStep` / `disposition` / `bizTransactionList` | 托管链连续性 |
 | **how** | `sensorElementList` | 设备 ID、加速度、气压、电量 |
 
-事件类型：`ObjectEvent`（扫描）+ `TransactionEvent`（交接）+ `AssociationEvent`（设备绑定）。
+事件类型：`ObjectEvent`（扫描）+ `TransactionEvent`（交接）+ `AssociationEvent`（对象/位置关联）。
+设备绑定不是 AssociationEvent 的语义；它来自服务端设备注册表。让 `vigil:courierId`
+授权一个设备关联会让未验证的声明自证。
 `eventID` 自带 UUID，直接当 nonce 用。
 
 **为什么用 EPCIS 而不是自定义 JSON**：这是 GS1 的国际标准，GDEX 这类企业的系统就是按它建的。评委一看就知道你没在编数据。
@@ -228,6 +230,8 @@ Brief 明确允许：**「run locally with synthetic delivery data that you docu
 | I12 | 签收证据缺失（照片/OTP/签名，每缺一项） | +15 | 缺少签收凭证 |
 | I13 | 超出 mandate 允许时间窗 | +20 | 非授权时段 |
 | I14 | 电量曲线与声称移动距离不匹配 | +10 | 能耗与轨迹不符 |
+| I15 | EPCIS 中的 OTP 回执与服务端独立通道记录矛盾 | +40 | OTP 未送达登记收件通道，或回执/包裹/事件绑定不一致 |
+| I16 | 实时设备证明弱于该设备的服务端注册要求 | +20 | 仅作佐证；有合理运营原因，不能单独越过 gate |
 
 **每一分带一条大白话标记，且指向具体的字段值。** 直接命中 brief 的「the evidence behind the decision」。
 
@@ -365,7 +369,7 @@ CourierMandate {
                      出错或 lite 模式 → 完全相同的确定性启发式
 
 4. verify            确定性引擎 — **轴 1：单次不一致性**
-                     H1–H4（硬性检查）+ I1–I14（矛盾计分）
+                     H1–H4（硬性检查）+ I1–I16（矛盾计分）
                      不需要历史，只看这一条事件自身
 
 5. fetch_history     （条件）该快递员/路线近期行为
@@ -385,13 +389,13 @@ CourierMandate {
 
 ### 为什么判决在 gate 而不在 verify
 
-原先的设计把 H1–H4 + I1–I14 + P1–P5 全放在节点 4，但 P1–P5 是按快递员滑动窗口算的，而历史要到节点 5 才取——依赖倒置了。
+原先的设计把 H1–H4 + I1–I16 + P1–P5 全放在节点 4，但 P1–P5 是按快递员滑动窗口算的，而历史要到节点 5 才取——依赖倒置了。
 
 拆开之后不只是修好了顺序，而是让**状态机的形状本身讲出了正交门的论证**：
 
 | 节点 | 产出 | 依赖 |
 |---|---|---|
-| `verify` | 轴 1 — 单次不一致性（H1–H4, I1–I14） | 只需要本条事件 |
+| `verify` | 轴 1 — 单次不一致性（H1–H4, I1–I16） | 只需要本条事件及调用方组装的独立身份记录 |
 | `fetch_history` | 轴 2 — 累积模式（P1–P5） | 需要快递员历史 |
 | `gate` | 判决 | 两个轴 |
 
@@ -741,7 +745,7 @@ vitest
 ### Brief 对照后必须补的
 
 - [x] **完整运单时间线视图** —— brief 字面要求「from normal activity to a meaningful exception」，不改会被扣「minimum working outcome」
-- [ ] **补厚身份维度** —— brief 方向 03 是「cross-check scans, **identity** and location」三样，目前身份最薄（只有 I6 + mandate 作用域）
+- [x] **补厚身份维度** —— I15 对照独立 OTP 通道记录；I16 对照服务端设备注册要求。主动转述 OTP、姓名比对和用 AssociationEvent 自授权均经追踪后拒绝，原因见 CLAUDE.md Session 16。
 - [x] **加 reroute 作为第三种 next action** —— brief 明示的三种之一，且 reroute 也要走 co-sign
 - [x] **接 Open-Meteo** —— S6 固定时刻实测为多云、无降雨；真实负结果保留，verdict 不受影响
 - [x] **写合成数据集文档** —— brief 要求 "documented clearly"

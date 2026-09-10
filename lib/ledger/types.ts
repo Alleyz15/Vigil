@@ -33,7 +33,7 @@ export type VerdictBasis = z.infer<typeof VerdictBasis>;
  */
 export const Verdict = z.strictObject({
   decision: Decision,
-  /** Axis 1 — single-event contradiction (H1–H4, I1–I14). 0..100. */
+  /** Axis 1 — single-event contradiction (H1–H4, I1–I16). 0..100. */
   inconsistencyScore: z.number().min(0).max(100),
   /** Axis 2 — per-courier rolling pattern (P1–P5). 0..100. */
   patternScore: z.number().min(0).max(100),

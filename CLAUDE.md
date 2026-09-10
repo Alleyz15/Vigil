@@ -77,7 +77,7 @@ confined to `keys.ts`. A narrow allowance beats a hole in the check.
 This split is deliberate. **Do not "simplify" it back into a single scoring pass.**
 
 ```
-verify        -> axis 1: single-event inconsistency  (H1-H4, I1-I14)
+verify        -> axis 1: single-event inconsistency  (H1-H4, I1-I16)
 fetch_history -> axis 2: per-courier rolling pattern (P1-P5)
 gate          -> the ONLY place the two axes meet
 ```
@@ -339,7 +339,7 @@ The same reasoning applies to `i8IntegrityFailed`: an attestation with verdict `
 is `not_evaluated`, never `clear`. Treating silence as approval is how attestation gets defeated.
 
 **Operator-facing output:** the engine returns a `coverage` block, rendered as
-**"8 of 14 checks evaluable"** next to the score. This is intended UI, not debug output. A
+**"12 of 16 checks evaluable"** next to the score. This is intended UI, not debug output. A
 score of 0 from 12 evaluated checks and a score of 0 from 2 evaluated checks are different
 claims, and an operator who cannot tell them apart is being misled by their own dashboard.
 
@@ -364,7 +364,7 @@ is the entire reason S2 exists.
 **The condo tower keeps every event genuinely clean** — 40 parcels for one building, scanned at
 twenty-second intervals: the addresses really are clustered so P4 correctly stays silent, the
 scans are at the doors so I10/I11 are clean, the distances are metres so I3 is clean, and every
-event scores **0** on all fourteen checks. What remains is the shape: **P1** (a delivery rate no
+event scores **0** on all sixteen checks. What remains is the shape: **P1** (a delivery rate no
 one can walk) and **P2** (the customers complain).
 
 **This was found by tracing, not by running** — reading the scenario against the built rules
@@ -535,7 +535,8 @@ lib/
     sensor.ts            sensorElementList + the vigil: extension
     events.ts            ObjectEvent | TransactionEvent | AssociationEvent
   db/
-    schema.ts            parcels, couriers, mandates, events, verdicts
+    schema.ts            parcels, couriers, device enrollments, OTP challenges,
+                         mandates, events, verdicts
     client.ts            better-sqlite3 + Drizzle
     migrate.ts           programmatic migrations (tests, seeds)
     migrations/          generated SQL
@@ -549,7 +550,7 @@ lib/
     geo.ts               turf wrappers; the only place lat/lng is inverted
     types.ts             EngineInput, RuleResult, Flag, Evidence, EngineResult
     hard.ts              H1 H2 H3 (abort, do not score)
-    inconsistency.ts     I1-I14 (score) + the rule registry
+    inconsistency.ts     I1-I16 (score) + the rule registry
     engine.ts            hard checks -> scoring -> clamp -> coverage
     fixtures.ts          shared test fixtures; never imported by a rule
   pattern/               AXIS 2 ONLY. Pure functions, no I/O.
@@ -596,6 +597,7 @@ lib/
     carefulness.ts       the fraudster's 0-4 capability ladder
     split.ts             deterministic holdout for the experiments
     scenarios/           S0-S6 + warm-up history
+    identity-cases.ts    experiment-only OTP-channel and replacement-device cases
     ingest.ts            runs a generated scenario through the real agent
   purity.test.ts         guards the I/O ban, the never-summed rule AND
                          the generator/detector separation
@@ -1506,6 +1508,39 @@ the tuning half first to expose modelling or plumbing errors; after the implemen
 only the reporting half supplies the published numbers. No existing threshold moves in this
 session whatever those runs suggest.
 
+#### Session 16 result
+
+Implementation was fixed in `695cf3d` after the tuning-half check and before the reporting half
+was opened. A final trace then found that the replacement handset's generated enrollment named
+the current courier rather than the other courier stated in the prediction; `8185703` corrected
+that world fact, and E2 was rerun on both halves with the same 12/12 result. E3 was unaffected
+because the correction is confined to the experiment-only identity case. The engine, pattern and
+gate thresholds did not move.
+
+- **Prediction 1 held.** Both identity cases were 12/12 on tuning and reporting. I15 alone caught
+  OTP channel substitution at delivery; I6 + I16 caught the known weak replacement handset.
+- **Prediction 2 held.** I16 remains +20 and never alerts alone. Its two new reporting-half alerts
+  without I6 required independent I9 or I14 corroboration.
+- **Prediction 3 was wrong in a useful way.** The E3 increase was small but stale recipient
+  channels did not lead alone: stale channels and replacement handsets each appeared in 11 of
+  the 23 additional alerting legs; two involved temporary attestation downgrade, and one shipment
+  carried both stale-channel and replacement episodes. The correct finding is that identity
+  checks expose both stale records and operational device substitution.
+- **Prediction 4 held.** Requiring a courier signature on every handoff did not move E2 or E3;
+  generated ingestion was already presenting one. The new regression proves an unsigned low-risk
+  handoff halts `PENDING_COURIER_SIGNATURE` and writes neither ledger nor verdict row.
+
+**Credential-invariant audit.** `lib/agent/nodes.ts` has one verdict-commit call and it sits after
+the mandatory credential check; `persistVerdict` is reached only after that commit. The ledger's
+lower-level `submit`/`commit` API remains intentionally credential-agnostic because it is also the
+standalone nonce-ledger primitive, but no second agent sealing path was found. This does not prove
+there can never be another bypass; it makes the present call graph and its regression explicit.
+
+The reporting E3 curve moved from **0.2% / 0.5% / 1.2%** to
+**0.4% / 0.9% / 2.2%** per leg at levels 1 / 2 / 3. That is the measured cost of adding identity
+evidence on this model, not a threshold-adjusted result. E2 expanded from five to seven classes
+and remained 12/12 for every class.
+
 ### Session 15 — predictions (written first)
 
 **WRITTEN AND COMMITTED BEFORE THE FIRST OPEN-METEO REQUEST, BEFORE THE WEATHER CACHE WAS
@@ -1742,24 +1777,6 @@ in place. Still untouched: liveness/timeout paths, the map view.
 
 ## Open reservations (decided, but revisit)
 
-**H1 → freeze was closed in session 10 and REOPENED in session 11.** Session 10 measured H1 as
-12 of 237 alerts, under 4% at level 3. Removing 207 false I4 alerts changed the denominator, not
-H1: it is now **12 of 28 remaining alerts**, and 4 of 7 at level 2, so the experiment's
-share-based dominance check fires. Its absolute rate remains low (12 freezes across 5,805 clean
-legs), but the claim that it does not dominate can no longer be made without qualification. No
-fifth outcome was invented and H1 was not softened; operational review remains open.
-
-What first closed it is still a property of the design worth knowing, traced by hand from
-`lib/engine/custody.ts` and committed to the log **before** the noise model was written, then
-confirmed by the run: **the custody table is deliberately permissive, so a fleet's missed scans
-reach H1 in exactly one place rather than everywhere.** Of the four missable scans, only a lost
-`linehaul_departure` produces an impermissible transition — the parcel reports `arriving`
-straight out of `in_progress`. Measured, with the dropped leg drawn uniformly: `sortation` 0/12
-H1, **`linehaul_departure` 12/12 H1**, `out_for_delivery` 0/10, `linehaul_arrival` 0/9.
-
-**The residual is in Known Limitations and is not a reason to reopen this.** H1 is not
-over-refusing broadly; it is over-refusing narrowly and completely.
-
 **The shift window is rolling, not rostered.** `DEFAULT_SHIFT_WINDOW_HOURS = 12` counts back
 from the event; a real fleet works rostered shifts that reset at a start time. The two diverge
 at the boundary, and the shift cap (L1) is a **hard stop** that a co-signature cannot lift — so
@@ -1797,21 +1814,28 @@ ordering; it is not route optimisation.
 
 **A hub that chronically loses its departure scan gets frozen every time.** Measured in session
 10: of the four scans a fleet can miss, only a lost `linehaul_departure` trips H1 — and when it
-is lost, **12 out of 12 shipments were frozen.** After the I4 correction it is 12 of 28 remaining
-alerts and the largest residual by share, but still only 12 freezes across 5,805 clean legs. It
+is lost, **12 out of 12 shipments were frozen.** In the final identity-aware E3 it is 12 of 51
+alerts and does not dominate a noise cell, but is still 12 freezes across 5,805 clean legs. It
 does not over-refuse broadly; it over-refuses narrowly and completely. A depot with a broken
 departure scanner would have its whole outbound flow voided until someone noticed. Stated,
 measured, not softened.
 
-**An honest delivery to a corrected address alerts, because the system is sensitive to stale
-records as well as to fraud.** The parcel record says one address, the courier was told another
-by phone, and the delivery scan is measured against what is on file — so I10/I11 fire on work
-that was done correctly. At level 1 this is the *leading* false positive (2 of 3 alerts); at
-level 3 it is 9 of 18. **This is a real property of the approach, not a bug:** every rule in
-the system is a contradiction between two signals, and a stale record is a genuine contradiction
-— the system cannot tell "the record is wrong" from "the scan is wrong" without a third source.
-The mitigation is operational (push address corrections into the record) rather than algorithmic,
-and a judge is entitled to ask about it.
+**The system is sensitive to stale records as well as to fraud.** Two independently measured
+forms now make the same limitation explicit. An honest delivery to a corrected address can fire
+I10/I11 because the stored destination is stale; an OTP genuinely delivered to the recipient's
+new number fires I15 when the parcel still carries the old registered channel. On the final E3
+reporting half, address correction appeared in 14 alerted shipments and stale recipient channel
+in 11; every one of the 11 stale-channel episodes alerted. **This is a real property of the
+approach, not a bug:** a stale record is a genuine contradiction, and the system cannot tell
+"the record is wrong" from "the scan is wrong" without a third source. The mitigation is
+operational freshness, not a lower detector threshold.
+
+**Voluntary OTP relay is undetectable by design.** I15 proves that the verifier delivered and
+consumed a challenge through the parcel's independently registered channel. It cannot distinguish
+the intended recipient entering that code from reading it aloud to an impostor. NIST SP 800-63B
+states that manually transferred out-of-band secrets are not phishing-resistant. Detecting that
+case needs a phishing-resistant authenticator or a different liveness primitive, not another OTP
+comparison.
 
 **The new I4 edge is not independently validated by E3, and I5 is not exercised.** The same
 published quartz-drift evidence informs the generator's clock distribution and I4's 30-minute
