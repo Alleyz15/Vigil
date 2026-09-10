@@ -20,6 +20,7 @@ import { epcsOf } from "@/lib/epcis";
 import { rmSync } from "node:fs";
 import { OperatorActionRequest, type CaseState, type OperatorActionRequest as ActionRequest } from "./types";
 import { isQueueState, transitionCase } from "./state";
+import { buildShipmentMapModel } from "./map-model";
 import {
   flagsFrom,
   runView,
@@ -131,6 +132,7 @@ async function buildScenarioEntries(id: ScenarioId): Promise<StoredEntry[]> {
     const createdAt = built.event.recordTime ?? built.event.eventTime;
     const entry: StoredEntry = {
       scenario,
+      world,
       built,
       current: ctx,
       runs: [ctx],
@@ -275,6 +277,7 @@ export class OperatorWorkbench {
       runs: entry.runs.map((ctx, index) => runView(ctx, index + 1, entry.built.event)),
       actions: [...entry.actions],
       timeline,
+      map: buildShipmentMapModel(entry.scenario, entry.world),
     };
   }
 

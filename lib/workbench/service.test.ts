@@ -33,6 +33,14 @@ describe("stateful operator workbench", () => {
     expect(result.items.find((item) => item.decision === "accept")?.gateBasis).toBeTruthy();
   });
 
+  it("serves the shipment route and evidence geometry with the correlated detail", () => {
+    const s1 = workbench.listQueue().find((item) => item.scenarioId === "S1")!;
+    const detail = workbench.getHandoff(s1.eventId)!;
+
+    expect(detail.map.route).toHaveLength(6);
+    expect(detail.map.overlays.some((feature) => feature.evidenceId === "I1")).toBe(true);
+  });
+
   it("approves by rerunning the byte-identical event with a complete sidecar", async () => {
     const pending = workbench
       .listQueue()

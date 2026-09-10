@@ -1,7 +1,8 @@
 import { canonicalHash } from "@/lib/ledger";
 import { epcsOf } from "@/lib/epcis";
 import type { AgentContext } from "@/lib/agent/context";
-import type { BuiltEvent, GeneratedScenario } from "@/lib/generate";
+import type { BuiltEvent, GeneratedScenario, GeneratedWorld } from "@/lib/generate";
+import type { ShipmentMapModel } from "./map-model";
 import type { CaseState, OperatorActionName } from "./types";
 
 export type HandoffState = CaseState | "accepted";
@@ -76,10 +77,12 @@ export type HandoffDetail = {
   runs: RunView[];
   actions: ActionView[];
   timeline: HandoffSummary[];
+  map: ShipmentMapModel;
 };
 
 export type WorkbenchEntry = {
   scenario: GeneratedScenario;
+  world: GeneratedWorld;
   built: BuiltEvent;
   current: AgentContext;
   runs: AgentContext[];
@@ -198,4 +201,3 @@ export function flagsFrom(ctx: AgentContext): HandoffDetail["flags"] {
     evidence: flag.evidence.map(({ field, value }) => ({ field, value })),
   }));
 }
-
