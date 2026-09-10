@@ -4,7 +4,7 @@ import { matchBand } from "./thresholds";
 import type { EngineInput, Evidence, RuleResult } from "./types";
 
 /**
- * I1-I14: cross-signal contradiction scoring.
+ * I1-I16: cross-signal contradiction scoring.
  *
  * Every rule here is a pure function of EngineInput. Every one of them asks
  * "do two independent signals disagree?", never "is this signal true?" —
@@ -469,6 +469,129 @@ export function i14BatteryMismatch(input: EngineInput): RuleResult {
   return clear;
 }
 
+/**
+ * I15 - the event's OTP claim contradicts the independent verifier record.
+ *
+ * GATED to delivery events. The OTP and its receipt travel through different
+ * systems: the handset reports opaque ids in EPCIS, while the caller resolves
+ * the server's delivery and verification transaction. A missing transaction is
+ * unknown, never clean. This cannot detect a recipient who voluntarily relays a
+ * genuinely delivered code; NIST says manually transferred out-of-band secrets
+ * are not phishing-resistant. See CLAUDE.md.
+ */
+export function i15OtpProvenanceConflict(input: EngineInput): RuleResult {
+  if (!isDeliveryEvent(input.event.bizStep)) {
+    return skip("not a delivery event; no recipient OTP is expected");
+  }
+
+  const claimed = input.sensor?.pod?.otp;
+  if (!claimed) return skip("event did not carry OTP provenance identifiers");
+
+  const expectedChannel = input.parcel?.recipientChannelFingerprint;
+  if (!expectedChannel) return skip("parcel has no registered recipient channel fingerprint");
+
+  const challenge = input.otpChallenge;
+  if (!challenge) return skip("no OTP challenge record could be resolved");
+
+  const evidence: Evidence[] = [];
+  const eventEpc = input.parcel?.epc;
+
+  if (challenge.challengeId !== claimed.challengeId) {
+    evidence.push(
+      ev("sensor.pod.otp.challengeId", claimed.challengeId),
+      ev("otpChallenge.challengeId", challenge.challengeId),
+    );
+  }
+  if (eventEpc && challenge.epc !== eventEpc) {
+    evidence.push(ev("parcel.epc", eventEpc), ev("otpChallenge.epc", challenge.epc));
+  }
+  if (challenge.recipientChannelFingerprint !== expectedChannel) {
+    evidence.push(
+      ev("parcel.recipientChannelFingerprint", expectedChannel),
+      ev("otpChallenge.recipientChannelFingerprint", challenge.recipientChannelFingerprint),
+    );
+  }
+  if (challenge.deliveryStatus === "failed") {
+    evidence.push(ev("otpChallenge.deliveryStatus", challenge.deliveryStatus));
+  }
+  if (challenge.verificationReceiptId !== claimed.verificationReceiptId) {
+    evidence.push(
+      ev("sensor.pod.otp.verificationReceiptId", claimed.verificationReceiptId),
+      ev("otpChallenge.verificationReceiptId", challenge.verificationReceiptId ?? null),
+    );
+  }
+  if (!challenge.verifiedAt) {
+    evidence.push(ev("otpChallenge.verifiedAt", null));
+  } else if (Date.parse(challenge.verifiedAt) > Date.parse(challenge.expiresAt)) {
+    evidence.push(
+      ev("otpChallenge.verifiedAt", challenge.verifiedAt),
+      ev("otpChallenge.expiresAt", challenge.expiresAt),
+    );
+  }
+  if (
+    challenge.consumedByEventId !== undefined &&
+    challenge.consumedByEventId !== null &&
+    challenge.consumedByEventId !== input.event.eventID
+  ) {
+    evidence.push(
+      ev("otpChallenge.consumedByEventId", challenge.consumedByEventId),
+      ev("event.eventID", input.event.eventID),
+    );
+  }
+
+  if (evidence.length > 0) {
+    return triggered(
+      "I15",
+      input.thresholds.points.otpProvenanceConflict,
+      "The OTP claimed by this delivery does not match the verifier record for the registered recipient channel.",
+      evidence,
+    );
+  }
+
+  if (challenge.deliveryStatus === "unknown") {
+    return skip("OTP delivery status is unknown; the independent channel was not confirmed");
+  }
+
+  return clear;
+}
+
+/**
+ * I16 - the live attestation is weaker than the enrolled handset policy.
+ *
+ * This is deliberately +20 and cannot cross the gate alone. Play Integrity can
+ * lose a stronger label for operational reasons, so the result corroborates a
+ * separate identity conflict such as I6; it does not manufacture one.
+ */
+export function i16AttestationBelowEnrollment(input: EngineInput): RuleResult {
+  const integrity = input.sensor?.integrity;
+  if (!integrity) return skip("no device integrity attestation on the event");
+  if (integrity.verdict !== "passed") {
+    return skip("I8 handles failed or unevaluated attestations");
+  }
+
+  const labels = integrity.deviceRecognitionVerdicts;
+  if (!labels) return skip("attestation supplied no device recognition labels");
+
+  const enrollment = input.deviceEnrollment;
+  if (!enrollment) return skip("no enrollment record for the scanning handset");
+
+  if (labels.includes(enrollment.requiredRecognitionVerdict)) return clear;
+
+  return triggered(
+    "I16",
+    input.thresholds.points.attestationBelowEnrollment,
+    "This handset passed a basic check, but its assurance is weaker than the device enrollment requires.",
+    [
+      // `integrity` came from `input.sensor`, so the sensor is already narrowed.
+      ev("sensor.deviceId", input.sensor.deviceId),
+      ev("sensor.integrity.deviceRecognitionVerdicts", labels),
+      ev("deviceEnrollment.deviceId", enrollment.deviceId),
+      ev("deviceEnrollment.requiredRecognitionVerdict", enrollment.requiredRecognitionVerdict),
+      ev("sensor.integrity.attestationSource", integrity.attestationSource),
+    ],
+  );
+}
+
 /* -------------------------------------------------------------------------- */
 /* Local-time helpers for I13                                                 */
 /* -------------------------------------------------------------------------- */
@@ -508,8 +631,8 @@ function withinWindow(minutes: number, start: number, end: number): boolean {
 
 /**
  * One entry per rule function. `ids` lists the flag ids the rule can emit, so a
- * tiered rule reports both of its ids in the coverage count — there are 14
- * numbered checks in the spec and the operator's "n of 14" line must say 14.
+ * tiered rule reports both of its ids in the coverage count — there are 16
+ * numbered checks in the spec and the operator's coverage line must say 16.
  */
 export type RuleEntry = {
   ids: string[];
@@ -529,7 +652,9 @@ export const INCONSISTENCY_RULES: readonly RuleEntry[] = [
   { ids: ["I12"], run: i12MissingPod },
   { ids: ["I13"], run: i13OutsideTimeWindow },
   { ids: ["I14"], run: i14BatteryMismatch },
+  { ids: ["I15"], run: i15OtpProvenanceConflict },
+  { ids: ["I16"], run: i16AttestationBelowEnrollment },
 ];
 
-/** 14 — the denominator in the operator's "n of 14 checks evaluable" line. */
+/** 16 — the denominator in the operator's "n of 16 checks evaluable" line. */
 export const TOTAL_CHECKS = INCONSISTENCY_RULES.reduce((n, r) => n + r.ids.length, 0);

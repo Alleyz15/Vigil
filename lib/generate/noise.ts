@@ -95,6 +95,10 @@ export type NoiseProfile = {
     addressCorrection: number;
     chargedMidShift: number;
     handsetSwap: number;
+    /** Parcel registry still carries an old recipient channel. ASSUMPTION. */
+    staleRecipientChannel: number;
+    /** Play Integrity temporarily returns only BASIC for an enrolled device. ASSUMPTION. */
+    attestationDegraded: number;
   };
 
   /** Percentage points a mid-shift charge puts back. */
@@ -150,6 +154,8 @@ export const NOISE_PROFILES: Record<NoiseLevel, NoiseProfile> = {
       addressCorrection: 0,
       chargedMidShift: 0,
       handsetSwap: 0,
+      staleRecipientChannel: 0,
+      attestationDegraded: 0,
     },
     chargeGainPercentPoints: [0, 0],
   },
@@ -179,6 +185,10 @@ export const NOISE_PROFILES: Record<NoiseLevel, NoiseProfile> = {
       addressCorrection: 0.009,
       chargedMidShift: 0.05,
       handsetSwap: 0.01,
+      // ASSUMPTION: 0.3% of parcels retain an old contact channel.
+      staleRecipientChannel: 0.003,
+      // ASSUMPTION: 0.5% of otherwise valid devices temporarily lose DEVICE.
+      attestationDegraded: 0.005,
     },
     chargeGainPercentPoints: [15, 45],
   },
@@ -209,6 +219,10 @@ export const NOISE_PROFILES: Record<NoiseLevel, NoiseProfile> = {
       addressCorrection: 0.018,
       chargedMidShift: 0.12,
       handsetSwap: 0.03,
+      // ASSUMPTION: 1% stale channels in an ordinary mixed-quality fleet.
+      staleRecipientChannel: 0.01,
+      // ASSUMPTION: 2% transient assurance downgrade.
+      attestationDegraded: 0.02,
     },
     chargeGainPercentPoints: [15, 55],
   },
@@ -239,6 +253,10 @@ export const NOISE_PROFILES: Record<NoiseLevel, NoiseProfile> = {
       addressCorrection: 0.066,
       chargedMidShift: 0.22,
       handsetSwap: 0.07,
+      // ASSUMPTION: 3% stale channels during adverse operations.
+      staleRecipientChannel: 0.03,
+      // ASSUMPTION: 5% transient assurance downgrade.
+      attestationDegraded: 0.05,
     },
     chargeGainPercentPoints: [15, 60],
   },
@@ -312,6 +330,10 @@ export type Episodes = {
   chargedMidShift: boolean;
   /** The courier picked up a replacement handset partway through the round. */
   handsetSwap: boolean;
+  /** OTP reaches the recipient's current channel while the parcel record is stale. */
+  staleRecipientChannel: boolean;
+  /** Live attestation falls from DEVICE to BASIC without a hard integrity failure. */
+  attestationDegraded: boolean;
   /** Percentage points a mid-shift charge put back. */
   chargeGainPercentPoints: number;
 };
@@ -360,6 +382,8 @@ export function planShipmentNoise(rng: Rng, level: NoiseLevel): ShipmentNoise | 
       : undefined,
     chargedMidShift: draw.chance(profile.episodes.chargedMidShift),
     handsetSwap: draw.chance(profile.episodes.handsetSwap),
+    staleRecipientChannel: draw.chance(profile.episodes.staleRecipientChannel),
+    attestationDegraded: draw.chance(profile.episodes.attestationDegraded),
     chargeGainPercentPoints: Math.round(range(draw, profile.chargeGainPercentPoints)),
   };
 

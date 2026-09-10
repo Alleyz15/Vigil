@@ -35,7 +35,7 @@ export const NodeSummary = z.strictObject({
     .strictObject({
       evaluated: z.number().int().nonnegative(),
       total: z.number().int().nonnegative(),
-      /** "8 of 14 checks evaluable" — rendered from the same numbers. */
+      /** "12 of 16 checks evaluable" — rendered from the same numbers. */
       line: z.string(),
     })
     .optional(),

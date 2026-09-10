@@ -115,6 +115,34 @@ describe("event types", () => {
     });
     expect(epcsOf(assoc)).toEqual(base.epcList);
   });
+
+  it("rejects an empty ADD association because GS1 requires a child object", () => {
+    expect(
+      EpcisEvent.safeParse({
+        type: "AssociationEvent",
+        eventID: base.eventID,
+        eventTime: base.eventTime,
+        eventTimeZoneOffset: base.eventTimeZoneOffset,
+        action: "ADD",
+        parentID: "urn:epc:id:giai:0614141.12345",
+        childEPCs: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("allows an empty DELETE association to remove every child", () => {
+    expect(
+      EpcisEvent.safeParse({
+        type: "AssociationEvent",
+        eventID: base.eventID,
+        eventTime: base.eventTime,
+        eventTimeZoneOffset: base.eventTimeZoneOffset,
+        action: "DELETE",
+        parentID: "urn:epc:id:giai:0614141.12345",
+        childEPCs: [],
+      }).success,
+    ).toBe(true);
+  });
 });
 
 describe("the vigil: extension", () => {
@@ -152,6 +180,47 @@ describe("the vigil: extension", () => {
     expect(parsed.gps?.mockLocationProvider).toBe(false);
     expect(parsed.cell?.mcc).toBe(502);
     expect(parsed.wifi).toHaveLength(1);
+  });
+
+  it("models an OTP verification receipt without carrying the secret", () => {
+    const parsed = VigilSignals.parse({
+      pod: {
+        otpVerified: true,
+        otp: {
+          challengeId: "4be4cb19-a04a-4e93-8e9a-287108ae68e2",
+          verificationReceiptId: "5c59c087-bf4c-48ae-a0d2-cb68e3de021d",
+        },
+      },
+    });
+
+    expect(parsed.pod?.otp?.challengeId).toBe("4be4cb19-a04a-4e93-8e9a-287108ae68e2");
+    expect(parsed.pod).not.toHaveProperty("otpCode");
+  });
+
+  it("accepts only documented Play Integrity recognition labels", () => {
+    const baseIntegrity = {
+      attestationSource: "mocked" as const,
+      verdict: "passed" as const,
+      rootDetected: false,
+      appTampered: false,
+    };
+
+    expect(
+      VigilSignals.safeParse({
+        integrity: {
+          ...baseIntegrity,
+          deviceRecognitionVerdicts: ["MEETS_DEVICE_INTEGRITY"],
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      VigilSignals.safeParse({
+        integrity: {
+          ...baseIntegrity,
+          deviceRecognitionVerdicts: ["TRUST_ME_BRO"],
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects a malformed MAC address", () => {

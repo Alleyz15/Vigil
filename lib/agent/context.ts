@@ -147,7 +147,7 @@ export type AgentContext = {
 
   /**
    * Evidence coverage per axis, as reported by the engines. Rendered for the
-   * operator as "8 of 14 checks evaluable".
+   * operator as "12 of 16 checks evaluable".
    */
   coverage?: {
     inconsistency?: { evaluated: number; total: number; line: string };

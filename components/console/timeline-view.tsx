@@ -351,7 +351,9 @@ function LegDetail({ leg }: { leg: LegView }) {
           <div className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
             {leg.halted.reason === "PENDING_COSIGNATURE"
               ? "No verdict was written. The courier's signature verified, but this handoff needs an operator co-signature and none was presented — so there is no valid credential to seal."
-              : "The run stopped here and nothing was sealed."}
+              : leg.halted.reason === "PENDING_COURIER_SIGNATURE"
+                ? "No verdict was written. Every handoff requires the courier's signature, and none was presented."
+                : "The run stopped here and nothing was sealed."}
           </div>
         </div>
       )}

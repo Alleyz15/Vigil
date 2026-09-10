@@ -12,7 +12,7 @@ import type { Credential } from "@/lib/credential";
  *
  * The node order encodes the central architectural claim:
  *
- *   verify         -> axis 1, single-event inconsistency (H1-H4, I1-I14)
+ *   verify         -> axis 1, single-event inconsistency (H1-H4, I1-I16)
  *   fetch_history  -> axis 2, per-courier rolling pattern (P1-P5)
  *   gate           -> the ONLY place the two axes meet and a decision is made
  *

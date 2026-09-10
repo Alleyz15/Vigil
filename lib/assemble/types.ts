@@ -50,7 +50,7 @@ export type Assembled<T> = {
 };
 
 /**
- * The operator's evidence-coverage line — "8 of 14 checks evaluable".
+ * The operator's evidence-coverage line — "12 of 16 checks evaluable".
  *
  * Computed from the rule coverage the engines report, which is in turn driven
  * by what the assembler could resolve. ONE source, not two: a second count

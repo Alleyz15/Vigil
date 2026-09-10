@@ -1,4 +1,9 @@
-import type { EpcisEvent, GeoPoint, VigilSignals } from "@/lib/epcis";
+import type {
+  DeviceRecognitionVerdict,
+  EpcisEvent,
+  GeoPoint,
+  VigilSignals,
+} from "@/lib/epcis";
 import type { BizStep, Disposition } from "@/lib/epcis";
 import type { CourierMandate } from "@/lib/mandate/schema";
 import type { Thresholds } from "./thresholds";
@@ -64,6 +69,25 @@ export type PreviousEvent = {
   batteryPercent?: number;
 };
 
+/** Server-side record of one independently delivered OTP challenge. */
+export type OtpChallengeEvidence = {
+  challengeId: string;
+  epc: string;
+  recipientChannelFingerprint: string;
+  deliveryStatus: "delivered" | "failed" | "unknown";
+  verificationReceiptId?: string | null;
+  issuedAt: string;
+  expiresAt: string;
+  verifiedAt?: string | null;
+  consumedByEventId?: string | null;
+};
+
+/** Server-side enrollment policy for the handset that authored this event. */
+export type DeviceEnrollmentEvidence = {
+  deviceId: string;
+  requiredRecognitionVerdict: DeviceRecognitionVerdict;
+};
+
 /**
  * Everything the engine needs, assembled by the caller.
  *
@@ -83,7 +107,17 @@ export type EngineInput = {
   /** Resolved mandate. Absent means the courier has no active mandate. */
   mandate?: CourierMandate;
   /** Resolved parcel, incl. where it was actually supposed to go. */
-  parcel?: { epc: string; recipientPoint?: GeoPoint };
+  parcel?: {
+    epc: string;
+    recipientPoint?: GeoPoint;
+    /** One-way fingerprint of the registered out-of-band recipient channel. */
+    recipientChannelFingerprint?: string;
+  };
+
+  /** Independently recorded OTP verifier transaction. Optional by design. */
+  otpChallenge?: OtpChallengeEvidence;
+  /** Enrollment for the observed device id. Optional by design. */
+  deviceEnrollment?: DeviceEnrollmentEvidence;
 
   /** The preceding event for this parcel. Optional; absence is tested. */
   previous?: PreviousEvent;
@@ -117,7 +151,7 @@ export type EngineResult = {
 
   /**
    * Which rules could actually be evaluated. Rendered for the operator as
-   * "8 of 14 checks evaluable", so a low score on thin evidence is visibly
+   * "12 of 16 checks evaluable", so a low score on thin evidence is visibly
    * different from a low score on complete evidence.
    */
   coverage: {

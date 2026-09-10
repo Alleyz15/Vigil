@@ -37,7 +37,7 @@ export function runInconsistencyEngine(input: EngineInput): EngineResult {
       coverage: {
         evaluated: 0,
         total: TOTAL_CHECKS,
-        notEvaluated: [{ id: "I1-I14", reason: "hard check failed; scoring was not performed" }],
+        notEvaluated: [{ id: "I1-I16", reason: "hard check failed; scoring was not performed" }],
       },
     };
   }

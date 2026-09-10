@@ -162,10 +162,10 @@ describe("coverage — missing evidence is not clean evidence", () => {
   it("reports which checks could not be evaluated, and why", () => {
     const result = runInconsistencyEngine(makeInput());
 
-    expect(result.coverage.total).toBe(14);
+    expect(result.coverage.total).toBe(16);
     // I13 (mandate sets no hours) and I14 (journey too short) cannot be evaluated.
     expect(result.coverage.notEvaluated.map((n) => n.id).sort()).toEqual(["I13", "I14"]);
-    expect(result.coverage.evaluated).toBe(12);
+    expect(result.coverage.evaluated).toBe(14);
   });
 
   it("distinguishes a clean event from an event with almost no evidence", () => {
@@ -182,16 +182,16 @@ describe("coverage — missing evidence is not clean evidence", () => {
     // Both score zero. Only one of them means anything.
     expect(clean.score).toBe(0);
     expect(blind.score).toBe(0);
-    expect(clean.coverage.evaluated).toBe(12);
+    expect(clean.coverage.evaluated).toBe(14);
 
     // Not zero: the device/server clock comparison needs nothing from the
     // handset, so I4/I5 remain evaluable even when the device reported no
     // signals whatsoever. That is the one check a silent device cannot dodge.
     expect(blind.coverage.evaluated).toBe(2);
-    expect(blind.coverage.notEvaluated).toHaveLength(12);
+    expect(blind.coverage.notEvaluated).toHaveLength(14);
   });
 
-  it("counts both ids of a tiered rule toward the 14, so the operator's line reads 14", () => {
+  it("counts both ids of a tiered rule toward the 16, so the operator's line reads 16", () => {
     const result = runInconsistencyEngine(
       makeInput({ event: makeEvent({ recordTime: undefined }) }),
     );

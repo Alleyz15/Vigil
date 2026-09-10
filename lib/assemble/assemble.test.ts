@@ -17,7 +17,7 @@ import {
   signalsOf,
 } from "@/lib/agent/fixtures";
 import { eq } from "drizzle-orm";
-import { mandates, verdicts } from "@/lib/db/schema";
+import { deviceEnrollments, mandates, otpChallenges, parcels, verdicts } from "@/lib/db/schema";
 import { assembleEngineInput } from "./engine-input";
 import { assembleGateInput } from "./gate-input";
 import { assemblePatternInput } from "./pattern-input";
@@ -163,6 +163,98 @@ describe("assembleEngineInput", () => {
 
     expect(input.parcel).toBeUndefined();
     expect(resolution.missing.map((m) => m.what)).toContain("parcel");
+  });
+
+  it("resolves independent OTP provenance and device enrollment records", async () => {
+    const challengeId = "10000000-0000-4000-8000-000000000001";
+    const receiptId = "20000000-0000-4000-8000-000000000001";
+    const raw = makeAgentEvent();
+    const signals = signalsOf(raw);
+    (signals.integrity as Record<string, unknown>).deviceRecognitionVerdicts = [
+      "MEETS_DEVICE_INTEGRITY",
+    ];
+    (signals.pod as Record<string, unknown>).otp = {
+      challengeId,
+      verificationReceiptId: receiptId,
+    };
+    const event = parseEvent(raw);
+
+    world.deps.db
+      .update(parcels)
+      .set({ recipientPhone: "+60123456789" })
+      .where(eq(parcels.epc, EPC))
+      .run();
+    world.deps.db.insert(otpChallenges).values({
+      challengeId,
+      epc: EPC,
+      // SHA-256 of the normalised E.164 channel. This literal keeps the test
+      // independent of the helper that computes it in production.
+      recipientChannelFingerprint:
+        "88030e91922da507d9b1ffa68d9896f94313acc33ec5b15c72eca420a6fe775b",
+      deliveryStatus: "delivered",
+      verificationReceiptId: receiptId,
+      issuedAt: "2026-09-08T02:10:00.000Z",
+      expiresAt: "2026-09-08T02:20:00.000Z",
+      verifiedAt: "2026-09-08T02:14:50.000Z",
+      consumedByEventId: event.eventID,
+    }).run();
+    world.deps.db.insert(deviceEnrollments).values({
+      deviceId: DEVICE_ID,
+      courierId: COURIER_ID,
+      requiredRecognitionVerdict: "MEETS_DEVICE_INTEGRITY",
+      status: "active",
+      enrolledAt: "2026-09-01T00:00:00.000Z",
+    }).run();
+
+    const { input, resolution } = assembleWithMandate(world.deps.db, event);
+
+    expect(input.parcel?.recipientChannelFingerprint).toBe(
+      "88030e91922da507d9b1ffa68d9896f94313acc33ec5b15c72eca420a6fe775b",
+    );
+    expect(input.otpChallenge).toMatchObject({ challengeId, verificationReceiptId: receiptId });
+    expect(input.deviceEnrollment).toEqual({
+      deviceId: DEVICE_ID,
+      requiredRecognitionVerdict: "MEETS_DEVICE_INTEGRITY",
+    });
+    expect(resolution.resolved).toContain(`OTP challenge ${challengeId}`);
+    expect(resolution.resolved).toContain(`device enrollment ${DEVICE_ID}`);
+
+    const result = runInconsistencyEngine(input);
+    expect(result.flags.map((flag) => flag.id)).not.toContain("I15");
+    expect(result.flags.map((flag) => flag.id)).not.toContain("I16");
+    expect(result.coverage.notEvaluated.map((entry) => entry.id)).not.toContain("I15");
+    expect(result.coverage.notEvaluated.map((entry) => entry.id)).not.toContain("I16");
+  });
+
+  it("leaves absent identity reference records not_evaluated instead of fabricating defaults", async () => {
+    const raw = makeAgentEvent();
+    const signals = signalsOf(raw);
+    (signals.integrity as Record<string, unknown>).deviceRecognitionVerdicts = [
+      "MEETS_DEVICE_INTEGRITY",
+    ];
+    (signals.pod as Record<string, unknown>).otp = {
+      challengeId: "10000000-0000-4000-8000-000000000002",
+      verificationReceiptId: "20000000-0000-4000-8000-000000000002",
+    };
+    const event = parseEvent(raw);
+
+    world.deps.db
+      .update(parcels)
+      .set({ recipientPhone: "+60123456789" })
+      .where(eq(parcels.epc, EPC))
+      .run();
+
+    const { input, resolution } = assembleWithMandate(world.deps.db, event);
+    expect(input.otpChallenge).toBeUndefined();
+    expect(input.deviceEnrollment).toBeUndefined();
+    expect(resolution.missing.map((entry) => entry.what)).toEqual(
+      expect.arrayContaining(["otpChallenge", "deviceEnrollment"]),
+    );
+
+    const result = runInconsistencyEngine(input);
+    expect(result.coverage.notEvaluated.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(["I15", "I16"]),
+    );
   });
 });
 
@@ -342,6 +434,6 @@ describe("assembleGateInput", () => {
 
 describe("coverageLine", () => {
   it("renders the operator's line from the engine's own counts", async () => {
-    expect(coverageLine({ evaluated: 8, total: 14 })).toBe("8 of 14 checks evaluable");
+    expect(coverageLine({ evaluated: 12, total: 16 })).toBe("12 of 16 checks evaluable");
   });
 });

@@ -1,10 +1,11 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import type { VigilDb } from "@/lib/db/client";
-import { events, parcels, referenceSites } from "@/lib/db/schema";
+import { deviceEnrollments, events, otpChallenges, parcels, referenceSites } from "@/lib/db/schema";
 import { DEFAULT_THRESHOLDS } from "@/lib/engine";
 import type { EngineInput, PreviousEvent, ReferenceSite } from "@/lib/engine/types";
 import { type EpcisEvent, EpcisEvent as EpcisEventSchema, type GeoPoint, epcsOf, vigilSignalsOf } from "@/lib/epcis";
 import type { CourierMandate } from "@/lib/mandate/schema";
+import { recipientChannelFingerprint } from "@/lib/identity/channel";
 import { type Assembled, emptyResolution, missing, resolved } from "./types";
 
 /**
@@ -29,14 +30,19 @@ export function assembleEngineInput(
   const parcel = epc ? loadParcel(db, epc, resolution) : undefined;
   const previous = epc ? loadPreviousEvent(db, epc, event, resolution) : undefined;
   const sites = loadReferenceSites(db, event, resolution);
+  const signals = vigilSignalsOf(event);
+  const otpChallenge = loadOtpChallenge(db, signals?.pod?.otp?.challengeId, resolution);
+  const deviceEnrollment = loadDeviceEnrollment(db, signals?.deviceId, resolution);
 
   return {
     input: {
       event,
-      sensor: vigilSignalsOf(event),
+      sensor: signals,
       courier: options.courier,
       mandate: options.mandate,
       parcel,
+      otpChallenge,
+      deviceEnrollment,
       previous,
       referenceSites: sites,
       thresholds: options.thresholds ?? DEFAULT_THRESHOLDS,
@@ -66,7 +72,60 @@ function loadParcel(db: VigilDb, epc: string, resolution: ReturnType<typeof empt
   }
 
   resolved(resolution, `parcel ${epc}`);
-  return { epc, recipientPoint };
+  return {
+    epc,
+    recipientPoint,
+    recipientChannelFingerprint: row.recipientPhone
+      ? recipientChannelFingerprint(row.recipientPhone)
+      : undefined,
+  };
+}
+
+function loadOtpChallenge(
+  db: VigilDb,
+  challengeId: string | undefined,
+  resolution: ReturnType<typeof emptyResolution>,
+): EngineInput["otpChallenge"] {
+  if (!challengeId) {
+    missing(resolution, "otpChallenge", "the event carried no OTP challenge reference");
+    return undefined;
+  }
+
+  const row = db.select().from(otpChallenges).where(eq(otpChallenges.challengeId, challengeId)).get();
+  if (!row) {
+    missing(resolution, "otpChallenge", `OTP challenge ${challengeId} is not in the verifier registry`);
+    return undefined;
+  }
+
+  resolved(resolution, `OTP challenge ${challengeId}`);
+  return row;
+}
+
+function loadDeviceEnrollment(
+  db: VigilDb,
+  deviceId: string | undefined,
+  resolution: ReturnType<typeof emptyResolution>,
+): EngineInput["deviceEnrollment"] {
+  if (!deviceId) {
+    missing(resolution, "deviceEnrollment", "the event carried no device identifier");
+    return undefined;
+  }
+
+  const row = db
+    .select()
+    .from(deviceEnrollments)
+    .where(and(eq(deviceEnrollments.deviceId, deviceId), eq(deviceEnrollments.status, "active")))
+    .get();
+  if (!row) {
+    missing(resolution, "deviceEnrollment", `device ${deviceId} has no active enrollment`);
+    return undefined;
+  }
+
+  resolved(resolution, `device enrollment ${deviceId}`);
+  return {
+    deviceId: row.deviceId,
+    requiredRecognitionVerdict: row.requiredRecognitionVerdict,
+  };
 }
 
 /**

@@ -26,6 +26,8 @@ export const EPC = "urn:epc:id:sgtin:0614141.107346.2017";
 export const COURIER_ID = "CR-0042";
 export const DEVICE_ID = "HHT-0042";
 export const EVENT_ID = "6f8c0d3e-4a1b-4c2d-9e5f-2b7a1c3d4e5f";
+export const OTP_CHALLENGE_ID = "4be4cb19-a04a-4e93-8e9a-287108ae68e2";
+export const OTP_RECEIPT_ID = "5c59c087-bf4c-48ae-a0d2-cb68e3de021d";
 
 /**
  * A delivery-step event. `recordTime` is stamped, as the caller would have done.
@@ -96,18 +98,42 @@ export function makeInput(over: Partial<EngineInput> = {}): EngineInput {
         verdict: "passed",
         rootDetected: false,
         appTampered: false,
+        deviceRecognitionVerdicts: ["MEETS_DEVICE_INTEGRITY"],
       },
       battery: { levelPercent: 61, charging: false },
       pod: {
         photoSha256: "a".repeat(64),
         photoExifCaptureTime: "2026-09-08T10:14:30+08:00",
         otpVerified: true,
+        otp: {
+          challengeId: OTP_CHALLENGE_ID,
+          verificationReceiptId: OTP_RECEIPT_ID,
+        },
         signatureSha256: "b".repeat(64),
       },
     },
     courier: { courierId: COURIER_ID, boundDeviceId: DEVICE_ID },
+    deviceEnrollment: {
+      deviceId: DEVICE_ID,
+      requiredRecognitionVerdict: "MEETS_DEVICE_INTEGRITY",
+    },
     mandate: makeMandate(),
-    parcel: { epc: EPC, recipientPoint: KL_AMPANG },
+    parcel: {
+      epc: EPC,
+      recipientPoint: KL_AMPANG,
+      recipientChannelFingerprint: "sha256:registered-recipient",
+    },
+    otpChallenge: {
+      challengeId: OTP_CHALLENGE_ID,
+      epc: EPC,
+      recipientChannelFingerprint: "sha256:registered-recipient",
+      deliveryStatus: "delivered",
+      verificationReceiptId: OTP_RECEIPT_ID,
+      issuedAt: "2026-09-08T10:05:00+08:00",
+      expiresAt: "2026-09-08T10:15:00+08:00",
+      verifiedAt: "2026-09-08T10:12:00+08:00",
+      consumedByEventId: EVENT_ID,
+    },
     previous: {
       eventTime: "2026-09-08T09:45:00+08:00",
       disposition: "urn:epcglobal:cbv:disp:in_possession",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { vigilSignalsOf } from "@/lib/epcis";
-import { NOISE_LEVELS, type NoiseLevel, SKIPPABLE_LEGS } from "./noise";
+import { NOISE_LEVELS, type NoiseLevel, SKIPPABLE_LEGS, planShipmentNoise } from "./noise";
+import { recipientChannelFingerprint } from "@/lib/identity/channel";
 import { makeRng } from "./rng";
 import { buildScenario } from "./scenarios";
 import { type BuiltEvent, buildTimeline } from "./timeline";
@@ -160,6 +161,36 @@ describe("the distributions straddle the rules rather than sitting under them", 
 });
 
 describe("episodes", () => {
+  it("makes stale recipient channels and degraded attestations reachable honest-world episodes", () => {
+    let stale = false;
+    let degraded = false;
+
+    for (let i = 0; i < 800 && !(stale && degraded); i++) {
+      const seed = `${SEED}-identity-noise-${i}`;
+      const world = buildWorld(seed);
+      const planned = planShipmentNoise(makeRng(seed), 3)?.episodes;
+      const timeline = timelineAt(3, seed);
+      const delivery = timeline.find((event) => event.leg === "delivery");
+      if (!delivery) continue;
+
+      if (planned?.staleRecipientChannel) {
+        stale = true;
+        expect(delivery.identity?.otpChallenge?.recipientChannelFingerprint).not.toBe(
+          recipientChannelFingerprint(world.parcels[0].recipientPhone),
+        );
+      }
+      if (planned?.attestationDegraded) {
+        degraded = true;
+        expect(signals(delivery).integrity?.deviceRecognitionVerdicts).toEqual([
+          "MEETS_BASIC_INTEGRITY",
+        ]);
+      }
+    }
+
+    expect(stale, "the stale recipient-channel episode must be reachable").toBe(true);
+    expect(degraded, "the attestation downgrade episode must be reachable").toBe(true);
+  });
+
   it("draws the missed scan uniformly across the four skippable legs", () => {
     // H1 fires on exactly ONE of these four gaps. Preferring it would
     // manufacture H1; avoiding it would hide H1. See lib/generate/noise.ts.

@@ -130,9 +130,9 @@ describe("what the frames carry", () => {
     const ctx = await runSigned(makeAgentEvent(), world);
 
     const verify = ctx.trace.find((f) => f.type === "tool_end" && f.node === "verify");
-    expect(verify?.type === "tool_end" && verify.summary?.coverage?.total).toBe(14);
+    expect(verify?.type === "tool_end" && verify.summary?.coverage?.total).toBe(16);
     expect(verify?.type === "tool_end" && verify.summary?.coverage?.line).toMatch(
-      /^\d+ of 14 checks evaluable$/,
+      /^\d+ of 16 checks evaluable$/,
     );
 
     const history = ctx.trace.find((f) => f.type === "tool_end" && f.node === "fetch_history");

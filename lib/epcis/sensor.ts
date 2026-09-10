@@ -86,6 +86,20 @@ export const VigilMotionSummary = z.strictObject({
 export type VigilMotionSummary = z.infer<typeof VigilMotionSummary>;
 
 /**
+ * Play Integrity's documented device-recognition labels, preserved verbatim.
+ *
+ * The prototype uses `mocked` attestations, but the mocked payload must still
+ * say which real provider semantics it is standing in for. An invented label
+ * would make the synthetic evidence impossible to interpret or reproduce.
+ */
+export const DeviceRecognitionVerdict = z.enum([
+  "MEETS_BASIC_INTEGRITY",
+  "MEETS_DEVICE_INTEGRITY",
+  "MEETS_STRONG_INTEGRITY",
+]);
+export type DeviceRecognitionVerdict = z.infer<typeof DeviceRecognitionVerdict>;
+
+/**
  * Stand-in for Play Integrity / DeviceCheck.
  *
  * MOCKED FOR THE PROTOTYPE — `attestationSource` is required and must say so.
@@ -98,6 +112,8 @@ export const VigilDeviceIntegrity = z.strictObject({
   verdict: z.enum(["passed", "failed", "unevaluated"]),
   rootDetected: z.boolean(),
   appTampered: z.boolean(),
+  /** Exact Play Integrity labels, when the provider supplied that dimension. */
+  deviceRecognitionVerdicts: z.array(DeviceRecognitionVerdict).max(3).optional(),
   /** Opaque token echoed for the audit trail; not parsed by the engine. */
   attestationToken: z.string().optional(),
 });
@@ -111,6 +127,19 @@ export const VigilBattery = z.strictObject({
 export type VigilBattery = z.infer<typeof VigilBattery>;
 
 /**
+ * References the server-side result of an out-of-band OTP challenge.
+ *
+ * Neither the OTP nor a reusable digest of it belongs in EPCIS. The event
+ * carries opaque identifiers; I15 resolves them against the independently
+ * recorded verifier transaction assembled by the caller.
+ */
+export const VigilOtpReceipt = z.strictObject({
+  challengeId: z.uuid(),
+  verificationReceiptId: z.uuid(),
+});
+export type VigilOtpReceipt = z.infer<typeof VigilOtpReceipt>;
+
+/**
  * Proof-of-delivery artefacts. Presence/absence feeds I12; the photo's EXIF
  * capture time versus the event time feeds I9.
  *
@@ -122,6 +151,8 @@ export const VigilPodEvidence = z.strictObject({
   /** EXIF DateTimeOriginal, if the photo carried one. */
   photoExifCaptureTime: Iso8601WithOffset.optional(),
   otpVerified: z.boolean().optional(),
+  /** Independent-channel provenance for the OTP claim. */
+  otp: VigilOtpReceipt.optional(),
   signatureSha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 export type VigilPodEvidence = z.infer<typeof VigilPodEvidence>;

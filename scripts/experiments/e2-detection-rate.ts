@@ -3,9 +3,12 @@ import {
   pct,
   printTable,
   reachedOperator,
-  reportingSeeds,
+  seedsForHalf,
   runFullScenario,
+  runIdentityCase,
   writeCsv,
+  type HoldoutHalf,
+  type IdentityCaseId,
   type ScenarioId,
 } from "./harness";
 
@@ -18,28 +21,51 @@ import {
  * between refusing a handoff and investigating one after the fact.
  */
 
-const CLASSES: { id: ScenarioId; label: string; axis: string }[] = [
-  { id: "S1", label: "GPS spoofing", axis: "single-event" },
-  { id: "S2", label: "Batch scanning a condo tower", axis: "pattern" },
-  { id: "S3", label: "Event ID reuse", axis: "hard check (H4)" },
-  { id: "S4", label: "Out-of-scope scan", axis: "hard check (H2)" },
-  { id: "S5", label: "Clock tampering", axis: "single-event" },
+type DetectionClass = {
+  id: ScenarioId | IdentityCaseId;
+  label: string;
+  axis: string;
+  kind: "scenario" | "identity";
+};
+
+const CLASSES: DetectionClass[] = [
+  { id: "S1", label: "GPS spoofing", axis: "single-event", kind: "scenario" },
+  { id: "S2", label: "Batch scanning a condo tower", axis: "pattern", kind: "scenario" },
+  { id: "S3", label: "Event ID reuse", axis: "hard check (H4)", kind: "scenario" },
+  { id: "S4", label: "Out-of-scope scan", axis: "hard check (H2)", kind: "scenario" },
+  { id: "S5", label: "Clock tampering", axis: "single-event", kind: "scenario" },
+  {
+    id: "recipient_channel_substitution",
+    label: "OTP sent to a different recipient channel",
+    axis: "single-event identity",
+    kind: "identity",
+  },
+  {
+    id: "replacement_weak_handset",
+    label: "Unbound weak replacement handset",
+    axis: "single-event identity",
+    kind: "identity",
+  },
 ];
 
 const SEEDS_PER_CLASS = 12;
 
 async function main() {
+  const half: HoldoutHalf = process.argv.includes("--tune") ? "tune" : "report";
   const rows: Record<string, unknown>[] = [];
   const summary: Record<string, unknown>[] = [];
 
   for (const klass of CLASSES) {
-    const seeds = reportingSeeds(`${BASE_SEED}-e2-${klass.id}`, SEEDS_PER_CLASS);
+    const seeds = seedsForHalf(`${BASE_SEED}-e2-${klass.id}`, SEEDS_PER_CLASS, half);
     let detected = 0;
     const legIndexes: number[] = [];
     const flagCounts = new Map<string, number>();
 
     for (const seed of seeds) {
-      const run = await runFullScenario(klass.id, seed);
+      const run =
+        klass.kind === "identity"
+          ? await runIdentityCase(klass.id as IdentityCaseId, seed)
+          : await runFullScenario(klass.id as ScenarioId, seed);
       try {
         const legs = run.legs;
         const firstIndex = legs.findIndex(reachedOperator);
@@ -69,7 +95,7 @@ async function main() {
           scenario: klass.id,
           label: klass.label,
           seed,
-          half: "report",
+          half,
           seeds_in_cell: seeds.length,
           detected: caught ? 1 : 0,
           detected_at_leg: caught ? at + 1 : "",
@@ -98,8 +124,8 @@ async function main() {
     });
   }
 
-  const path = writeCsv("e2-detection-rate.csv", rows);
-  printTable("E2 — per-class detection (reporting half only)", summary);
+  const path = writeCsv(half === "tune" ? "e2-detection-rate-tune.csv" : "e2-detection-rate.csv", rows);
+  printTable(`E2 — per-class detection (${half} half only)`, summary);
   process.stdout.write(`\n  mean_leg = 1-indexed leg at which the class was first caught\n  ${path}\n`);
 }
 

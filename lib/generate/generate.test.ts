@@ -193,7 +193,7 @@ describe("S1 — GPS spoofing", () => {
  * is a courier defrauding forty customers; the other is a courier in a basement
  * carpark. A per-event system sees the same surface in both.
  *
- * S2's every single event is CLEAN — zero on all fourteen checks — and the
+ * S2's every single event is CLEAN — zero on all sixteen checks — and the
  * courier is still caught, because a delivery rate no one can walk is a
  * property of the SET and a customer complaint is an outcome that ARRIVES
  * LATER. Neither exists inside any single event.
@@ -254,7 +254,7 @@ describe("S2 and S6 diverge: same surface, opposite verdicts", () => {
     // rather than being shown an identical-looking accept.
     expect(lastLeg(tunnel).decision).toBe(lastLeg(clean).decision);
     expect(tunnelCoverage!.evaluated).toBeLessThan(cleanCoverage!.evaluated);
-    expect(tunnelCoverage!.line).toMatch(/of 14 checks evaluable$/);
+    expect(tunnelCoverage!.line).toMatch(/of 16 checks evaluable$/);
   });
 
   it("does not escalate the tunnel, which is the whole false-positive argument", async () => {

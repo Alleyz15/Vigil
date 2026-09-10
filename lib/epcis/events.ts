@@ -110,18 +110,31 @@ export const TransactionEvent = z.strictObject({
 export type TransactionEvent = z.infer<typeof TransactionEvent>;
 
 /**
- * AssociationEvent — binding a device (or container) to a parent.
- * We use it for courier-to-handset binding, which is what makes I6
- * ("scan came from an unbound device") a checkable claim rather than a guess.
+ * AssociationEvent — associating child EPCs with a parent object or location.
+ *
+ * This is NOT courier-to-handset authorisation. EPCIS models an association
+ * between objects; letting the attacker-controlled `vigil:courierId` authorise
+ * a device change would let the unverified claim certify itself. I6 uses the
+ * server-side device enrollment instead. See CLAUDE.md session 16.
  */
-export const AssociationEvent = z.strictObject({
-  type: z.literal("AssociationEvent"),
-  ...EventBase,
-  /** The parent the children are being associated with, e.g. a handset or a cage. */
-  parentID: z.string().min(1),
-  childEPCs: z.array(EpcUri).optional(),
-  action: Action,
-});
+export const AssociationEvent = z
+  .strictObject({
+    type: z.literal("AssociationEvent"),
+    ...EventBase,
+    /** The parent object or location to which the child EPCs are associated. */
+    parentID: z.string().min(1),
+    childEPCs: z.array(EpcUri).optional(),
+    action: Action,
+  })
+  .superRefine((event, ctx) => {
+    if (event.action !== "DELETE" && (event.childEPCs?.length ?? 0) === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["childEPCs"],
+        message: "GS1 AssociationEvent ADD/OBSERVE requires at least one child EPC",
+      });
+    }
+  });
 export type AssociationEvent = z.infer<typeof AssociationEvent>;
 
 /** Any event Vigil accepts at ingest. */

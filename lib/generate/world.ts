@@ -1,4 +1,4 @@
-import type { GeoPoint } from "@/lib/epcis";
+import type { DeviceRecognitionVerdict, GeoPoint } from "@/lib/epcis";
 import type { CourierMandate } from "@/lib/mandate/schema";
 import { generateKeyPair } from "@/lib/credential";
 import addressData from "./data/kl-addresses.json";
@@ -33,6 +33,7 @@ export type GeneratedCourier = {
   courierId: string;
   displayName: string;
   deviceId: string;
+  requiredRecognitionVerdict: DeviceRecognitionVerdict;
   keys: { publicKey: string; privateKey: string };
   mandate: CourierMandate;
 };
@@ -41,6 +42,8 @@ export type GeneratedParcel = {
   epc: string;
   waybillNo: string;
   recipientName: string;
+  /** Registered independent OTP delivery channel, synthetic E.164. */
+  recipientPhone: string;
   recipientAddress: string;
   recipientPoint: GeoPoint;
   declaredValueSen: number;
@@ -166,6 +169,7 @@ export function buildWorld(seed: string, options: WorldOptions = {}): GeneratedW
       courierId,
       displayName: `${nameRng.pick(FIRST_NAMES)} ${nameRng.pick(LAST_NAMES)}`,
       deviceId: `HHT-${String(1000 + c)}`,
+      requiredRecognitionVerdict: "MEETS_DEVICE_INTEGRITY",
       keys: generateKeyPair(),
       mandate: buildMandate(courierId, c),
     });
@@ -181,6 +185,7 @@ export function buildWorld(seed: string, options: WorldOptions = {}): GeneratedW
         epc: epcFor(c, p),
         waybillNo: `WB-2026-${String(c)}${String(p).padStart(5, "0")}`,
         recipientName: `${parcelRng.pick(FIRST_NAMES)} ${parcelRng.pick(LAST_NAMES)}`,
+        recipientPhone: `+6011${String(10_000_000 + c * parcelsPerCourier + p).padStart(8, "0")}`,
         recipientAddress: address.label,
         recipientPoint: point,
         declaredValueSen: parcelRng.int(1_500, 45_000),

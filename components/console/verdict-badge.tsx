@@ -55,7 +55,10 @@ export function verdictKindFor(leg: {
   decision: string | null;
   halted: { reason: string } | null;
 }): VerdictKind {
-  if (leg.halted?.reason === "PENDING_COSIGNATURE") return "pending";
+  if (
+    leg.halted?.reason === "PENDING_COSIGNATURE" ||
+    leg.halted?.reason === "PENDING_COURIER_SIGNATURE"
+  ) return "pending";
   if (leg.decision === null) return "halted";
   return leg.decision as VerdictKind;
 }

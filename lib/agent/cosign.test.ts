@@ -232,20 +232,38 @@ describe("when no credential is presented at all", () => {
     const event = makeAgentEvent();
     const ctx = await runAgent(event, world.deps);
 
-    expect(ctx.halted).toEqual({ at: "gate", reason: "PENDING_COSIGNATURE" });
+    expect(ctx.halted).toEqual({ at: "gate", reason: "PENDING_COURIER_SIGNATURE" });
     expect(world.deps.ledger.readRecords()).toHaveLength(0);
     expect(ctx.credential?.problems[0].detail).toMatch(/no credential was presented/);
   });
 
-  it("still seals a handoff that needs no co-signature", async () => {
-    // A mandate with no co-sign conditions and an established courier would not
-    // require one; here the fixture's cold start does, so the check is that the
-    // gate's own threshold is what drives it - not the mere presence of a token.
-    const event = makeAgentEvent();
+  it("halts an unsigned low-risk handoff pending the courier signature and seals nothing", async () => {
+    // Establish the courier first. This removes cold start, leaving a genuinely
+    // low-risk handoff whose gate does not require an operator co-signature.
+    const start = Date.parse("2026-09-08T08:00:00+08:00");
+    for (let index = 0; index < 10; index++) {
+      const eventTime = new Date(start + index * 10 * 60_000).toISOString();
+      await runSigned(makeAgentEvent({ eventTime, recordTime: eventTime }), world);
+    }
+    const recordsBefore = world.deps.ledger.readRecords().length;
+    const event = makeAgentEvent({
+      eventTime: "2026-09-08T10:15:00+08:00",
+      recordTime: "2026-09-08T02:15:00.000Z",
+    });
+
     const ctx = await runAgent(event, world.deps);
 
-    expect(ctx.requiresCosign).toBe(true);
-    expect(ctx.gateResult?.cosignReasons[0]).toMatch(/too little history/);
+    expect(ctx.requiresCosign).toBe(false);
+    expect(ctx.halted).toEqual({ at: "gate", reason: "PENDING_COURIER_SIGNATURE" });
+    expect(ctx.decision).toBeUndefined();
+    expect(ctx.verdict).toBeUndefined();
+    expect(ctx.credential?.problems).toEqual([
+      expect.objectContaining({ code: "MISSING", role: "courier" }),
+    ]);
+    expect(world.deps.ledger.readRecords()).toHaveLength(recordsBefore);
+    expect(
+      world.deps.db.select().from(verdicts).where(eq(verdicts.eventId, ctx.event!.eventID)).all(),
+    ).toHaveLength(0);
   });
 });
 

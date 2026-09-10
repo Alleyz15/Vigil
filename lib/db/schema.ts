@@ -53,6 +53,31 @@ export const couriers = sqliteTable("couriers", {
 });
 
 /**
+ * Server-side handset enrollment, independent of the attestation presented by
+ * an EPCIS event. I16 compares what Play Integrity reports now with the level
+ * this device was enrolled to satisfy; neither source can certify the other.
+ */
+export const deviceEnrollments = sqliteTable(
+  "device_enrollments",
+  {
+    deviceId: text("device_id").primaryKey(),
+    courierId: text("courier_id")
+      .notNull()
+      .references(() => couriers.courierId),
+    requiredRecognitionVerdict: text("required_recognition_verdict", {
+      enum: [
+        "MEETS_BASIC_INTEGRITY",
+        "MEETS_DEVICE_INTEGRITY",
+        "MEETS_STRONG_INTEGRITY",
+      ],
+    }).notNull(),
+    status: text("status", { enum: ["active", "retired"] }).notNull().default("active"),
+    enrolledAt: text("enrolled_at").notNull(),
+  },
+  (t) => [index("device_enrollments_courier_status_idx").on(t.courierId, t.status)],
+);
+
+/**
  * A CourierMandate: scope, limits, validity, and the conditions that force a co-sign.
  *
  * Stored as JSON text rather than exploded into columns because the mandate is
@@ -134,6 +159,34 @@ export const events = sqliteTable(
 );
 
 /**
+ * Independent out-of-band OTP delivery and verification records.
+ *
+ * The EPCIS event carries only opaque challenge/receipt identifiers. The code
+ * itself never enters the event or this audit row, and the registered channel
+ * is reduced to a one-way fingerprint before storage.
+ */
+export const otpChallenges = sqliteTable(
+  "otp_challenges",
+  {
+    challengeId: text("challenge_id").primaryKey(),
+    epc: text("epc")
+      .notNull()
+      .references(() => parcels.epc),
+    recipientChannelFingerprint: text("recipient_channel_fingerprint").notNull(),
+    deliveryStatus: text("delivery_status", {
+      enum: ["delivered", "failed", "unknown"],
+    }).notNull(),
+    verificationReceiptId: text("verification_receipt_id"),
+    issuedAt: text("issued_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    verifiedAt: text("verified_at"),
+    /** Event that consumed the challenge; deliberately not an FK because the challenge exists first. */
+    consumedByEventId: text("consumed_by_event_id"),
+  },
+  (t) => [index("otp_challenges_epc_issued_idx").on(t.epc, t.issuedAt)],
+);
+
+/**
  * Operator-facing projection of a verdict.
  *
  * The two scores are separate columns and are never summed into one. Collapsing
@@ -152,7 +205,7 @@ export const verdicts = sqliteTable(
     decision: text("decision", {
       enum: ["accept", "flag", "escalate", "freeze"],
     }).notNull(),
-    /** Axis 1 — single-event contradiction (H1-H4, I1-I14). */
+    /** Axis 1 — single-event contradiction (H1-H4, I1-I16). */
     inconsistencyScore: integer("inconsistency_score").notNull(),
     /** Axis 2 — per-courier rolling pattern (P1-P5). */
     patternScore: integer("pattern_score").notNull(),

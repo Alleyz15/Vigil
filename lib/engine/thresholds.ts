@@ -141,6 +141,19 @@ export type Thresholds = {
     outsideTimeWindow: number;
     /** I14 - battery use does not match the claimed distance. */
     batteryMismatch: number;
+    /**
+     * I15 - event OTP claim contradicts the independent verifier transaction.
+     * ASSUMPTION: a complete channel/receipt mismatch is strong enough to flag
+     * one handoff, on the same footing as an explicit positioning conflict.
+     */
+    otpProvenanceConflict: number;
+    /**
+     * I16 - live attestation is weaker than the handset's enrollment policy.
+     * ASSUMPTION: +20 is deliberately below the gate cut. Play Integrity notes
+     * that labels can weaken for operational reasons, so this signal may
+     * corroborate I6 but must not alert alone.
+     */
+    attestationBelowEnrollment: number;
   };
 
   /** Inconsistency score ceiling. Scores are summed, then clamped to this. */
@@ -209,6 +222,8 @@ export const DEFAULT_THRESHOLDS: Thresholds = Object.freeze({
     missingPodArtefact: 15,
     outsideTimeWindow: 20,
     batteryMismatch: 10,
+    otpProvenanceConflict: 40,
+    attestationBelowEnrollment: 20,
   }),
   scoreCap: 100,
 }) as Thresholds;

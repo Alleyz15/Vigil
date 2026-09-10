@@ -6,8 +6,10 @@ import type { NodeDeps } from "@/lib/agent/nodes";
 import { closeDb } from "@/lib/db/client";
 import {
   type GeneratedScenario,
+  type IdentityCaseId,
   type ScenarioId,
   buildScenario,
+  buildIdentityCase,
   buildWorld,
   createHarness,
   type IngestHarness,
@@ -154,6 +156,25 @@ export async function runFullScenario(id: ScenarioId, seed: string, noiseLevel?:
   return { ...run, dispose: () => disposeHarness(harness) };
 }
 
+/** Run an experiment-only identity case without adding it to the public S0-S6 picker. */
+export async function runIdentityCase(id: IdentityCaseId, seed: string) {
+  const world = buildWorld(seed);
+  const generated = buildIdentityCase(id, {
+    world,
+    rng: makeRng(seed),
+    startMs: START_MS,
+  });
+  const harness = createHarness(world);
+
+  seedFleetBackground(harness, world, {
+    excludeCourierId: generated.scenario.courier.courierId,
+    startMs: START_MS - 8 * 3_600_000,
+  });
+
+  const run = await ingestScenario(generated.scenario, harness);
+  return { ...run, identityCase: generated, dispose: () => disposeHarness(harness) };
+}
+
 /** Run a scenario's own legs, after preparation. */
 export async function runLegs(run: PreparedRun): Promise<AgentContext[]> {
   const out: AgentContext[] = [];
@@ -229,4 +250,4 @@ export function pct(numerator: number, denominator: number): string {
   return denominator === 0 ? "n/a" : `${((numerator / denominator) * 100).toFixed(1)}%`;
 }
 
-export { type ScenarioId, type NoiseLevel };
+export { type ScenarioId, type NoiseLevel, type IdentityCaseId };

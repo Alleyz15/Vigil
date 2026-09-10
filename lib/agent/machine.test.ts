@@ -202,8 +202,8 @@ describe("the two axes", () => {
   it("reports evidence coverage for each axis from the engines' own counts", async () => {
     const ctx = await runSigned(makeAgentEvent(), world);
 
-    expect(ctx.coverage?.inconsistency?.total).toBe(14);
-    expect(ctx.coverage?.inconsistency?.line).toMatch(/^\d+ of 14 checks evaluable$/);
+    expect(ctx.coverage?.inconsistency?.total).toBe(16);
+    expect(ctx.coverage?.inconsistency?.line).toMatch(/^\d+ of 16 checks evaluable$/);
     expect(ctx.coverage?.pattern?.total).toBe(5);
   });
 });

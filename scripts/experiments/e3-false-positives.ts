@@ -52,6 +52,8 @@ const EPISODE_KEYS = [
   "address_correction",
   "charged_mid_shift",
   "handset_swap",
+  "stale_recipient_channel",
+  "attestation_degraded",
 ] as const;
 type EpisodeKey = (typeof EPISODE_KEYS)[number];
 
@@ -109,6 +111,8 @@ async function main() {
                 ...(drawn.addressCorrection ? (["address_correction"] as const) : []),
                 ...(drawn.chargedMidShift ? (["charged_mid_shift"] as const) : []),
                 ...(drawn.handsetSwap ? (["handset_swap"] as const) : []),
+                ...(drawn.staleRecipientChannel ? (["stale_recipient_channel"] as const) : []),
+                ...(drawn.attestationDegraded ? (["attestation_degraded"] as const) : []),
               ]
             : [];
 

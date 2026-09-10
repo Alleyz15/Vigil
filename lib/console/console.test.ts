@@ -159,7 +159,7 @@ describe("the shipment read model", () => {
     const { view } = await loadScenario("S1");
     const last = view.legs[view.legs.length - 1];
 
-    expect(last.coverageLine).toMatch(/of 14 checks evaluable$/);
+    expect(last.coverageLine).toMatch(/of 16 checks evaluable$/);
     const flag = last.flags.find((f) => f.id === "I7");
     expect(flag?.label).toBeTruthy();
     expect(flag?.evidence.length).toBeGreaterThan(0);

@@ -1,4 +1,10 @@
-import { EpcisEvent, type GeoPoint } from "@/lib/epcis";
+import {
+  EpcisEvent,
+  type DeviceRecognitionVerdict,
+  type GeoPoint,
+} from "@/lib/epcis";
+import { recipientChannelFingerprint } from "@/lib/identity/channel";
+import type { DeviceEnrollmentEvidence, OtpChallengeEvidence } from "@/lib/engine/types";
 import {
   type NoiseLevel,
   type ShipmentNoise,
@@ -123,6 +129,12 @@ export type LegOverrides = {
   deviceId?: string;
   motionStationary?: boolean;
   integrityFailed?: boolean;
+  /** Exact Play Integrity recognition labels presented by this handset. */
+  deviceRecognitionVerdicts?: DeviceRecognitionVerdict[];
+  /** Enrollment policy for a replacement device observed on this leg. */
+  requiredRecognitionVerdict?: DeviceRecognitionVerdict;
+  /** Independent channel the OTP service delivered to; never placed in EPCIS. */
+  otpRecipientChannel?: string;
   batteryPercent?: number;
   /** The handset was on charge when the scan was taken. */
   batteryCharging?: boolean;
@@ -155,6 +167,11 @@ export type BuiltEvent = {
   event: EpcisEvent;
   /** The raw object, for tests that need to inspect before validation. */
   raw: Record<string, unknown>;
+  /** Independent server records the assembler resolves; never part of EPCIS. */
+  identity?: {
+    otpChallenge?: OtpChallengeEvidence;
+    deviceEnrollment: DeviceEnrollmentEvidence & { courierId: string; enrolledAt: string };
+  };
 };
 
 /**
@@ -187,6 +204,7 @@ export function buildLegEvent(args: {
 
   const shipmentNoise = args.noise?.shipment;
   const deviceId = overrides.deviceId ?? courier.deviceId;
+  const eventID = overrides.eventID ?? uuidFrom(eventIdSeed);
 
   const eventMs = startMs + leg.offsetMinutes * 60_000;
   // The DEVICE authors eventTime, so it carries the handset's clock offset.
@@ -257,6 +275,8 @@ export function buildLegEvent(args: {
       verdict: overrides.integrityFailed ? "failed" : "passed",
       rootDetected: overrides.integrityFailed ?? false,
       appTampered: false,
+      deviceRecognitionVerdicts:
+        overrides.deviceRecognitionVerdicts ?? [courier.requiredRecognitionVerdict],
     },
     battery: {
       levelPercent: overrides.batteryPercent ?? batteryFor(leg),
@@ -278,6 +298,8 @@ export function buildLegEvent(args: {
   }
 
   if (isDelivery && !overrides.omitPod) {
+    const challengeId = uuidFrom(`${eventIdSeed}-otp-challenge`);
+    const verificationReceiptId = uuidFrom(`${eventIdSeed}-otp-receipt`);
     signals.pod = {
       photoSha256: hashLike(`${eventIdSeed}-photo`),
       // The photo is taken at the door and the scan happens back at the vehicle.
@@ -287,13 +309,14 @@ export function buildLegEvent(args: {
         overrides.photoExifCaptureTime ??
         isoAt(baseMs - (env?.photoDelaySeconds ?? rng.int(10, 120)) * 1000),
       otpVerified: true,
+      otp: { challengeId, verificationReceiptId },
       signatureSha256: hashLike(`${eventIdSeed}-sig`),
     };
   }
 
   const raw: Record<string, unknown> = {
     type: "ObjectEvent",
-    eventID: overrides.eventID ?? uuidFrom(eventIdSeed),
+    eventID,
     eventTime,
     recordTime,
     eventTimeZoneOffset: "+08:00",
@@ -306,7 +329,39 @@ export function buildLegEvent(args: {
   };
 
   // Through the schema, not around it.
-  return { leg: leg.name, legIndex, event: EpcisEvent.parse(raw), raw };
+  const parsed = EpcisEvent.parse(raw);
+  const otp = isDelivery && !overrides.omitPod
+    ? {
+        challengeId: uuidFrom(`${eventIdSeed}-otp-challenge`),
+        epc: overrides.epc ?? parcel.epc,
+        recipientChannelFingerprint: recipientChannelFingerprint(
+          overrides.otpRecipientChannel ?? parcel.recipientPhone,
+        ),
+        deliveryStatus: "delivered" as const,
+        verificationReceiptId: uuidFrom(`${eventIdSeed}-otp-receipt`),
+        issuedAt: isoAt(eventMs - 5 * 60_000),
+        expiresAt: isoAt(eventMs + 5 * 60_000),
+        verifiedAt: isoAt(eventMs - 10_000),
+        consumedByEventId: eventID,
+      }
+    : undefined;
+
+  return {
+    leg: leg.name,
+    legIndex,
+    event: parsed,
+    raw,
+    identity: {
+      otpChallenge: otp,
+      deviceEnrollment: {
+        deviceId,
+        courierId: courier.courierId,
+        requiredRecognitionVerdict:
+          overrides.requiredRecognitionVerdict ?? courier.requiredRecognitionVerdict,
+        enrolledAt: "2026-09-01T00:00:00+08:00",
+      },
+    },
+  };
 }
 
 /** A full normal timeline for one parcel. */
@@ -330,7 +385,9 @@ export function buildTimeline(args: {
   const { world, courier, parcel, startMs, rng, idPrefix, overrides = {}, legs = NORMAL_LEGS } = args;
 
   const shipment = planShipmentNoise(rng, args.noiseLevel ?? 0);
-  const plan = shipment ? applyEpisodes(legs, shipment) : { legs, extras: new Map<number, LegOverrides>() };
+  const plan = shipment
+    ? applyEpisodes(legs, shipment, parcel.recipientPhone)
+    : { legs, extras: new Map<number, LegOverrides>() };
   const noiseSites = shipment?.episodes.addressCorrection
     ? world.sitesByAddress[
         (addressIndexFor(parcel) + shipment.episodes.addressCorrection.addressOffset) %
@@ -414,6 +471,7 @@ function correctedPoint(
 function applyEpisodes(
   legs: LegSpec[],
   shipment: ShipmentNoise,
+  recipientChannel: string,
 ): { legs: LegSpec[]; extras: Map<number, LegOverrides> } {
   const { episodes } = shipment;
   let out = legs;
@@ -459,13 +517,35 @@ function applyEpisodes(
         extras.set(i, {
           ...extras.get(i),
           deviceId: `${shipment.profile.name}-replacement-handset`,
+          deviceRecognitionVerdicts: ["MEETS_BASIC_INTEGRITY"],
+          requiredRecognitionVerdict: "MEETS_DEVICE_INTEGRITY",
           batteryPercent: clampPercent(88 - (out[i].offsetMinutes - out[at].offsetMinutes) * 0.068),
         });
       }
     }
   }
 
+  const deliveryAt = out.findIndex((leg) => leg.name === "delivery");
+  if (deliveryAt >= 0 && episodes.staleRecipientChannel) {
+    extras.set(deliveryAt, {
+      ...extras.get(deliveryAt),
+      otpRecipientChannel: alternateRecipientChannel(recipientChannel),
+    });
+  }
+  if (deliveryAt >= 0 && episodes.attestationDegraded) {
+    extras.set(deliveryAt, {
+      ...extras.get(deliveryAt),
+      deviceRecognitionVerdicts: ["MEETS_BASIC_INTEGRITY"],
+    });
+  }
+
   return { legs: out, extras };
+}
+
+/** A synthetic current channel distinct from the stale parcel record. */
+function alternateRecipientChannel(channel: string): string {
+  const last = Number(channel.at(-1) ?? "0");
+  return `${channel.slice(0, -1)}${(last + 1) % 10}`;
 }
 
 /** The recipient was out: a failed attempt today, the round again tomorrow. */

@@ -6,6 +6,8 @@ import {
   i12MissingPod,
   i13OutsideTimeWindow,
   i14BatteryMismatch,
+  i15OtpProvenanceConflict,
+  i16AttestationBelowEnrollment,
   i1PositionConflict,
   i2MotionConflict,
   i3ImpossibleSpeed,
@@ -680,14 +682,183 @@ describe("I14 - battery use vs distance travelled", () => {
   });
 });
 
+describe("I15 - OTP claim vs independent verifier record", () => {
+  it("triggers when a courier presents a receipt that was delivered to another recipient channel", () => {
+    const input = makeInput({
+      otpChallenge: {
+        challengeId: "4be4cb19-a04a-4e93-8e9a-287108ae68e2",
+        epc: "urn:epc:id:sgtin:0614141.107346.2017",
+        recipientChannelFingerprint: "sha256:other-recipient",
+        deliveryStatus: "delivered",
+        verificationReceiptId: "5c59c087-bf4c-48ae-a0d2-cb68e3de021d",
+        issuedAt: "2026-09-08T10:05:00+08:00",
+        expiresAt: "2026-09-08T10:15:00+08:00",
+        verifiedAt: "2026-09-08T10:12:00+08:00",
+        consumedByEventId: "6f8c0d3e-4a1b-4c2d-9e5f-2b7a1c3d4e5f",
+      },
+    });
+
+    const flag = flagOf(i15OtpProvenanceConflict(input));
+    expect(flag.id).toBe("I15");
+    expect(flag.points).toBe(40);
+    expect(flag.evidence).toContainEqual({
+      field: "otpChallenge.recipientChannelFingerprint",
+      value: "sha256:other-recipient",
+    });
+    expect(flag.evidence).toContainEqual({
+      field: "parcel.recipientChannelFingerprint",
+      value: "sha256:registered-recipient",
+    });
+  });
+
+  it("is clear when the server record binds the receipt to this parcel, channel and event", () => {
+    expect(i15OtpProvenanceConflict(makeInput()).status).toBe("clear");
+  });
+
+  it("triggers when an event claims a receipt the verifier never issued", () => {
+    const input = makeInput({
+      otpChallenge: {
+        ...makeInput().otpChallenge!,
+        verificationReceiptId: "6b5c739b-9512-47e2-91fb-a1aebd79c2f2",
+      },
+    });
+
+    expect(flagOf(i15OtpProvenanceConflict(input)).evidence).toContainEqual({
+      field: "sensor.pod.otp.verificationReceiptId",
+      value: "5c59c087-bf4c-48ae-a0d2-cb68e3de021d",
+    });
+  });
+
+  it("reports every verifier-side binding that contradicts the event", () => {
+    const input = makeInput({
+      otpChallenge: {
+        ...makeInput().otpChallenge!,
+        challengeId: "7ca532f0-d5de-4de5-a436-b9618877c127",
+        epc: "urn:epc:id:sgtin:0614141.107346.9999",
+        deliveryStatus: "failed",
+        verificationReceiptId: null,
+        verifiedAt: null,
+        consumedByEventId: "8f52447b-bdb7-483c-9312-62db3151f403",
+      },
+    });
+
+    const fields = flagOf(i15OtpProvenanceConflict(input)).evidence.map((entry) => entry.field);
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        "sensor.pod.otp.challengeId",
+        "otpChallenge.challengeId",
+        "parcel.epc",
+        "otpChallenge.epc",
+        "otpChallenge.deliveryStatus",
+        "otpChallenge.verifiedAt",
+        "otpChallenge.consumedByEventId",
+        "event.eventID",
+      ]),
+    );
+  });
+
+  it("rejects a verifier receipt completed after the challenge expired", () => {
+    const input = makeInput({
+      otpChallenge: {
+        ...makeInput().otpChallenge!,
+        expiresAt: "2026-09-08T10:10:00+08:00",
+        verifiedAt: "2026-09-08T10:12:00+08:00",
+      },
+    });
+
+    expect(flagOf(i15OtpProvenanceConflict(input)).evidence).toEqual(
+      expect.arrayContaining([
+        { field: "otpChallenge.verifiedAt", value: "2026-09-08T10:12:00+08:00" },
+        { field: "otpChallenge.expiresAt", value: "2026-09-08T10:10:00+08:00" },
+      ]),
+    );
+  });
+
+  it("does not evaluate without opaque OTP references on the event", () => {
+    const input = patchSensor({ pod: { otpVerified: true } });
+    expectSkipped(i15OtpProvenanceConflict(input), /did not carry OTP provenance/);
+  });
+
+  it("does not evaluate without a registered recipient channel", () => {
+    const input = makeInput({
+      parcel: { ...makeInput().parcel!, recipientChannelFingerprint: undefined },
+    });
+    expectSkipped(i15OtpProvenanceConflict(input), /no registered recipient channel/);
+  });
+
+  it("does not turn a missing verifier record into clean evidence", () => {
+    expectSkipped(i15OtpProvenanceConflict(makeInput({ otpChallenge: undefined })), /no OTP challenge record/);
+  });
+
+  it("does not evaluate an unknown delivery receipt as if the channel were confirmed", () => {
+    const input = makeInput({
+      otpChallenge: { ...makeInput().otpChallenge!, deliveryStatus: "unknown" },
+    });
+    expectSkipped(i15OtpProvenanceConflict(input), /delivery status is unknown/);
+  });
+
+  it("is gated away from non-delivery scans", () => {
+    const input = makeInput({
+      event: makeEvent({ bizStep: "urn:epcglobal:cbv:bizstep:storing" }),
+    });
+    expectSkipped(i15OtpProvenanceConflict(input), /not a delivery event/);
+  });
+});
+
+describe("I16 - attestation assurance vs enrolled handset requirement", () => {
+  it("triggers at 20 points when a passed attestation is weaker than enrollment", () => {
+    const input = patchSensor({
+      integrity: {
+        attestationSource: "mocked",
+        verdict: "passed",
+        rootDetected: false,
+        appTampered: false,
+        deviceRecognitionVerdicts: ["MEETS_BASIC_INTEGRITY"],
+      },
+    });
+
+    const flag = flagOf(i16AttestationBelowEnrollment(input));
+    expect(flag.id).toBe("I16");
+    expect(flag.points).toBe(20);
+    expect(flag.evidence).toContainEqual({
+      field: "deviceEnrollment.requiredRecognitionVerdict",
+      value: "MEETS_DEVICE_INTEGRITY",
+    });
+  });
+
+  it("is clear when the live attestation meets the enrolled requirement", () => {
+    expect(i16AttestationBelowEnrollment(makeInput()).status).toBe("clear");
+  });
+
+  it("does not evaluate when the provider supplied no recognition labels", () => {
+    const input = makeInput();
+    expectSkipped(
+      i16AttestationBelowEnrollment(
+        patchSensor({ integrity: { ...input.sensor!.integrity!, deviceRecognitionVerdicts: undefined } }),
+      ),
+      /no device recognition labels/,
+    );
+  });
+
+  it("leaves explicit failures to I8 instead of scoring the same signal twice", () => {
+    const input = makeInput();
+    expectSkipped(
+      i16AttestationBelowEnrollment(
+        patchSensor({ integrity: { ...input.sensor!.integrity!, verdict: "failed" } }),
+      ),
+      /I8 handles/,
+    );
+  });
+});
+
 describe("the rule registry", () => {
-  it("covers exactly the 14 numbered checks in the spec", () => {
+  it("covers exactly the 16 numbered checks in the spec", () => {
     const ids = INCONSISTENCY_RULES.flatMap((r) => r.ids);
     expect(ids).toEqual([
       "I1", "I2", "I3", "I4", "I5", "I6", "I7",
-      "I8", "I9", "I10", "I11", "I12", "I13", "I14",
+      "I8", "I9", "I10", "I11", "I12", "I13", "I14", "I15", "I16",
     ]);
-    expect(TOTAL_CHECKS).toBe(14);
+    expect(TOTAL_CHECKS).toBe(16);
   });
 
   it("never returns points a rule did not earn - every flag id is in the registry", () => {

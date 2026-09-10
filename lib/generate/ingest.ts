@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { createMigratedDb } from "@/lib/db/migrate";
 import {
   couriers,
+  deviceEnrollments,
   disputes,
   events,
   mandates,
+  otpChallenges,
   parcels,
   pickupPoints,
   referenceSites,
@@ -55,6 +57,15 @@ export function createHarness(world: GeneratedWorld): IngestHarness {
         boundDeviceId: courier.deviceId,
       })
       .run();
+    db.insert(deviceEnrollments)
+      .values({
+        deviceId: courier.deviceId,
+        courierId: courier.courierId,
+        requiredRecognitionVerdict: courier.requiredRecognitionVerdict,
+        status: "active",
+        enrolledAt: "2026-09-01T00:00:00+08:00",
+      })
+      .run();
     db.insert(mandates).values(mandateToRow(courier.mandate)).run();
   }
 
@@ -64,6 +75,7 @@ export function createHarness(world: GeneratedWorld): IngestHarness {
         epc: parcel.epc,
         waybillNo: parcel.waybillNo,
         recipientName: parcel.recipientName,
+        recipientPhone: parcel.recipientPhone,
         recipientAddress: parcel.recipientAddress,
         recipientLat: parcel.recipientPoint.latitude,
         recipientLng: parcel.recipientPoint.longitude,
@@ -128,6 +140,7 @@ export async function ingestEvent(
   args: { courierPrivateKey: string; mandateId: string; withCosign?: boolean },
 ): Promise<AgentContext> {
   const event = built.event;
+  seedIdentityReferences(harness, built);
   const subject = {
     v: 1 as const,
     eventID: event.eventID,
@@ -149,6 +162,36 @@ export async function ingestEvent(
   };
 
   return runAgent(event, stamped, { credential });
+}
+
+/** Seed the independent records referenced by one generated event. */
+function seedIdentityReferences(harness: IngestHarness, built: BuiltEvent): void {
+  const identity = built.identity;
+  if (!identity) return;
+
+  const enrollment = identity.deviceEnrollment;
+  harness.deps.db
+    .insert(deviceEnrollments)
+    .values({ ...enrollment, status: "active" })
+    .onConflictDoUpdate({
+      target: deviceEnrollments.deviceId,
+      set: {
+        courierId: enrollment.courierId,
+        requiredRecognitionVerdict: enrollment.requiredRecognitionVerdict,
+        status: "active",
+        enrolledAt: enrollment.enrolledAt,
+      },
+    })
+    .run();
+
+  if (identity.otpChallenge) {
+    const challenge = identity.otpChallenge;
+    harness.deps.db
+      .insert(otpChallenges)
+      .values(challenge)
+      .onConflictDoUpdate({ target: otpChallenges.challengeId, set: challenge })
+      .run();
+  }
 }
 
 /**
@@ -318,6 +361,7 @@ function upsertParcels(harness: IngestHarness, scenario: GeneratedScenario): voi
         epc: parcel.epc,
         waybillNo: parcel.waybillNo,
         recipientName: parcel.recipientName,
+        recipientPhone: parcel.recipientPhone,
         recipientAddress: parcel.recipientAddress,
         recipientLat: parcel.recipientPoint.latitude,
         recipientLng: parcel.recipientPoint.longitude,
@@ -327,6 +371,7 @@ function upsertParcels(harness: IngestHarness, scenario: GeneratedScenario): voi
       .onConflictDoUpdate({
         target: parcels.epc,
         set: {
+          recipientPhone: parcel.recipientPhone,
           recipientAddress: parcel.recipientAddress,
           recipientLat: parcel.recipientPoint.latitude,
           recipientLng: parcel.recipientPoint.longitude,

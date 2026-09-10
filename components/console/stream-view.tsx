@@ -306,7 +306,8 @@ function ResultPanel({ result }: { result: ResultState | null }) {
   // A halt is information, not an error: it says where the run stopped and why.
   const halted = Boolean(result.halted);
   const kind: VerdictKind = halted
-    ? result.halted!.reason === "PENDING_COSIGNATURE"
+    ? result.halted!.reason === "PENDING_COSIGNATURE" ||
+      result.halted!.reason === "PENDING_COURIER_SIGNATURE"
       ? "pending"
       : "halted"
     : ((result.decision ?? "halted") as VerdictKind);
@@ -327,7 +328,9 @@ function ResultPanel({ result }: { result: ResultState | null }) {
           <div className="mt-1 text-muted-foreground">
             {result.halted!.reason === "PENDING_COSIGNATURE"
               ? "Nothing was sealed. This handoff needs an operator co-signature and none was presented, so there is no valid credential to record."
-              : result.halted!.reason}
+              : result.halted!.reason === "PENDING_COURIER_SIGNATURE"
+                ? "Nothing was sealed. Every handoff needs the courier's signature, and none was presented."
+                : result.halted!.reason}
           </div>
         </div>
       )}

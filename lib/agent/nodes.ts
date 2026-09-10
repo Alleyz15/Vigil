@@ -228,7 +228,7 @@ export const plan: NodeFn = async (ctx, deps) => {
 };
 
 /**
- * 4. verify — axis 1: single-event inconsistency (H1-H4, I1-I14).
+ * 4. verify — axis 1: single-event inconsistency (H1-H4, I1-I16).
  *
  * The replay check runs FIRST and short-circuits, because a replayed event must
  * not be re-scored — its verdict was decided the first time, and replaying it is
@@ -447,12 +447,17 @@ export const gate: NodeFn = (ctx, deps) => {
   if (credentialCheck) {
     ctx.credential = credentialCheck.result;
 
-    if (credentialCheck.outcome === "pending") {
-      // NOTHING IS SEALED. The handoff is undecided, not refused: the operator
-      // has not co-signed yet. Writing a verdict here would record a decision
-      // nobody made, and would bind this eventID in the ledger so the co-signed
-      // resubmission of the very same event could never be sealed.
-      ctx.halted = { at: "gate", reason: "PENDING_COSIGNATURE" };
+    if (credentialCheck.outcome === "pending_courier" || credentialCheck.outcome === "pending_operator") {
+      // NOTHING IS SEALED. The handoff is undecided, not refused: a required
+      // signer has not signed yet. Writing a verdict here would record a
+      // decision nobody made and bind this eventID before it could be completed.
+      ctx.halted = {
+        at: "gate",
+        reason:
+          credentialCheck.outcome === "pending_operator"
+            ? "PENDING_COSIGNATURE"
+            : "PENDING_COURIER_SIGNATURE",
+      };
       ctx.decision = undefined;
       return;
     }
@@ -507,15 +512,11 @@ export const gate: NodeFn = (ctx, deps) => {
 /**
  * Check the presented credential against the threshold the gate just set.
  *
- * Returns undefined when there is nothing to check (no credential presented and
- * none required), so a deployment that has not started issuing credentials is
- * unaffected until it does.
- *
  * The two failure modes are deliberately different outcomes:
  *
- *   pending  the credential is valid as far as it goes, but the operator has
- *            not co-signed. Nothing is sealed. The handoff decided nothing, so
- *            it must write nothing.
+ *   pending  one of the signatures required by the threshold is absent.
+ *            Nothing is sealed. The handoff decided nothing, so it writes
+ *            nothing and may be resubmitted with the completed sidecar.
  *   invalid  a signature was forged, mismatched or unverifiable. Sealed as a
  *            freeze, because an attack is evidence and belongs in the ledger.
  */
@@ -523,17 +524,18 @@ function checkCredential(
   ctx: AgentContext,
   deps: NodeDeps,
   cosignRequired: boolean,
-): { outcome: "valid" | "pending" | "invalid"; result: VerificationResult } | undefined {
+): {
+  outcome: "valid" | "pending_courier" | "pending_operator" | "invalid";
+  result: VerificationResult;
+} | undefined {
   const event = ctx.event;
   if (!event) return undefined;
 
   const credential = deps.credential;
 
   if (!credential) {
-    // No credential presented. Only a problem when one was required.
-    if (!cosignRequired) return undefined;
     return {
-      outcome: "pending",
+      outcome: "pending_courier",
       result: {
         valid: false,
         cosignRequired,
@@ -542,9 +544,18 @@ function checkCredential(
         problems: [
           {
             code: "MISSING",
-            role: "operator",
-            detail: "this handoff requires an operator co-signature and no credential was presented",
+            role: "courier",
+            detail: "no credential was presented; every handoff requires a courier signature",
           },
+          ...(cosignRequired
+            ? [
+                {
+                  code: "MISSING" as const,
+                  role: "operator" as const,
+                  detail: "this handoff also requires an operator co-signature",
+                },
+              ]
+            : []),
         ],
       },
     };
@@ -574,7 +585,7 @@ function checkCredential(
     result.invalidSignatures.length === 0 &&
     result.problems.every((p) => p.code === "MISSING" && p.role === "operator");
 
-  return { outcome: onlyAwaitingOperator ? "pending" : "invalid", result };
+  return { outcome: onlyAwaitingOperator ? "pending_operator" : "invalid", result };
 }
 
 /**
