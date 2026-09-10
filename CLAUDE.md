@@ -292,6 +292,60 @@ touched, and confirm the failing test is the one aimed at that violation. A guar
 probe that wrote an identical value, deleted an empty table, or edited a file nothing reads has
 not been verified at all.
 
+### 1g. A test suite verifies the invariants someone thought to write
+
+**Found by opening the page, not because anything reported it.**
+
+Session 17B built the courier's shipment as a separately-seeded instance of an existing scenario,
+on the reasonable-sounding theory that a different world seed yields a different identity. It does
+not: `uuidFrom` derives an event id from the scenario name and leg alone — `"S1-delivery"` — and
+the seed never enters it. Two shipments therefore shared one event id, and because the workbench
+keys entries by event id, promoting the courier's submission **silently overwrote the operator's
+identically-identified case.**
+
+What that walked through untouched:
+
+- seven mechanically enforced architectural constraints
+- 608 passing tests
+- 100% statement, branch, function and line coverage on `engine`, `pattern` and `gate`
+- a clean `tsc --noEmit`, a clean eslint, a successful production build
+
+Nothing threw. The only symptom was one pending item in the inbox where there should have been
+two, and the only way to see it was to look.
+
+> **Coverage measures which lines ran. It does not measure which properties hold.** A suite
+> verifies the invariants somebody thought to write down, and *"two different worlds must produce
+> different event identities"* was not one of them — in this codebase or in the head of anyone who
+> reviewed the plan.
+
+**A design approval resting on an unverified assumption about existing code is a guess with a
+signature on it.** The premise here — that seeds separate identities — was never checked against
+`uuidFrom` by either the author or the reviewer. Cheap to check, and it was the whole basis of the
+decision. Before relying on a property of code you did not just write, go and read the code.
+
+#### Two categories of defect this project keeps finding, with different defences
+
+| # | Defect | Category |
+|---|---|---|
+| 1 | retired `gemini-2.0-flash` default (session 13) | code no test could reach |
+| 2 | Ollama base URL calling a route that does not exist (session 14) | code no test could reach |
+| 3 | `propose_reroute` success path, never exercised (session 17B) | code no test could reach |
+| 4 | `uuidFrom` ignoring the world seed (session 17B) | **invariant no test expressed** |
+
+The first three are **unexercised code**: something written once, unreachable by any real test,
+and therefore never questioned. They are found by **tracing before building** — reading the
+configuration, the schema semantics or the call graph against what the code claims (see rule 1d,
+and rule 4d's cheap check).
+
+The fourth is **exercised code with an unstated property**. Tracing does not find it, because
+every line involved runs constantly and does exactly what it says. It is found only by **using the
+thing** — and once found, the fix is to make the property hold *by construction* rather than to
+add an assertion hoping the next one is remembered. Uniqueness here comes from reserving a leg
+from a scenario already present, not from choosing a seed and trusting it.
+
+**So: a browser walk-through of a new surface is not decoration on top of a green suite. It is the
+only instrument that detects category 4.**
+
 ### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
 
 A model's response passes every gate or none of it is used. Do not implement
