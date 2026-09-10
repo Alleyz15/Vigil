@@ -343,3 +343,65 @@ export const rerouteProposals = sqliteTable(
     index("reroute_proposals_state_idx").on(t.approvalState, t.createdAt),
   ],
 );
+
+/**
+ * Mutable operator workflow around an immutable handoff verdict.
+ *
+ * `event_id` is deliberately not a foreign key: a handoff awaiting a required
+ * co-signature has not sealed and therefore has no row in `events` yet.
+ */
+export const handoffCases = sqliteTable(
+  "handoff_cases",
+  {
+    caseId: text("case_id").primaryKey(),
+    eventId: text("event_id").notNull(),
+    scenarioId: text("scenario_id").notNull(),
+    legIndex: integer("leg_index").notNull(),
+    state: text("state", {
+      enum: [
+        "flagged",
+        "awaiting_cosignature",
+        "timed_out",
+        "awaiting_evidence",
+        "awaiting_reroute_signatures",
+        "resolved_approved",
+        "resolved_rejected",
+        "resolved_escalated",
+      ],
+    }).notNull(),
+    priority: integer("priority").notNull(),
+    reason: text("reason").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    contextJson: text("context_json").notNull(),
+    traceJson: text("trace_json").notNull(),
+    runCount: integer("run_count").notNull().default(1),
+    createdAt: text("created_at").notNull(),
+    dueAt: text("due_at"),
+    updatedAt: text("updated_at").notNull(),
+    resolvedAt: text("resolved_at"),
+  },
+  (t) => [
+    uniqueIndex("handoff_cases_event_uidx").on(t.eventId),
+    index("handoff_cases_queue_idx").on(t.state, t.priority, t.createdAt),
+  ],
+);
+
+/** Append-only audit of human dispositions. It never contains a verdict. */
+export const operatorActions = sqliteTable(
+  "operator_actions",
+  {
+    actionId: text("action_id").primaryKey(),
+    caseId: text("case_id")
+      .notNull()
+      .references(() => handoffCases.caseId),
+    action: text("action", {
+      enum: ["approve", "reject", "request_evidence", "propose_reroute", "escalate"],
+    }).notNull(),
+    operatorId: text("operator_id").notNull(),
+    fromState: text("from_state").notNull(),
+    toState: text("to_state").notNull(),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("operator_actions_case_idx").on(t.caseId, t.createdAt)],
+);
