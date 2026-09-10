@@ -583,7 +583,7 @@ export function i16AttestationBelowEnrollment(input: EngineInput): RuleResult {
     "This handset passed a basic check, but its assurance is weaker than the device enrollment requires.",
     [
       // `integrity` came from `input.sensor`, so the sensor is already narrowed.
-      ev("sensor.deviceId", input.sensor.deviceId),
+      ev("sensor.deviceId", input.sensor!.deviceId),
       ev("sensor.integrity.deviceRecognitionVerdicts", labels),
       ev("deviceEnrollment.deviceId", enrollment.deviceId),
       ev("deviceEnrollment.requiredRecognitionVerdict", enrollment.requiredRecognitionVerdict),

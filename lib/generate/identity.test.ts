@@ -68,6 +68,11 @@ describe("experiment-only identity cases", () => {
       expect(JSON.stringify(a.scenario.timeline.map((event) => event.event))).toBe(
         JSON.stringify(b.scenario.timeline.map((event) => event.event)),
       );
+      if (caseId === "replacement_weak_handset") {
+        expect(a.scenario.timeline.at(-1)?.identity?.deviceEnrollment.courierId).not.toBe(
+          a.scenario.courier.courierId,
+        );
+      }
 
       const harness = createHarness(ctx.world);
       harnesses.push(harness);

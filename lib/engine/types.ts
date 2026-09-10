@@ -27,7 +27,7 @@ export type Evidence = {
 
 /** A scored contradiction, with the evidence that produced it. */
 export type Flag = {
-  /** "H1".."H3" for hard checks, "I1".."I14" for inconsistency scores. */
+  /** "H1".."H3" for hard checks, "I1".."I16" for inconsistency scores. */
   id: string;
   points: number;
   /** Plain language, for an operator. No jargon, no field names. */

@@ -35,6 +35,7 @@ export function buildIdentityCase(
       ? { otpRecipientChannel: alternateChannel(parcel.recipientPhone) }
       : {
           deviceId: `${courier.deviceId}-replacement`,
+          enrollmentCourierId: ctx.world.couriers[1].courierId,
           deviceRecognitionVerdicts: ["MEETS_BASIC_INTEGRITY" as const],
           requiredRecognitionVerdict: "MEETS_DEVICE_INTEGRITY" as const,
         };

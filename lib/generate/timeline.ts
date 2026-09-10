@@ -133,6 +133,8 @@ export type LegOverrides = {
   deviceRecognitionVerdicts?: DeviceRecognitionVerdict[];
   /** Enrollment policy for a replacement device observed on this leg. */
   requiredRecognitionVerdict?: DeviceRecognitionVerdict;
+  /** Courier on the independent enrollment row; defaults to the scanning courier. */
+  enrollmentCourierId?: string;
   /** Independent channel the OTP service delivered to; never placed in EPCIS. */
   otpRecipientChannel?: string;
   batteryPercent?: number;
@@ -355,7 +357,7 @@ export function buildLegEvent(args: {
       otpChallenge: otp,
       deviceEnrollment: {
         deviceId,
-        courierId: courier.courierId,
+        courierId: overrides.enrollmentCourierId ?? courier.courierId,
         requiredRecognitionVerdict:
           overrides.requiredRecognitionVerdict ?? courier.requiredRecognitionVerdict,
         enrolledAt: "2026-09-01T00:00:00+08:00",
