@@ -481,6 +481,56 @@ describe("the two axes are never combined into one number", () => {
     }
   });
 
+  /**
+   * NO OPERATOR-FACING CODE MAY REWRITE OR DELETE A SEALED VERDICT ROW.
+   *
+   * The seventh architectural claim the suite verifies rather than a document
+   * asserts. `lib/workbench/actions.test.ts` covers today's five actions one by
+   * one; this covers the sixth that a future session adds without reading it.
+   *
+   * The distinction it protects is the one that produces no error when it
+   * breaks: **"appends a second run" and "rewrote the first" look the same to a
+   * suite that only counts rows.** An operator approving a handoff legitimately
+   * causes a second verdict row, because the byte-identical event is rerun with
+   * a completed credential. An operator editing the first one would be the
+   * claim that the engine always decides becoming false with no LLM involved at
+   * all — a human rewriting a deterministic verdict. Appending is the whole
+   * mechanism; updating in place is the failure.
+   *
+   * Inserting is therefore allowed and updating is not, which is why this bans
+   * the verb rather than the table.
+   */
+  it("never lets operator-facing code update or delete a verdict row", () => {
+    const ROOTS = [join(LIB, "workbench"), join(LIB, "..", "app", "api", "operator")];
+    const MUTATIONS = [/\.\s*update\s*\(\s*verdicts\b/, /\.\s*delete\s*\(\s*verdicts\b/];
+
+    const sources: { path: string; source: string }[] = [];
+    const walk = (dir: string) => {
+      if (!existsSync(dir)) return;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          sources.push({ path: full, source: readFileSync(full, "utf8") });
+        }
+      }
+    };
+    for (const root of ROOTS) walk(root);
+
+    expect(sources.length, "the operator trees moved; this guard is pointing at nothing").
+      toBeGreaterThan(0);
+
+    for (const { path, source } of sources) {
+      const clean = stripComments(source);
+      for (const pattern of MUTATIONS) {
+        expect(
+          pattern.test(clean),
+          `${path} updates or deletes a verdict row. An operator action is a post-gate operational disposition; it may APPEND a second verification run, never rewrite the sealed one. If a human can edit the verdict, "the engine always decides" is false. See CLAUDE.md rule 3f.`,
+        ).toBe(false);
+      }
+    }
+  });
+
   it("catches a violation when one is introduced", () => {
     // Guards the guard: a stripComments bug that ate everything would make the
     // checks above pass vacuously.

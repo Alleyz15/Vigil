@@ -337,6 +337,35 @@ must show this as a second verification run, not as a state toggle.
 handler may update a sealed verdict row, and approval must resubmit the unchanged event through
 `runAgent`.
 
+**Why `approve` needs a DIFFERENT assertion from the other four actions.** A future session
+reading only *"operator actions cannot mutate verdicts"* will write one uniform check and think it
+is done. It is not, and the reason is the thing worth carrying:
+
+> **"Appends a second run" and "rewrote the first" are indistinguishable to a suite that only
+> counts rows.**
+
+That is the class of hole that never produces an error. Four of the five actions seal nothing, so
+for them the assertion is simply that every verdict row is byte-identical afterwards. `approve` is
+the only one that legitimately **writes** — it reruns the byte-identical event with a completed
+sidecar, which seals a second ledger entry and projects a second verdict row. So its assertion is
+necessarily different and stronger: every **pre-existing** row survives byte-identical, and the
+only permitted delta is an **added** row carrying the same event hash.
+
+Session 17A had exactly one such test and it covered `reject`. Four of five enum members were
+unguarded, and the one that writes was the one nobody was watching. Session 17B replaced it with
+two layers:
+
+- `lib/workbench/actions.test.ts` — table-driven over every member of `OperatorActionName`, with
+  the split assertion above, plus a coverage check that fails if a sixth action is added and left
+  uncovered. `propose_reroute` currently has no reachable success path in the seeded workbench, so
+  it is asserted on its **refusal**: a guard that throws must throw before it writes anything, or
+  a refusal leaves a half-applied action behind.
+- `lib/purity.test.ts` — **the seventh architectural constraint verified by running the suite.**
+  No source under `lib/workbench/` or `app/api/operator/` may call `.update(verdicts)` or
+  `.delete(verdicts)`. It bans the **verb**, not the table, because inserting is the mechanism and
+  updating in place is the failure. Both layers were confirmed non-vacuous by injecting a real
+  mutation and reading the failure message, as with the never-summed and no-I/O guards.
+
 ### 4. Missing evidence is not clean evidence
 
 Every rule returns **three** states, never a boolean:
