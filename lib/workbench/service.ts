@@ -278,6 +278,26 @@ export class OperatorWorkbench {
       actions: [...entry.actions],
       timeline,
       map: buildShipmentMapModel(entry.scenario, entry.world),
+      plan: {
+        selectedTools: entry.current.plan?.tools ?? [],
+        source: entry.current.plan
+          ? entry.current.planFromHeuristic
+            ? "heuristic"
+            : "model"
+          : "unavailable",
+        rejection: entry.current.planRejection ?? null,
+      },
+      externalContext: entry.current.externalContext ?? null,
+      reroute: entry.current.reroute ?? null,
+      explanation: {
+        text: entry.current.explanation ?? null,
+        source: entry.current.explanation
+          ? entry.current.explanationFromFallback
+            ? "fallback"
+            : "model"
+          : "unavailable",
+        rejection: entry.current.explanationRejection ?? null,
+      },
     };
   }
 

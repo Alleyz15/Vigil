@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, FlaskConical, Inbox, Route, ShieldCheck } from "lucide-react";
+import { ClipboardList, Inbox, Route, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DemoDataControl } from "./demo-data-control";
 
@@ -13,7 +13,6 @@ const PRIMARY = [
 
 const EVIDENCE = [
   { href: "/demo/gate", label: "Gate evidence", icon: Route },
-  { href: "/stream", label: "Live agent trace", icon: FlaskConical },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

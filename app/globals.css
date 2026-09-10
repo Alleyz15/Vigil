@@ -173,3 +173,18 @@
 .leaflet-container {
   font-family: var(--font-inter), sans-serif;
 }
+
+@keyframes map-evidence-focus {
+  0%, 100% { stroke-opacity: 1; }
+  50% { stroke-opacity: 0.35; }
+}
+
+.map-evidence-selected {
+  animation: map-evidence-focus 700ms ease-out 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-evidence-selected {
+    animation: none;
+  }
+}

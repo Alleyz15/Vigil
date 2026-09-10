@@ -78,6 +78,18 @@ export type HandoffDetail = {
   actions: ActionView[];
   timeline: HandoffSummary[];
   map: ShipmentMapModel;
+  plan: {
+    selectedTools: string[];
+    source: "model" | "heuristic" | "unavailable";
+    rejection: string | null;
+  };
+  externalContext: AgentContext["externalContext"] | null;
+  reroute: AgentContext["reroute"] | null;
+  explanation: {
+    text: string | null;
+    source: "model" | "fallback" | "unavailable";
+    rejection: string | null;
+  };
 };
 
 export type WorkbenchEntry = {
