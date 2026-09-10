@@ -265,6 +265,33 @@ exercise the real fallback values without needing a live key. Live tests remain 
 model retirement and service availability, but skipping them must not also skip construction,
 URL and timeout coverage.
 
+### 1f. An injection that changes nothing proves nothing
+
+Every architectural guard in this project is verified by **injecting a real violation and reading
+the failure**. Session 17B found the flaw in that method itself, and it is worth stating separately
+from any one guard.
+
+The new operator-action test was checked by making `approve` write to the verdict rows:
+
+```ts
+db.update(verdicts).set({ decision: "accept" }).run();   // test still passed
+db.update(verdicts).set({ decision: "freeze" }).run();   // test failed, naming the row
+```
+
+**The first injection was a false pass.** Every row in that harness was already `accept`, so the
+"mutation" wrote the value that was there and changed nothing. The test was correct the whole
+time; the *probe* was inert. And a test that passes under an inert injection is indistinguishable
+from a test that passes under a real one — the transcript looks identical.
+
+**So the discipline is not "check that it fails".** It is:
+
+> **Check that it fails FOR THE REASON YOU EXPECT, naming the thing you broke.**
+
+Read the assertion message, confirm it names the specific row, file or value the injection
+touched, and confirm the failing test is the one aimed at that violation. A guard "verified" by a
+probe that wrote an identical value, deleted an empty table, or edited a file nothing reads has
+not been verified at all.
+
 ### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
 
 A model's response passes every gate or none of it is used. Do not implement

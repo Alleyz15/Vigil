@@ -1,6 +1,15 @@
 import { eq } from "drizzle-orm";
+import { runAgent } from "@/lib/agent/machine";
+import type { AgentContext } from "@/lib/agent/context";
+import { courierCredential } from "@/lib/credential";
 import { closeDb, type VigilDb } from "@/lib/db/client";
-import { handoffCases, operatorActions, parcels } from "@/lib/db/schema";
+import {
+  deviceEnrollments,
+  handoffCases,
+  operatorActions,
+  otpChallenges,
+  parcels,
+} from "@/lib/db/schema";
 import {
   SCENARIO_IDS,
   buildScenario,
@@ -11,6 +20,7 @@ import {
   makeRng,
   recordDispute,
   seedFleetBackground,
+  type BuiltEvent,
   type GeneratedScenario,
   type IngestHarness,
   type ScenarioId,
@@ -21,6 +31,7 @@ import { rmSync } from "node:fs";
 import { OperatorActionRequest, type CaseState, type OperatorActionRequest as ActionRequest } from "./types";
 import { isQueueState, transitionCase } from "./state";
 import { buildShipmentMapModel } from "./map-model";
+import { courierOutcome, type CourierOutcome } from "./courier";
 import {
   flagsFrom,
   runView,
@@ -28,10 +39,22 @@ import {
   type ActionView,
   type HandoffDetail,
   type HandoffSummary,
+  type RunView,
   type WorkbenchEntry,
 } from "./read-model";
 
 const SEED = "vigil-2026";
+/**
+ * A separate seed for the courier's own shipments.
+ *
+ * The drafts are ADDITIONAL seeded shipments, not legs removed from the
+ * operator's existing ones. Reserving a leg out of S1 would have emptied the
+ * inbox of the very case 17A's tests are written against, coupling four
+ * unrelated tests to this feature. Adding is cheaper than rearranging, and a
+ * distinct seed keeps the generated event ids from colliding with the
+ * operator-side instances of the same scenarios.
+ */
+const COURIER_SEED = "vigil-2026-courier";
 const START_MS = Date.parse("2026-09-07T14:30:00+08:00");
 const OPERATOR_ID = "OP-01";
 
@@ -206,19 +229,244 @@ async function buildScenarioEntries(id: ScenarioId): Promise<StoredEntry[]> {
   return entries;
 }
 
+/**
+ * A handoff the courier has NOT submitted yet.
+ *
+ * The courier surface needs something genuinely unsubmitted, or "submit" is a
+ * button that re-displays an existing record. Each draft is the final leg of
+ * its own seeded shipment: every earlier leg is ingested at construction so the
+ * custody chain is intact, and the last one is held back.
+ *
+ * It is the LAST leg specifically. Holding back a middle scan would break H1
+ * for every leg after it, and the courier screen would be demonstrating a
+ * custody-chain failure it did not intend to create.
+ */
+export type CourierDraft = {
+  draftId: string;
+  scenarioId: ScenarioId;
+  title: string;
+  epc: string;
+  waybillNo: string;
+  recipientAddress: string;
+  leg: string;
+  eventTime: string;
+  eventId: string;
+  /** What the courier has tried so far, oldest first. */
+  attempts: { run: RunView; outcome: CourierOutcome }[];
+};
+
+type StoredDraft = CourierDraft & {
+  built: BuiltEvent;
+  scenario: GeneratedScenario;
+  harness: IngestHarness;
+  world: WorkbenchEntry["world"];
+};
+
+/**
+ * Seed the independent records this leg's evidence refers to.
+ *
+ * MIRRORS `seedIdentityReferences` in lib/generate/ingest.ts, which is not
+ * exported and which this session may not modify. Without it the held-back leg
+ * would resolve a different evidence set from every other leg — I15 would come
+ * back `not_evaluated` on the courier's submission and `clear` everywhere else
+ * — so the screen would be showing an artefact of how the draft was built
+ * rather than a property of the handoff. Duplicated deliberately and narrowly;
+ * fold it back into one exported helper when lib/generate is in scope.
+ */
+function seedDraftIdentity(harness: IngestHarness, built: BuiltEvent): void {
+  const identity = built.identity;
+  if (!identity) return;
+
+  const enrollment = identity.deviceEnrollment;
+  harness.deps.db
+    .insert(deviceEnrollments)
+    .values({ ...enrollment, status: "active" })
+    .onConflictDoNothing()
+    .run();
+
+  if (identity.otpChallenge) {
+    harness.deps.db.insert(otpChallenges).values(identity.otpChallenge).onConflictDoNothing().run();
+  }
+}
+
+/** Build one shipment and hold back its final leg for the courier to submit. */
+async function buildCourierDraft(id: ScenarioId, title: string): Promise<StoredDraft> {
+  const world = buildWorld(COURIER_SEED);
+  const scenario = buildScenario(id, { world, rng: makeRng(COURIER_SEED), startMs: START_MS });
+  const harness = createHarness(world);
+  harness.deps.weather = createOpenMeteoProvider({
+    cacheDir: OPEN_METEO_CACHE_DIR,
+    network: "cache-only",
+  });
+  seedFleetBackground(harness, world, {
+    excludeCourierId: scenario.courier.courierId,
+    startMs: START_MS - 8 * 3_600_000,
+  });
+  upsertScenarioParcels(harness, scenario);
+
+  const credentialArgs = {
+    courierPrivateKey: scenario.courier.keys.privateKey,
+    mandateId: scenario.courier.mandate.mandateId,
+  };
+  for (const built of scenario.warmup) await ingestWithApproval(harness, built, credentialArgs);
+
+  const legs = scenario.timeline;
+  const held = legs[legs.length - 1];
+  for (const built of legs.slice(0, -1)) {
+    await ingestWithApproval(harness, built, credentialArgs);
+  }
+  seedDraftIdentity(harness, held);
+
+  const epc = epcsOf(held.event)[0] ?? "";
+  const parcel = scenario.parcels.find((candidate) => candidate.epc === epc);
+
+  return {
+    draftId: `DRAFT-${id}-${held.legIndex}`,
+    scenarioId: id,
+    title,
+    epc,
+    waybillNo: parcel?.waybillNo ?? "unknown",
+    recipientAddress: parcel?.recipientAddress ?? "unknown",
+    leg: held.leg,
+    eventTime: held.event.eventTime,
+    eventId: held.event.eventID,
+    attempts: [],
+    built: held,
+    scenario,
+    harness,
+    world,
+  };
+}
+
 export class OperatorWorkbench {
   private readonly entries = new Map<string, StoredEntry>();
+  private readonly drafts = new Map<string, StoredDraft>();
   private readonly harnesses = new Set<IngestHarness>();
   private actionSequence = 0;
   private readonly nowIso: string;
 
-  constructor(entries: StoredEntry[]) {
+  constructor(entries: StoredEntry[], drafts: StoredDraft[] = []) {
     for (const entry of entries) {
       this.entries.set(entry.built.event.eventID, entry);
       this.harnesses.add(entry.harness);
     }
+    for (const draft of drafts) {
+      this.drafts.set(draft.draftId, draft);
+      this.harnesses.add(draft.harness);
+    }
     const latest = Math.max(...entries.map((entry) => Date.parse(entry.createdAt)));
     this.nowIso = new Date(latest + 12 * 60_000).toISOString();
+  }
+
+  /** Handoffs the courier has not submitted, plus whatever they have tried. */
+  listCourierDrafts(): CourierDraft[] {
+    return [...this.drafts.values()]
+      .map(({ built: _built, scenario: _scenario, harness: _harness, world: _world, ...view }) => view)
+      .sort((a, b) => a.draftId.localeCompare(b.draftId));
+  }
+
+  /**
+   * Submit a draft as the courier would.
+   *
+   * `signed` false presents NO credential at all, which is session 16's
+   * constitutive case: an absent courier signature decides nothing and writes
+   * nothing. `signed` true presents a courier-only credential, which is
+   * cryptographically valid and — on a handoff the gate says needs a
+   * co-signature — still not enough to seal.
+   *
+   * Both paths run the SAME event through the SAME agent. Nothing about the
+   * EPCIS payload changes between attempts, which is what makes the eventual
+   * co-signed run a resubmission rather than a different handoff.
+   */
+  async submitAsCourier(
+    draftId: string,
+    options: { signed: boolean },
+  ): Promise<{ draft: CourierDraft; run: RunView; outcome: CourierOutcome }> {
+    const draft = this.drafts.get(draftId);
+    if (!draft) throw new Error(`unknown draft ${draftId}`);
+
+    const event = draft.built.event;
+    const ctx = options.signed
+      ? await ingestEvent(draft.harness, draft.built, {
+          courierPrivateKey: draft.scenario.courier.keys.privateKey,
+          mandateId: draft.scenario.courier.mandate.mandateId,
+        })
+      : await runAgent(event, {
+          ...draft.harness.deps,
+          now: () => new Date(Date.parse(event.recordTime ?? event.eventTime)),
+          credential: undefined,
+        });
+
+    const run = runView(ctx, draft.attempts.length + 1, draft.built.event);
+    const outcome = courierOutcome(run);
+    draft.attempts.push({ run, outcome });
+
+    this.promote(draft, ctx);
+    return { draft: this.listCourierDrafts().find((d) => d.draftId === draftId)!, run, outcome };
+  }
+
+  /**
+   * Give the operator the handoff once the courier has actually submitted it.
+   *
+   * A submission that wrote nothing still belongs in the queue when it is
+   * waiting on a co-signature — that is the whole two-phase flow, and rule 3d
+   * is explicit that PENDING means undecided rather than refused. An unsigned
+   * attempt does NOT enter the queue: nobody is waiting on an operator, the
+   * courier simply has not signed yet.
+   */
+  private promote(draft: StoredDraft, ctx: AgentContext): void {
+    const eventId = draft.built.event.eventID;
+    const existing = this.entries.get(eventId);
+    if (existing) {
+      existing.current = ctx;
+      existing.runs.push(ctx);
+      return;
+    }
+
+    const pendingCosign = ctx.halted?.reason === "PENDING_COSIGNATURE";
+    const actionable = pendingCosign || (ctx.decision !== undefined && ctx.decision !== "accept");
+    if (ctx.halted && !pendingCosign) return; // unsigned: nothing decided, nothing queued
+
+    const state: CaseState | null = pendingCosign ? "awaiting_cosignature" : actionable ? "flagged" : null;
+    const caseId = state ? `CASE-COURIER-${draft.scenarioId}-${draft.built.legIndex}` : null;
+    const createdAt = draft.built.event.recordTime ?? draft.built.event.eventTime;
+
+    const entry: StoredEntry = {
+      scenario: draft.scenario,
+      world: draft.world,
+      built: draft.built,
+      current: ctx,
+      runs: [ctx],
+      state,
+      caseId,
+      priority: priorityFor(state, ctx.decision),
+      reason: reasonFor(ctx),
+      createdAt,
+      harness: draft.harness,
+      actions: [],
+    };
+    this.entries.set(eventId, entry);
+
+    if (state && caseId) {
+      draft.harness.deps.db
+        .insert(handoffCases)
+        .values({
+          caseId,
+          eventId,
+          scenarioId: draft.scenarioId,
+          legIndex: draft.built.legIndex,
+          state,
+          priority: entry.priority,
+          reason: entry.reason,
+          payloadJson: JSON.stringify(draft.built.event),
+          contextJson: JSON.stringify(ctx),
+          traceJson: JSON.stringify(ctx.trace),
+          createdAt,
+          updatedAt: createdAt,
+        })
+        .onConflictDoNothing()
+        .run();
+    }
   }
 
   listQueue(): HandoffSummary[] {
@@ -364,6 +612,13 @@ export class OperatorWorkbench {
     return this.getHandoff(eventId)!;
   }
 
+  /** Narrow test seam for proving a courier submission wrote nothing. */
+  debugDraftHandle(draftId: string): { db: VigilDb } {
+    const draft = this.drafts.get(draftId);
+    if (!draft) throw new Error(`unknown draft ${draftId}`);
+    return { db: draft.harness.deps.db };
+  }
+
   /** Narrow test seam for proving actions cannot rewrite verdict rows. */
   debugHandle(eventId: string): { db: VigilDb } {
     const entry = this.entries.get(eventId);
@@ -379,11 +634,33 @@ export class OperatorWorkbench {
   }
 }
 
-export async function createWorkbench(options: { scenarioIds?: ScenarioId[] } = {}): Promise<OperatorWorkbench> {
+/**
+ * The two drafts the courier surface needs.
+ *
+ * S1 is a handoff the gate says needs a co-signature, so a courier-only
+ * credential is valid and insufficient. S0 is ordinary work, so it seals on the
+ * courier's signature alone — which is what makes the unsigned attempt against
+ * it the honest demonstration that an absent signature halts rather than
+ * refuses, with no risk-level confound.
+ */
+const COURIER_DRAFTS: { id: ScenarioId; title: string }[] = [
+  { id: "S1", title: "Delivery scan — needs an operator co-signature" },
+  { id: "S0", title: "Delivery scan — ordinary work" },
+];
+
+export async function createWorkbench(
+  options: { scenarioIds?: ScenarioId[]; courierDrafts?: boolean } = {},
+): Promise<OperatorWorkbench> {
   const ids = options.scenarioIds ?? SCENARIO_IDS;
   const groups: StoredEntry[][] = [];
   for (const id of ids) groups.push(await buildScenarioEntries(id));
-  return new OperatorWorkbench(groups.flat());
+
+  const drafts: StoredDraft[] = [];
+  if (options.courierDrafts !== false) {
+    for (const draft of COURIER_DRAFTS) drafts.push(await buildCourierDraft(draft.id, draft.title));
+  }
+
+  return new OperatorWorkbench(groups.flat(), drafts);
 }
 
 declare global {

@@ -48,6 +48,17 @@ export type RunView = {
   decision: string | null;
   halted: { at: string; reason: string } | null;
   sealed: boolean;
+  /**
+   * Which of the ledger's three paths this run took.
+   *
+   * `sealed` collapses `recorded` and `noop` into one boolean, which is right
+   * for the operator's "is there an entry?" question and WRONG for the
+   * courier's. A resubmission that no-ops and one that aborts as a reused id
+   * are the honest double-tap and the forgery attempt respectively, and the
+   * whole point of hashing the canonicalised payload is that we can tell them
+   * apart. See CLAUDE.md rule 5.
+   */
+  ledgerStatus: "recorded" | "noop" | "aborted" | null;
   credential: {
     valid: boolean;
     courierValid: boolean;
@@ -143,6 +154,7 @@ export function runView(ctx: AgentContext, run: number, fallbackEvent: BuiltEven
     decision: ctx.decision ?? null,
     halted: ctx.halted ? { ...ctx.halted } : null,
     sealed: ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop",
+    ledgerStatus: ctx.ledger?.status ?? null,
     credential: credential
       ? {
           valid: credential.valid,
