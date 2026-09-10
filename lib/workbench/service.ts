@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { runAgent } from "@/lib/agent/machine";
 import type { AgentContext } from "@/lib/agent/context";
-import { courierCredential } from "@/lib/credential";
 import { closeDb, type VigilDb } from "@/lib/db/client";
 import {
   deviceEnrollments,
@@ -44,17 +43,20 @@ import {
 } from "./read-model";
 
 const SEED = "vigil-2026";
+
 /**
- * A separate seed for the courier's own shipments.
+ * The scenarios whose final leg is reserved for the courier to submit.
  *
- * The drafts are ADDITIONAL seeded shipments, not legs removed from the
- * operator's existing ones. Reserving a leg out of S1 would have emptied the
- * inbox of the very case 17A's tests are written against, coupling four
- * unrelated tests to this feature. Adding is cheaper than rearranging, and a
- * distinct seed keeps the generated event ids from colliding with the
- * operator-side instances of the same scenarios.
+ * S1 is a handoff the gate says needs a co-signature, so a courier-only
+ * credential is valid and insufficient. S0 is ordinary work, so it seals on the
+ * courier's signature alone — which is what makes the unsigned attempt against
+ * it the honest demonstration that an absent signature halts rather than
+ * refuses, with no risk-level confound.
  */
-const COURIER_SEED = "vigil-2026-courier";
+const DRAFT_TITLES: Partial<Record<ScenarioId, string>> = {
+  S1: "Delivery scan — needs an operator co-signature",
+  S0: "Delivery scan — ordinary work",
+};
 const START_MS = Date.parse("2026-09-07T14:30:00+08:00");
 const OPERATOR_ID = "OP-01";
 
@@ -114,7 +116,24 @@ function upsertScenarioParcels(harness: IngestHarness, scenario: GeneratedScenar
   }
 }
 
-async function buildScenarioEntries(id: ScenarioId): Promise<StoredEntry[]> {
+/**
+ * Build one scenario, optionally reserving its final leg for the courier.
+ *
+ * RESERVED, NOT DUPLICATED — and the first attempt got this wrong in a way only
+ * a browser walk-through exposed. Building the courier's shipment as a SEPARATE
+ * seeded instance looked safer (it added rather than rearranged) but produced
+ * two shipments sharing one event id: `uuidFrom` derives the id from the
+ * scenario name and leg alone, so the world seed does not enter it. The
+ * workbench keys entries by event id, so promoting the courier's submission
+ * silently overwrote the operator's identically-identified case. Nothing threw.
+ *
+ * One shipment, one identity, one harness. It is the FINAL leg specifically:
+ * holding back a middle scan would break H1 for every leg after it.
+ */
+async function buildScenarioEntries(
+  id: ScenarioId,
+  options: { holdBackFinalLeg?: boolean } = {},
+): Promise<{ entries: StoredEntry[]; draft?: StoredDraft }> {
   const world = buildWorld(SEED);
   const scenario = buildScenario(id, { world, rng: makeRng(SEED), startMs: START_MS });
   const harness = createHarness(world);
@@ -134,8 +153,11 @@ async function buildScenarioEntries(id: ScenarioId): Promise<StoredEntry[]> {
   };
   for (const built of scenario.warmup) await ingestWithApproval(harness, built, credentialArgs);
 
+  const timeline = options.holdBackFinalLeg ? scenario.timeline.slice(0, -1) : scenario.timeline;
+  const held = options.holdBackFinalLeg ? scenario.timeline[scenario.timeline.length - 1] : undefined;
+
   const entries: StoredEntry[] = [];
-  for (const built of scenario.timeline) {
+  for (const built of timeline) {
     const leavePending =
       (id === "S1" || id === "S5") && built.leg === scenario.expectation.exceptionAtLeg;
     const result = leavePending
@@ -226,7 +248,8 @@ async function buildScenarioEntries(id: ScenarioId): Promise<StoredEntry[]> {
     }
   }
 
-  return entries;
+  const draft = held ? makeDraft(id, scenario, world, harness, held) : undefined;
+  return { entries, draft };
 }
 
 /**
@@ -289,41 +312,22 @@ function seedDraftIdentity(harness: IngestHarness, built: BuiltEvent): void {
   }
 }
 
-/** Build one shipment and hold back its final leg for the courier to submit. */
-async function buildCourierDraft(id: ScenarioId, title: string): Promise<StoredDraft> {
-  const world = buildWorld(COURIER_SEED);
-  const scenario = buildScenario(id, { world, rng: makeRng(COURIER_SEED), startMs: START_MS });
-  const harness = createHarness(world);
-  harness.deps.weather = createOpenMeteoProvider({
-    cacheDir: OPEN_METEO_CACHE_DIR,
-    network: "cache-only",
-  });
-  seedFleetBackground(harness, world, {
-    excludeCourierId: scenario.courier.courierId,
-    startMs: START_MS - 8 * 3_600_000,
-  });
-  upsertScenarioParcels(harness, scenario);
-
-  const credentialArgs = {
-    courierPrivateKey: scenario.courier.keys.privateKey,
-    mandateId: scenario.courier.mandate.mandateId,
-  };
-  for (const built of scenario.warmup) await ingestWithApproval(harness, built, credentialArgs);
-
-  const legs = scenario.timeline;
-  const held = legs[legs.length - 1];
-  for (const built of legs.slice(0, -1)) {
-    await ingestWithApproval(harness, built, credentialArgs);
-  }
+/** Project a held-back leg into the courier's view of it. */
+function makeDraft(
+  id: ScenarioId,
+  scenario: GeneratedScenario,
+  world: WorkbenchEntry["world"],
+  harness: IngestHarness,
+  held: BuiltEvent,
+): StoredDraft {
   seedDraftIdentity(harness, held);
-
   const epc = epcsOf(held.event)[0] ?? "";
   const parcel = scenario.parcels.find((candidate) => candidate.epc === epc);
 
   return {
     draftId: `DRAFT-${id}-${held.legIndex}`,
     scenarioId: id,
-    title,
+    title: DRAFT_TITLES[id] ?? "Delivery scan",
     epc,
     waybillNo: parcel?.waybillNo ?? "unknown",
     recipientAddress: parcel?.recipientAddress ?? "unknown",
@@ -360,8 +364,22 @@ export class OperatorWorkbench {
 
   /** Handoffs the courier has not submitted, plus whatever they have tried. */
   listCourierDrafts(): CourierDraft[] {
+    // Named explicitly rather than rest-destructured: the harness, world and
+    // built event must never reach a client component, and a spread would carry
+    // any field a future edit adds to StoredDraft straight out of the server.
     return [...this.drafts.values()]
-      .map(({ built: _built, scenario: _scenario, harness: _harness, world: _world, ...view }) => view)
+      .map((draft) => ({
+        draftId: draft.draftId,
+        scenarioId: draft.scenarioId,
+        title: draft.title,
+        epc: draft.epc,
+        waybillNo: draft.waybillNo,
+        recipientAddress: draft.recipientAddress,
+        leg: draft.leg,
+        eventTime: draft.eventTime,
+        eventId: draft.eventId,
+        attempts: draft.attempts,
+      }))
       .sort((a, b) => a.draftId.localeCompare(b.draftId));
   }
 
@@ -410,9 +428,14 @@ export class OperatorWorkbench {
    *
    * A submission that wrote nothing still belongs in the queue when it is
    * waiting on a co-signature — that is the whole two-phase flow, and rule 3d
-   * is explicit that PENDING means undecided rather than refused. An unsigned
-   * attempt does NOT enter the queue: nobody is waiting on an operator, the
-   * courier simply has not signed yet.
+   * is explicit that PENDING means undecided rather than refused.
+   *
+   * AN UNSIGNED ATTEMPT MUST NOT ENTER THE QUEUE. Nobody is waiting on an
+   * operator: the courier simply has not signed yet, and no operator action can
+   * complete a credential whose first signature is absent. Queueing it would
+   * hand an operator work they cannot action, which is a worse failure than
+   * showing nothing — a queue that contains unactionable items stops being a
+   * queue. The courier's own screen is where that submission belongs.
    */
   private promote(draft: StoredDraft, ctx: AgentContext): void {
     const eventId = draft.built.event.eventID;
@@ -634,30 +657,29 @@ export class OperatorWorkbench {
   }
 }
 
-/**
- * The two drafts the courier surface needs.
- *
- * S1 is a handoff the gate says needs a co-signature, so a courier-only
- * credential is valid and insufficient. S0 is ordinary work, so it seals on the
- * courier's signature alone — which is what makes the unsigned attempt against
- * it the honest demonstration that an absent signature halts rather than
- * refuses, with no risk-level confound.
- */
-const COURIER_DRAFTS: { id: ScenarioId; title: string }[] = [
-  { id: "S1", title: "Delivery scan — needs an operator co-signature" },
-  { id: "S0", title: "Delivery scan — ordinary work" },
-];
-
 export async function createWorkbench(
   options: { scenarioIds?: ScenarioId[]; courierDrafts?: boolean } = {},
 ): Promise<OperatorWorkbench> {
   const ids = options.scenarioIds ?? SCENARIO_IDS;
-  const groups: StoredEntry[][] = [];
-  for (const id of ids) groups.push(await buildScenarioEntries(id));
+  /**
+   * Drafts are on for the app and off for a test that pins its scenarios.
+   *
+   * Reserving S1's delivery leg means the operator's queue does NOT contain a
+   * pending co-signature until a courier submits one — which is the real flow,
+   * and exactly what four 17A tests assert against at construction. Those tests
+   * pin `scenarioIds`, so they keep the pre-courier behaviour unchanged and
+   * this feature does not reach into them. A test that wants a draft asks.
+   */
+  const wantDrafts = options.courierDrafts ?? options.scenarioIds === undefined;
 
+  const groups: StoredEntry[][] = [];
   const drafts: StoredDraft[] = [];
-  if (options.courierDrafts !== false) {
-    for (const draft of COURIER_DRAFTS) drafts.push(await buildCourierDraft(draft.id, draft.title));
+  for (const id of ids) {
+    const built = await buildScenarioEntries(id, {
+      holdBackFinalLeg: wantDrafts && id in DRAFT_TITLES,
+    });
+    groups.push(built.entries);
+    if (built.draft) drafts.push(built.draft);
   }
 
   return new OperatorWorkbench(groups.flat(), drafts);

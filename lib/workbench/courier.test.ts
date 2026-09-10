@@ -18,7 +18,9 @@ describe("courier submission", () => {
   let workbench: OperatorWorkbench;
 
   beforeAll(async () => {
-    workbench = await createWorkbench({ scenarioIds: ["S4"] });
+    // Drafts are opt-in when scenarios are pinned; S0 and S1 arrive with their
+    // final leg reserved, which is the whole point of this file.
+    workbench = await createWorkbench({ scenarioIds: ["S0", "S1"], courierDrafts: true });
   }, 60_000);
 
   afterAll(() => workbench.close());
@@ -36,6 +38,29 @@ describe("courier submission", () => {
     // Nothing is in the operator's queue for these event ids yet.
     const queued = new Set(workbench.listQueue().map((item) => item.eventId));
     expect(drafts.some((d) => queued.has(d.eventId))).toBe(false);
+  });
+
+  /**
+   * THE BUG THIS FILE EXISTS TO STOP COMING BACK.
+   *
+   * The first implementation built the courier's shipment as a separate seeded
+   * instance, on the theory that adding is safer than rearranging. It produced
+   * TWO SHIPMENTS SHARING ONE EVENT ID: `uuidFrom` derives the id from the
+   * scenario name and leg alone, so a different world seed does not change it.
+   * The workbench keys entries by event id, so promoting the courier's
+   * submission overwrote the operator's identically-identified case. Nothing
+   * threw, every test passed, and it was visible only by opening the inbox.
+   *
+   * A draft is now a leg RESERVED from its own scenario, so the identity is
+   * unique by construction rather than by luck.
+   */
+  it("gives every draft an event id that belongs to no other handoff", () => {
+    const known = new Set(workbench.listHandoffs().items.map((item) => item.eventId));
+    for (const draft of workbench.listCourierDrafts()) {
+      expect(known.has(draft.eventId), `draft ${draft.draftId} collides with an existing handoff`).toBe(false);
+    }
+    const ids = workbench.listCourierDrafts().map((draft) => draft.eventId);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   /**

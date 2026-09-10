@@ -480,6 +480,33 @@ construction. **This was found by reading the engine and gate threshold modules 
 other**, a check worth repeating: any rule whose points equal a gate cut deserves the same
 scrutiny and an explicit claim that the rule is reliable enough to alert on its own.
 
+### 4f. A house rule: never collapse a three-state fact into two states
+
+This project has now refused the same reduction **four times, in four unrelated places**. It is
+one instinct, not four decisions, and a future session should recognise it as such rather than
+re-deriving it each time — or worse, "simplifying" one of them back.
+
+| Where | The two-state version | What it would destroy |
+|---|---|---|
+| `RuleResult` (rule 4) | `passed: boolean` | `clear` and `not_evaluated` become the same, so S6 (a tunnel) is arithmetically identical to S1 (spoofing) |
+| Gate explorer (rule 3e) | plot `not_evaluated` at the origin | an unmeasured axis becomes a measured zero |
+| Map overlays (rule 3e) | give every flag a location | evidence without coordinates becomes a spatial claim |
+| `RunView.ledgerStatus` | `sealed: boolean` | an honest double-tap and a forgery attempt become the same event |
+
+The last one is session 17B's. `sealed` collapses the ledger's `recorded` and `noop` into one
+value. That is exactly right for the operator's question — *is there an entry?* — and exactly
+wrong for the courier's, because **a courier tapping twice on a bad connection and someone
+reusing an event id with different content are the two things the idempotency design exists to
+tell apart** (rule 5). Hashing the canonicalised payload rather than the raw bytes is what buys
+that distinction; rendering both through one boolean throws the purchase away, silently, in the
+one place a real person would see the accusation. `RunView` therefore carries `ledgerStatus`
+alongside `sealed` rather than replacing it: the operator's boolean is still the right shape for
+the operator.
+
+**The test for whether this rule applies:** if the third state means *"we did not, or could not,
+observe this"* — or *"this is the benign member of a pair the system can distinguish"* — then a
+boolean is a lie of omission, and the cost of the extra state is one field.
+
 ### 4b. Every rule is a contradiction between signals, not a lone heuristic
 
 This is the shape every rule in the system takes, on both axes. A lone heuristic measures one
@@ -834,6 +861,22 @@ The operator workbench therefore owns a long-lived server-side SQLite/ledger har
 process. Routes read and mutate that one operational state; they do not regenerate a scenario per
 request. A future session must not "simplify" this back into per-request generation. Doing so
 silently converts real controls into a reset-on-refresh facade.
+
+**Two consequences worth knowing before debugging it.**
+
+**The singleton survives HMR.** `globalThis.__vigilOperatorWorkbench` holds a built instance, so
+editing `lib/workbench/` in `next dev` recompiles the module and keeps the OLD object. A new
+method appears as `workbench.X is not a function` until the dev server is restarted. That is dev
+ergonomics, not a product defect — but it will waste an hour if it is not written down.
+
+**Entries are keyed by event id, and generated event ids are not as unique as they look.**
+`uuidFrom` derives the id from the scenario name and leg alone (`"S1-delivery"`), so the world
+seed does not enter it: two shipments built from the same scenario under DIFFERENT seeds share an
+event id. Session 17B's first courier implementation built the draft as a separately-seeded
+instance and therefore silently overwrote the operator's identically-identified case on promote.
+**Nothing threw and every test passed; it was visible only by opening the inbox.** Anything that
+adds a shipment to this map must reserve it from a scenario already present rather than building a
+second instance of one — `lib/workbench/courier.test.ts` asserts no draft collides.
 
 ### The SSE route needs a plain Node server
 
@@ -1990,6 +2033,25 @@ tests the corrected direction rather than independently testing the edge. I5's 4
 upload-delay boundary is an explicit shift-anchored **assumption**; this dataset stops at 110
 minutes, so the rule fired zero times. Both need field telemetry before either threshold can be
 claimed as measured.
+
+**`seedDraftIdentity` is a deliberate second implementation, and it can drift.**
+`lib/workbench/service.ts` duplicates ~20 lines of `seedIdentityReferences` from
+`lib/generate/ingest.ts`, which is not exported and which session 17B was scoped out of touching.
+The courier's held-back draft leg needs its OTP challenge and device enrollment seeded, or I15
+resolves `not_evaluated` on the courier's submission and `clear` on every other leg — so the
+screen would be showing an artefact of how the draft was built rather than a property of the
+handoff.
+
+**The choice was duplication versus lying on screen, and duplication is the less severe failure.**
+That is not in tension with insisting `canonicalize` be *moved* rather than copied: there the
+alternatives were duplication versus a correctness guarantee (a key-reordered retry must hash
+identically, or a double-tap becomes a fraud alert), so duplication was the more severe failure.
+The house rule was never "never duplicate" — it is **pick the less severe failure, and say which
+one you picked.**
+
+**Fold-back condition:** the next session with `lib/generate` in scope exports
+`seedIdentityReferences` and deletes the workbench copy. Until then, a change to the generator's
+identity seeding must be mirrored by hand, and nothing enforces that.
 
 **Demo keys live in environment variables. This is a stated limitation, not an oversight.**
 The operator's signing key is the thing that makes approval constitutive, and a key in an env

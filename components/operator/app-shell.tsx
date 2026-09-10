@@ -16,8 +16,22 @@ const EVIDENCE = [
   { href: "/demo/gate", label: "Gate evidence", icon: Route },
 ];
 
+/**
+ * Surfaces that are NOT the operator workbench.
+ *
+ * A courier must not see the operator's queue and a recipient must not see
+ * either — they are different people with different authority, and putting the
+ * work queue behind every route would be the surveillance framing anti-
+ * reference 3 rules out. These render bare.
+ */
+const STANDALONE = ["/courier", "/confirm"];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+
+  if (STANDALONE.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return <div className="min-h-screen bg-background">{children}</div>;
+  }
 
   return (
     <div className="flex min-h-screen bg-background">
