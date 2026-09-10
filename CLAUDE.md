@@ -312,10 +312,30 @@ Two ways the console could lie without a word of it being false, both banned:
   **No real event in the dataset sits at (80,0) or (40,40)**: S1 scores 100 and the middle case
   does not occur. Do not "fix" the annotation layer by hunting for real points that match — there
   are none, and finding near-misses to stand in for them would be the invention this rule forbids.
+- **Inventing map geometry for evidence that has none.** Coordinate-bearing evidence may link to
+  a marker, circle or polygon. Evidence without measured coordinates stays unlinked. Guessing a
+  location so every flag can pulse on the map would turn an absent measurement into a spatial
+  claim, exactly like plotting `not_evaluated` at zero.
 
-Both are the same class of error as collapsing the three-state `RuleResult` into a boolean
+All three are the same class of error as collapsing the three-state `RuleResult` into a boolean
 (rule 4). The console displays what was measured, says what was not, and marks what is
 illustration.
+
+### 3f. The verdict is a fact; the operator chooses the disposition
+
+An operator may approve, reject, request evidence, escalate or propose a reroute. Those are
+**post-gate operational dispositions**. None of them may edit, replace or reinterpret a sealed
+deterministic verdict. If a human can rewrite the verdict, then the claim that the engine always
+decides is false even if no LLM is involved.
+
+Approval is not a special `approved` path and never flips a database flag. The operator completes
+the credential, then the **identical EPCIS event runs through the identical agent pipeline again**.
+The sidecar credential is simply complete on the second run, so the event can now seal. The UI
+must show this as a second verification run, not as a state toggle.
+
+`lib/purity.test.ts` and the operator-action tests must keep this mechanically true: no action
+handler may update a sealed verdict row, and approval must resubmit the unchanged event through
+`runAgent`.
 
 ### 4. Missing evidence is not clean evidence
 
@@ -676,6 +696,20 @@ data: <json>
 
 ## Console conventions
 
+### Three anti-references
+
+Use these as the ruler for every product-facing layout decision:
+
+1. **Vigil is not an analytics dashboard.** The operator is here to process work, not admire
+   charts. Queues, evidence, decisions and next actions lead; aggregate visualisation is a demo
+   tool outside the primary workflow.
+2. **Vigil is not a scenario browser.** Scenario selection is a demo affordance, not a product
+   feature. It belongs in a quiet corner and must say honestly that it loads a named, seeded
+   synthetic shipment.
+3. **Vigil is not a courier surveillance system.** Vigil cross-checks claims between courier,
+   recipient and operator. It does not rank workers, infer productivity or frame risk as employee
+   monitoring. That framing is technically wrong and a bad logistics-sponsor pitch.
+
 ### Layout: three routes, not tabs
 
 `/timeline`, `/stream`, `/gate` under one shell. Deep links (`/timeline?scenario=S2`) go
@@ -732,6 +766,18 @@ opens the real exception leg and its sealed evidence; it does not fabricate a di
 `lib/console/dataset.ts` runs the real agent server-side, once per process, and the routes read
 what it sealed. A browser that recomputed a score would be showing a second opinion nobody
 signed, and the two would drift the first time a threshold moved.
+
+### The operator workbench is stateful by design
+
+The session-8 console regenerated each scenario into a temporary SQLite database, read it, then
+destroyed it. That is correct for a read-only viewer and **fatally wrong for a work queue**: an
+operator action would disappear on the next request, a pending co-signature could not be resumed,
+and recipient responses could never become later pattern evidence.
+
+The operator workbench therefore owns a long-lived server-side SQLite/ledger harness for the demo
+process. Routes read and mutate that one operational state; they do not regenerate a scenario per
+request. A future session must not "simplify" this back into per-request generation. Doing so
+silently converts real controls into a reset-on-refresh facade.
 
 ### The SSE route needs a plain Node server
 
@@ -1850,6 +1896,13 @@ The operator's signing key is the thing that makes approval constitutive, and a 
 var can be read by anything that can read the process environment. Production needs an HSM or a
 managed KMS. `lib/credential/keys.ts` is the only file that touches the environment, so the
 swap is contained — but it has not been made.
+
+**Identity is simulated; the signatures are real.** The courier, recipient and operator entry
+routes use hardcoded demo identities rather than authentication. Recipient links are scoped
+capability tokens, not accounts. The Ed25519 courier and operator signatures are nevertheless
+real and verified by the same credential code used elsewhere. Production needs SSO, managed
+device enrolment, recipient-token revocation and durable key custody; the prototype supplies none
+of those identity-management controls.
 
 **The nonce is covered by the signature, but nothing enforces monotonicity.** We have
 cross-handoff replay protection via the `eventID` binding, and we do **NOT** have cross-time
