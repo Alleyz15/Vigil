@@ -1,4 +1,5 @@
 import { canonicalHash } from "@/lib/ledger";
+import type { TokenState } from "@/lib/recipient/token";
 import { epcsOf } from "@/lib/epcis";
 import type { AgentContext } from "@/lib/agent/context";
 import type { BuiltEvent, GeneratedScenario, GeneratedWorld } from "@/lib/generate";
@@ -85,6 +86,8 @@ export type HandoffDetail = {
   gate: { decision: string | null; matrixCell: string | null; rationale: string | null; cosignReasons: string[] };
   credential: RunView["credential"];
   ledger: { sequence: number | null; chainValid: boolean; entries: number };
+  /** The recipient capability for this handoff. Demo affordance; see service.ts. */
+  recipientConfirmation: { tokenId: string; state: TokenState } | null;
   runs: RunView[];
   actions: ActionView[];
   timeline: HandoffSummary[];

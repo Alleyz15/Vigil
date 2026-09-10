@@ -31,6 +31,15 @@ import { OperatorActionRequest, type CaseState, type OperatorActionRequest as Ac
 import { isQueueState, transitionCase } from "./state";
 import { buildShipmentMapModel } from "./map-model";
 import { courierOutcome, type CourierOutcome } from "./courier";
+import { recipientChannelFingerprint } from "@/lib/identity/channel";
+import {
+  answerConfirmation,
+  expireConfirmations,
+  issueConfirmation,
+  tokenStateOf,
+  type RecipientAnswer,
+  type TokenState,
+} from "@/lib/recipient";
 import {
   flagsFrom,
   runView,
@@ -53,6 +62,16 @@ const SEED = "vigil-2026";
  * it the honest demonstration that an absent signature halts rather than
  * refuses, with no risk-level confound.
  */
+/**
+ * How long a recipient has to answer their confirmation link.
+ *
+ * ASSUMPTION, not a measurement. Two days is long enough to cover a working
+ * weekend and short enough that silence means something. Nothing scores the
+ * silence today, so this bound currently decides only when the row stops
+ * saying "waiting".
+ */
+const CONFIRMATION_WINDOW_HOURS = 48;
+
 const DRAFT_TITLES: Partial<Record<ScenarioId, string>> = {
   S1: "Delivery scan — needs an operator co-signature",
   S0: "Delivery scan — ordinary work",
@@ -345,6 +364,8 @@ function makeDraft(
 export class OperatorWorkbench {
   private readonly entries = new Map<string, StoredEntry>();
   private readonly drafts = new Map<string, StoredDraft>();
+  /** tokenId -> the handoff it asks about. */
+  private readonly confirmations = new Map<string, StoredEntry>();
   private readonly harnesses = new Set<IngestHarness>();
   private actionSequence = 0;
   private readonly nowIso: string;
@@ -360,6 +381,75 @@ export class OperatorWorkbench {
     }
     const latest = Math.max(...entries.map((entry) => Date.parse(entry.createdAt)));
     this.nowIso = new Date(latest + 12 * 60_000).toISOString();
+    this.issueConfirmations();
+  }
+
+  /**
+   * Issue one recipient capability per sealed delivery.
+   *
+   * Only deliveries, and only sealed ones: there is nothing to confirm about a
+   * depot scan, and asking about a handoff that decided nothing would be asking
+   * a recipient to adjudicate a pending co-signature.
+   */
+  private issueConfirmations(): void {
+    for (const entry of this.entries.values()) {
+      const ctx = entry.current;
+      const sealed = ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop";
+      if (!sealed) continue;
+      if (entry.built.leg !== "delivery") continue;
+
+      const event = ctx.event ?? entry.built.event;
+      const epc = epcsOf(event)[0] ?? "";
+      const parcel = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
+      if (!parcel?.recipientPhone) continue;
+
+      const tokenId = issueConfirmation(entry.harness.deps.db, {
+        eventId: event.eventID,
+        epc,
+        // The SAME channel record I15 checks a delivery against, so "we have an
+        // independent line to the recipient" is a fact rather than a claim.
+        channelFingerprint: recipientChannelFingerprint(parcel.recipientPhone),
+        issuedAt: entry.createdAt,
+        windowHours: CONFIRMATION_WINDOW_HOURS,
+      });
+      this.confirmations.set(tokenId, entry);
+    }
+  }
+
+  /** The recipient link for one handoff, for the operator viewing that handoff. */
+  confirmationFor(eventId: string): { tokenId: string; state: TokenState } | undefined {
+    for (const [tokenId, entry] of this.confirmations) {
+      if (entry.built.event.eventID !== eventId) continue;
+      return { tokenId, state: tokenStateOf(entry.harness.deps.db, tokenId, this.nowIso) };
+    }
+    return undefined;
+  }
+
+  /** What the recipient sees when they open their link. */
+  getConfirmation(tokenId: string): { state: TokenState; waybillNo: string | null } {
+    const entry = this.confirmations.get(tokenId);
+    if (!entry) return { state: { status: "unknown" }, waybillNo: null };
+
+    const epc = epcsOf(entry.built.event)[0] ?? "";
+    const parcel = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
+    return {
+      state: tokenStateOf(entry.harness.deps.db, tokenId, this.nowIso),
+      waybillNo: parcel?.waybillNo ?? null,
+    };
+  }
+
+  /** Record the recipient's answer, writing a dispute when they say it never came. */
+  answerConfirmation(tokenId: string, answer: RecipientAnswer) {
+    const entry = this.confirmations.get(tokenId);
+    if (!entry) return { ok: false as const, state: { status: "unknown" as const } };
+    return answerConfirmation(entry.harness.deps.db, tokenId, answer, this.nowIso);
+  }
+
+  /** Close out unanswered links whose window has passed. Records silence; scores nothing. */
+  expireConfirmations(nowIso: string = this.nowIso): number {
+    let closed = 0;
+    for (const harness of this.harnesses) closed += expireConfirmations(harness.deps.db, nowIso);
+    return closed;
   }
 
   /** Handoffs the courier has not submitted, plus whatever they have tried. */
@@ -541,6 +631,16 @@ export class OperatorWorkbench {
         cosignReasons: entry.current.gateResult?.cosignReasons ?? [],
       },
       credential: runView(entry.current, entry.runs.length, entry.built.event).credential,
+      /**
+       * The recipient's link for THIS handoff, and only this one.
+       *
+       * A DEMO AFFORDANCE: in production the link is delivered to the
+       * recipient's own channel and is never displayed to staff, because it is
+       * the whole credential. Scoped to the handoff already on screen rather
+       * than offered as a listing, which would hand out every capability at
+       * once. See Known Limitations.
+       */
+      recipientConfirmation: this.confirmationFor(eventId) ?? null,
       ledger: {
         sequence: entry.current.ledger?.status === "recorded" ? entry.current.ledger.seq : null,
         chainValid: entry.harness.deps.ledger.verifyChain().valid,

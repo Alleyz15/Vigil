@@ -405,3 +405,48 @@ export const operatorActions = sqliteTable(
   },
   (t) => [index("operator_actions_case_idx").on(t.caseId, t.createdAt)],
 );
+
+/**
+ * A scoped capability handed to one recipient about one parcel.
+ *
+ * NOT AN ACCOUNT, AND NOT AUTHENTICATION. A real recipient will not install a
+ * courier app or remember a password to answer one question, so the link itself
+ * is the authorisation: one parcel, one answer, an expiry. It grants nothing
+ * except the ability to answer that question about that handoff.
+ *
+ * WHY THE POSITIVE ANSWER IS NOT A DISPUTE ROW. "I received it" is recorded
+ * here and nowhere else. Writing it into `disputes` would corrupt P2's
+ * numerator, which counts handoffs the recipient says did NOT arrive — the
+ * fleet baseline is computed from that table, so a confirmation stored there
+ * would inflate every courier's rate including the honest ones.
+ *
+ * `no_response` is recorded and surfaced, and NOTHING SCORES IT. Consuming it
+ * would need a new pattern rule; see Known Limitations.
+ */
+export const recipientConfirmations = sqliteTable(
+  "recipient_confirmations",
+  {
+    /** The capability. Unguessable, single-use, and the whole credential. */
+    tokenId: text("token_id").primaryKey(),
+    /** The handoff being confirmed. */
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.eventId),
+    epc: text("epc").notNull(),
+    /**
+     * The channel the link went to, in the same fingerprint form the OTP
+     * verifier uses. This is what makes the second channel to the recipient a
+     * real one rather than a notional one - it is the same recipient record
+     * I15 checks a delivery against.
+     */
+    channelFingerprint: text("channel_fingerprint").notNull(),
+    issuedAt: text("issued_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    answeredAt: text("answered_at"),
+    answer: text("answer", { enum: ["received", "not_received", "no_response"] }),
+  },
+  (t) => [
+    uniqueIndex("recipient_confirmations_event_uidx").on(t.eventId),
+    index("recipient_confirmations_expiry_idx").on(t.expiresAt),
+  ],
+);
