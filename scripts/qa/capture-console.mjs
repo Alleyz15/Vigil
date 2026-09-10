@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
-const OUT = join(ROOT, "docs", "screenshots", "session-12");
+const OUT = join(ROOT, "docs", "screenshots", "session-17a");
 const BASE = process.env.VIGIL_BASE_URL ?? "http://localhost:3000";
 
 const candidates = [
@@ -52,9 +52,21 @@ function capture(name, path) {
   }
 }
 
-capture(
-  "timeline-s1-exception-1920x1080.png",
-  "/timeline?scenario=S1&frame=exception",
+const inboxResponse = await fetch(`${BASE}/api/operator/inbox`);
+if (!inboxResponse.ok) {
+  throw new Error(`Operator inbox returned ${inboxResponse.status}.`);
+}
+
+const inbox = await inboxResponse.json();
+const pendingS1 = inbox.items.find(
+  (item) => item.scenarioId === "S1" && item.state === "awaiting_cosignature",
 );
-capture("gate-explorer-1920x1080.png", "/gate");
-capture("reasoning-stream-1920x1080.png", "/stream");
+if (!pendingS1) throw new Error("No S1 handoff awaiting co-signature was found.");
+
+capture("operator-inbox-1920x1080.png", "/operator/inbox?scenario=S1");
+capture("all-handoffs-1920x1080.png", "/operator/handoffs");
+capture(
+  "handoff-s1-pending-1920x1080.png",
+  `/operator/handoffs/${encodeURIComponent(pendingS1.eventId)}`,
+);
+capture("gate-evidence-1920x1080.png", "/demo/gate");

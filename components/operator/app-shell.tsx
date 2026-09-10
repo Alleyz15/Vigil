@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ClipboardList, Inbox, Route, ShieldCheck } from "lucide-react";
@@ -89,7 +90,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="ml-56 min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-7 backdrop-blur-sm">
           <div className="text-sm text-muted-foreground">Process handoffs that need a decision</div>
-          <DemoDataControl />
+          <Suspense fallback={<div className="h-8 w-[26rem]" aria-hidden="true" />}>
+            <DemoDataControl />
+          </Suspense>
         </header>
         <main className="mx-auto max-w-[1680px] px-7 py-6">{children}</main>
       </div>

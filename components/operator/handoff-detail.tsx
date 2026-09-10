@@ -55,7 +55,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
   return (
     <div>
       <header className="mb-5">
-        <Button variant="ghost" size="sm" render={<Link href="/operator/inbox" />}>
+        <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/operator/inbox" />}>
           <ArrowLeft data-icon="inline-start" />
           Back to inbox
         </Button>
@@ -154,7 +154,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
 
           <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 py-4 text-xs">
             <dt className="text-muted-foreground">Engine verdict</dt>
-            <dd className="font-semibold capitalize">{sentence(detail.summary.decision)}</dd>
+            <dd className="font-semibold capitalize">{sentence(detail.gate.decision)}</dd>
             <dt className="text-muted-foreground">Gate basis</dt>
             <dd className="font-medium">{sentence(detail.summary.gateBasis)}</dd>
             <dt className="text-muted-foreground">Operator state</dt>
@@ -203,7 +203,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
                   {flag.evidence.map((evidence, index) => (
-                    <span key={`${evidence.field}-${index}`} className="text-[11px] text-muted-foreground">
+                    <span key={`${evidence.field}-${index}`} className="min-w-0 break-all text-[11px] text-muted-foreground">
                       <span className="font-mono text-foreground">{evidence.field}</span> = {JSON.stringify(evidence.value)}
                     </span>
                   ))}

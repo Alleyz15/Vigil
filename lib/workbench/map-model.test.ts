@@ -31,9 +31,12 @@ describe("shipment map projection", () => {
     const model = modelFor("S1");
     const claimed = model.overlays.find((feature) => feature.id === "s1-claimed-position");
     const cell = model.overlays.find((feature) => feature.id === "s1-cell-coverage");
+    const link = model.overlays.find((feature) => feature.id === "s1-position-link");
 
     expect(claimed).toMatchObject({ kind: "marker", evidenceId: "I1" });
     expect(cell).toMatchObject({ kind: "circle", evidenceId: "I1" });
+    expect(link).toMatchObject({ kind: "line", evidenceId: "I1" });
+    expect(link?.points).toHaveLength(2);
     expect(claimed?.point).not.toEqual(cell?.point);
   });
 

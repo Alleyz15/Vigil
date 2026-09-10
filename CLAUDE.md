@@ -756,10 +756,10 @@ pace, the recording default, and live presentation. Long timelines still compres
 handoffs remain watchable. Speed changes timing only; the pure playback reducer still owns what
 each tick means.
 
-`npm run qa:capture` renders the three console routes in local Chrome at an explicit
-**1920x1080** viewport and writes reproducible frames under `docs/screenshots/session-12/`.
-The timeline capture uses `/timeline?scenario=S1&frame=exception`, a narrow demo deep link that
-opens the real exception leg and its sealed evidence; it does not fabricate a display fixture.
+`npm run qa:capture` renders the four current operator-console evidence frames in local Chrome at
+an explicit **1920x1080** viewport and writes them under `docs/screenshots/session-17a/`. The
+pending S1 detail URL is resolved from the workbench API at capture time; the script does not
+hardcode an event id or fabricate a display fixture.
 
 ### The verdict is never recomputed in the browser
 
@@ -803,6 +803,50 @@ npm run db:migrate
 ---
 
 ## Session log
+
+### Session 17A — operator workbench and spatial evidence (complete)
+
+**The product now opens on work, not an explanation of the system.** `/operator/inbox` is the
+priority queue; `/operator/handoffs` proves the automatic path with an explicit numerator,
+denominator and fixed timeframe; `/operator/handoffs/[eventId]` ties event, evidence, both axes,
+gate, credential, trace, explanation and ledger sequence to one correlation id. The scenario
+picker remains in the header as an explicitly labelled seeded-synthetic demo control, not a
+product navigation concept. The gate chart is demoted under **Demo evidence**.
+
+**Actions are operational dispositions, not verdict edits.** Approve and co-sign reruns the
+byte-identical EPCIS event through `runAgent` with the completed sidecar credential; the detail
+view records both verification runs and the queue item disappears. Reject, request evidence and
+escalate append operator-action records while preserving the sealed verdict projection exactly.
+`lib/workbench/service.test.ts` snapshots the verdict rows before rejection and asserts they are
+unchanged afterwards.
+
+**The read model is intentionally process-long.** Each seeded scenario owns one live in-memory
+SQLite database and ledger for the lifetime of the Node process. That is what lets an operator
+process queue items rather than watching controls reset on the next request. This state is a demo
+workbench, not production durability; a restart resets it.
+
+**Map evidence is projected, never invented.** The route uses the coordinates present in the
+validated synthetic events. S1 shows the claimed GPS point, the serving-cell reference point, an
+explicitly illustrative 800 m cell envelope and a derived connector. S6 shows the reported GPS
+uncertainty. S2 shows both scan and recipient clusters. S4 has no polygon because the mandate is
+an EPC-prefix scope, not geographic geometry. S3 has no second position because its reused id
+changes the EPC at the same claimed location. The latter two render explicit notices rather than
+made-up shapes. Coordinate-bearing flags and map features link in both directions.
+
+**Recording evidence.** `docs/screenshots/session-17a/` contains the S1-filtered inbox, all-
+handoffs acceptance summary, pending co-signature detail and gate evidence at 1920x1080. The S1
+detail keeps "Nothing was sealed", both independent scores, the operator action and the map
+contradiction in the first viewport.
+
+**Deferred to 17B:** the courier submission surface, recipient capability-token flow, rejected-
+alternative disclosure and browser-side ledger tamper demonstration. No fake controls for those
+flows were added in 17A.
+
+**Verification:** 594 tests pass with 7 live-provider tests skipped; lint, TypeScript and the
+production Next build are clean. The engine, pattern and gate trees remain at 100% statements,
+branches, functions and lines. The coverage runner uses a 10-second test budget because its
+instrumented all-suite run makes the existing 400-timeline noise test exceed Vitest's generic
+5-second default; no assertion or generator behavior changed.
 
 ### Session 1 — scaffold (complete)
 

@@ -71,7 +71,7 @@ export type HandoffDetail = {
   summary: HandoffSummary;
   event: unknown;
   flags: Array<{ id: string; points: number; label: string; evidence: Array<{ field: string; value: unknown }> }>;
-  gate: { matrixCell: string | null; rationale: string | null; cosignReasons: string[] };
+  gate: { decision: string | null; matrixCell: string | null; rationale: string | null; cosignReasons: string[] };
   credential: RunView["credential"];
   ledger: { sequence: number | null; chainValid: boolean; entries: number };
   runs: RunView[];

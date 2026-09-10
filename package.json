@@ -14,7 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8 --coverage.include='lib/engine/**' --coverage.include='lib/pattern/**' --coverage.include='lib/gate/**' --coverage.exclude='**/fixtures.ts' --coverage.exclude='**/index.ts' --coverage.exclude='**/*.test.ts'",
+    "test:coverage": "vitest run --testTimeout=10000 --coverage.enabled --coverage.provider=v8 --coverage.include='lib/engine/**' --coverage.include='lib/pattern/**' --coverage.include='lib/gate/**' --coverage.exclude='**/fixtures.ts' --coverage.exclude='**/index.ts' --coverage.exclude='**/*.test.ts'",
     "experiments": "node --env-file-if-exists=.env --import tsx scripts/experiments/run-all.ts",
     "experiment:e4": "node --env-file-if-exists=.env --import tsx scripts/experiments/e4-llm-instability.ts",
     "experiment:e4a": "node --env-file-if-exists=.env --import tsx scripts/experiments/e4a-cross-vendor.ts",

@@ -59,7 +59,7 @@ export function InboxTable({ items }: { items: HandoffSummary[] }) {
               <td><AxisPair inconsistency={item.inconsistency} pattern={item.pattern} /></td>
               <td className="font-mono text-xs tabular-nums text-muted-foreground">{ageLabel(item.ageMinutes)}</td>
               <td className="text-right">
-                <Button size="icon-sm" variant="ghost" render={<Link href={`/operator/handoffs/${item.eventId}`} aria-label={`Review ${item.parcel.waybillNo}`} />}>
+                <Button nativeButton={false} size="icon-sm" variant="ghost" render={<Link href={`/operator/handoffs/${item.eventId}`} aria-label={`Review ${item.parcel.waybillNo}`} />}>
                   <ArrowRight />
                 </Button>
               </td>

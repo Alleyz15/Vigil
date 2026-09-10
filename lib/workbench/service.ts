@@ -264,6 +264,7 @@ export class OperatorWorkbench {
       event: entry.built.event,
       flags: flagsFrom(entry.current),
       gate: {
+        decision: entry.current.gateResult?.decision ?? entry.current.decision ?? null,
         matrixCell: entry.current.gateResult?.matrixCell ?? null,
         rationale: entry.current.gateResult?.rationale ?? null,
         cosignReasons: entry.current.gateResult?.cosignReasons ?? [],

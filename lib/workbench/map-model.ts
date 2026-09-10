@@ -97,6 +97,19 @@ function s1Overlays(scenario: GeneratedScenario, world: GeneratedWorld): MapOver
       provenance: "synthetic reference site; illustrative coverage radius",
       precision: "illustrative",
     },
+    {
+      id: "s1-position-link",
+      kind: "line",
+      label: "GPS and cell disagree",
+      detail: "The line joins the two independently reported positions; it is not a travelled route.",
+      point: claimed,
+      points: [claimed, { latitude: site.lat, longitude: site.lng }],
+      evidenceId: "I1",
+      eventId: delivery.event.eventID,
+      group: "s1-position-conflict",
+      provenance: "derived from two synthetic evidence coordinates",
+      precision: "derived",
+    },
   ];
 }
 

@@ -22,7 +22,15 @@ function latLng(point: MapPoint): [number, number] {
   return [point.latitude, point.longitude];
 }
 
-function Viewport({ model, activeLegIndex }: { model: ShipmentMapModel; activeLegIndex: number }) {
+function Viewport({
+  model,
+  activeLegIndex,
+  revealOverlays,
+}: {
+  model: ShipmentMapModel;
+  activeLegIndex: number;
+  revealOverlays: boolean;
+}) {
   const map = useMap();
   const initialized = useRef(false);
   const active = model.route.find((leg) => leg.legIndex === activeLegIndex)?.point;
@@ -36,10 +44,17 @@ function Viewport({ model, activeLegIndex }: { model: ShipmentMapModel; activeLe
       initialized.current = true;
       return;
     }
+    const evidencePoints = revealOverlays
+      ? model.overlays.flatMap((feature) => (feature.point ? [latLng(feature.point)] : []))
+      : [];
+    if (evidencePoints.length > 1) {
+      map.fitBounds(evidencePoints, { padding: [54, 54], animate: true, duration: 0.35 });
+      return;
+    }
     if (activeLatitude !== undefined && activeLongitude !== undefined) {
       map.flyTo([activeLatitude, activeLongitude], 15, { duration: 0.35 });
     }
-  }, [activeLatitude, activeLongitude, activeLegIndex, map, model.route]);
+  }, [activeLatitude, activeLongitude, activeLegIndex, map, model.overlays, model.route, revealOverlays]);
 
   return null;
 }
@@ -96,7 +111,11 @@ function OverlayFeature({
   onSelect: () => void;
 }) {
   if (!feature.point) return null;
-  const color = feature.group === "s2-recipients" ? ROUTE_COLOR : ALERT_COLOR;
+  const color = feature.group === "s2-recipients"
+    ? ROUTE_COLOR
+    : feature.id === "s1-cell-coverage"
+      ? "#16778a"
+      : ALERT_COLOR;
   const eventHandlers = { click: onSelect };
   const tooltip = (
     <Tooltip sticky>
@@ -105,6 +124,24 @@ function OverlayFeature({
       <span>Source: {feature.provenance}</span>
     </Tooltip>
   );
+
+  if (feature.kind === "line" && feature.points && feature.points.length > 1) {
+    return (
+      <Polyline
+        positions={feature.points.map(latLng)}
+        eventHandlers={eventHandlers}
+        pathOptions={{
+          className: selected ? "map-evidence-selected" : undefined,
+          color: ALERT_COLOR,
+          dashArray: "7 8",
+          weight: selected ? 5 : 3,
+          opacity: 0.9,
+        }}
+      >
+        <Tooltip permanent direction="center">GPS ↔ cell contradiction</Tooltip>
+      </Polyline>
+    );
+  }
 
   if (feature.kind === "circle" && feature.radiusMeters) {
     return (
@@ -120,7 +157,9 @@ function OverlayFeature({
           fillOpacity: selected ? 0.2 : 0.1,
         }}
       >
-        {tooltip}
+        {feature.id.startsWith("s1-") || feature.id.startsWith("s6-") ? (
+          <Tooltip permanent direction="top">{feature.label}</Tooltip>
+        ) : tooltip}
       </Circle>
     );
   }
@@ -138,7 +177,9 @@ function OverlayFeature({
         fillOpacity: 0.92,
       }}
     >
-      {tooltip}
+      {feature.id.startsWith("s1-") || feature.id.startsWith("s3-") ? (
+        <Tooltip permanent direction="top">{feature.label}</Tooltip>
+      ) : tooltip}
     </CircleMarker>
   );
 }
@@ -171,7 +212,7 @@ export function ShipmentMapClient({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <Viewport model={model} activeLegIndex={activeLegIndex} />
+        <Viewport model={model} activeLegIndex={activeLegIndex} revealOverlays={revealOverlays} />
         {segments.map(({ from, to }) => (
           <Polyline
             key={`${from.eventId}-${to.eventId}`}
