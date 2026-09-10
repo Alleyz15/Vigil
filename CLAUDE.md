@@ -1439,6 +1439,73 @@ and no result CSV changed.
 
 #### Predictions, recorded before any experiment was run
 
+### Session 16 — identity trace and predictions (written first)
+
+**WRITTEN AND COMMITTED BEFORE THE IDENTITY EVIDENCE MODEL WAS CHANGED AND BEFORE E2 OR E3
+WAS RERUN.** Existing rules and thresholds stay fixed. The new point values are fixed from what
+the signals mean before either holdout half is observed: I15 is an explicit, complete conflict
+between the event and the independent OTP verifier; I16 is weaker corroboration with plausible
+operational causes and cannot cross the gate alone.
+
+#### Three candidate rules traced and rejected
+
+These are omissions by design, not forgotten identity checks. A future session must not restore
+one without supplying the independent evidence it lacks.
+
+1. **Voluntary OTP relay is undetectable by this design.** NIST SP 800-63B says manually
+   transferred out-of-band secrets are not phishing-resistant: the recipient can read a genuinely
+   delivered code to an impostor, and the verifier then sees the same valid code it would see in
+   an honest handoff. Vigil detects a code that was never delivered to the registered recipient
+   channel; it cannot detect a code the recipient chose to read out. This is a Known Limitation,
+   not a missed branch in I15.
+2. **Recipient-name comparison is neither independent nor reliable.** The courier can read the
+   name on the parcel and copy it, while spelling variation, household members and reception-desk
+   handoffs create honest mismatches. Identity is represented by the independently recorded
+   recipient channel, never by comparing free-form names.
+3. **An EPCIS AssociationEvent is not a party-to-handset authorisation.** GS1 defines a parent
+   object or location associated with child EPCs; it does not make an employee identity the parent
+   of a phone. Using `vigil:courierId` to authorise that event would let **the unverified claim
+   certify itself**. A legitimate dynamic handset reassignment needs an operator-authorised device
+   enrollment primitive outside EPCIS. I6 continues to compare the scan against the server-side
+   binding; an attacker-authored AssociationEvent cannot rewrite that binding.
+
+**The AssociationEvent documentation was wrong from session 1.** It called AssociationEvent a
+device-binding event even though no fixture ever exercised that interpretation. The error was
+found only by tracing the proposed handset-swap rule against the GS1 field semantics in session
+16. This is the same failure shape as the retired Gemini model default and the Ollama `/v1` URL:
+something written once, unreachable by a real test, and therefore never questioned. A default,
+schema interpretation or configuration path no test can reach is unverified code.
+
+**The credential trace found a second bypass of a stated cryptographic precondition.**
+`verifyCredential()` says a courier signature is always required, but `checkCredential()` seals a
+low-risk handoff when no credential is presented. Session 5 previously found high-risk fixtures
+sealing without credentials; session 16 found the low-risk sibling by reading the verifier contract
+against the agent path. The invariant and its caller disagree, and only a trace exposed it. The
+fix is constitutive: an absent courier signature decides nothing, writes nothing, and halts as
+`PENDING_COURIER_SIGNATURE`; an invalid signature remains attack evidence and freezes.
+
+#### Predictions
+
+1. **Both generated identity attack cases will be detected at the delivery leg.** Recipient
+   channel substitution will trigger I15 alone. A known replacement handset assigned to another
+   courier and returning only weak integrity will trigger I6 + I16.
+2. **I16 at +20 will not reach an operator alone.** Play Integrity can lose a stronger label for
+   operational reasons, so weak assurance is corroboration, not a verdict. It may combine with an
+   independently unbound handset signal. A signal with plausible operational causes must not alert
+   by itself.
+3. **E3's increase will be small but non-zero, led by stale recipient-channel records rather than
+   temporary attestation degradation.** If that holds, it is the same limitation already exposed
+   by address correction: Vigil is sensitive to stale records as well as fraud. The two findings
+   belong under one data-freshness limitation rather than being presented as unrelated defects.
+4. **Making the courier signature mandatory will not change E2 or E3.** The generator already
+   signs every event. If a result moves, an experiment or fixture was bypassing the stated
+   credential contract and that bypass is the finding.
+
+**Holdout discipline.** The rules and point values are fixed before measurement. E2 and E3 run on
+the tuning half first to expose modelling or plumbing errors; after the implementation is frozen,
+only the reporting half supplies the published numbers. No existing threshold moves in this
+session whatever those runs suggest.
+
 ### Session 15 — predictions (written first)
 
 **WRITTEN AND COMMITTED BEFORE THE FIRST OPEN-METEO REQUEST, BEFORE THE WEATHER CACHE WAS
