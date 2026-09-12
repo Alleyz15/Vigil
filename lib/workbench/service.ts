@@ -455,16 +455,27 @@ export class OperatorWorkbench {
     return undefined;
   }
 
-  /** What the recipient sees when they open their link. */
-  getConfirmation(tokenId: string): { state: TokenState; waybillNo: string | null } {
+  /**
+   * What the recipient sees when they open their link.
+   *
+   * `nowIso` is returned alongside the state because the caller needs to say
+   * how long is left, and that answer must come from the instant this status
+   * was judged against — not from the caller's own clock.
+   */
+  getConfirmation(tokenId: string): {
+    state: TokenState;
+    waybillNo: string | null;
+    nowIso: string;
+  } {
     const entry = this.confirmations.get(tokenId);
-    if (!entry) return { state: { status: "unknown" }, waybillNo: null };
+    if (!entry) return { state: { status: "unknown" }, waybillNo: null, nowIso: this.nowIso };
 
     const epc = epcsOf(entry.built.event)[0] ?? "";
     const parcel = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
     return {
       state: tokenStateOf(entry.harness.deps.db, tokenId, this.nowIso),
       waybillNo: parcel?.waybillNo ?? null,
+      nowIso: this.nowIso,
     };
   }
 

@@ -65,6 +65,36 @@ export function evaluateToken(row: ConfirmationRow | undefined, nowIso: string):
 }
 
 /** Plain wording for each state. Derived, never chosen at the call site. */
+/**
+ * How long an open token has left, as a phrase a recipient can read.
+ *
+ * IT TAKES `nowIso` RATHER THAN READING THE CLOCK, and that is the whole point.
+ * The status this describes was decided by `evaluateToken` against a specific
+ * instant; computing the remainder from `Date.now()` would be a SECOND clock
+ * disagreeing with the first. In this demo the two are days apart — the
+ * workbench's world sits on the scenario date — so every genuinely open token
+ * computed a negative remainder and fell back to a generic label. Nothing
+ * threw; the strip just quietly stopped saying anything specific.
+ *
+ * Same shape as rule 1h (one side normalised, the other not) and rule 3g (ask
+ * whoever decided; never re-derive downstream).
+ */
+export function remainingLabel(state: TokenState, nowIso: string): string | null {
+  if (state.status !== "open") return null;
+
+  const ms = Date.parse(state.row.expiresAt) - Date.parse(nowIso);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours >= 24) return plural(Math.floor(hours / 24), "day");
+  if (hours >= 1) return plural(hours, "hour");
+  return plural(Math.max(1, Math.floor(ms / 60_000)), "minute");
+}
+
+function plural(count: number, unit: string): string {
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
+}
+
 export function tokenMessage(state: TokenState): { headline: string; detail: string } {
   switch (state.status) {
     case "open":

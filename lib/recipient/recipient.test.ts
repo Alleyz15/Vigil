@@ -5,12 +5,14 @@ import { createMigratedDb } from "@/lib/db/migrate";
 import { couriers, disputes, events, parcels, verdicts } from "@/lib/db/schema";
 import { assemblePatternInput } from "@/lib/assemble/pattern-input";
 import { closeDb, type VigilDb } from "@/lib/db/client";
+import type { ConfirmationRow, TokenState } from "./index";
 import {
   answerConfirmation,
   evaluateToken,
   expireConfirmations,
   issueConfirmation,
   readConfirmation,
+  remainingLabel,
   tokenStateOf,
 } from "./index";
 
@@ -161,6 +163,55 @@ describe("the token is a scoped capability", () => {
     );
 
     expect(state.status).toBe("answered");
+  });
+});
+
+describe("the time remaining is measured against the clock that judged the token", () => {
+  // Annotated, not `as const`: the annotation is what makes tsc complain if the
+  // row shape moves under this fixture. An untyped literal compiles happily
+  // against a type it no longer satisfies.
+  const row: ConfirmationRow = {
+    tokenId: "t",
+    eventId: EVENT_ID,
+    epc: EPC,
+    issuedAt: NOW,
+    expiresAt: "2026-09-08T18:00:00.000Z",
+    answer: null,
+    answeredAt: null,
+  };
+  const openState: TokenState = { status: "open", row };
+
+  it("reports hours left from the instant the status was decided", () => {
+    expect(remainingLabel(openState, NOW)).toBe("6 hours");
+  });
+
+  it("rounds sub-hour windows to minutes, never to zero, and counts in English", () => {
+    expect(remainingLabel(openState, "2026-09-08T17:30:00.000Z")).toBe("30 minutes");
+    expect(remainingLabel(openState, "2026-09-08T17:59:59.000Z")).toBe("1 minute");
+  });
+
+  /**
+   * THE REGRESSION. The page used to compute this from `Date.now()` while the
+   * status came from the workbench's seeded clock. Those are days apart in the
+   * demo, so an open token produced a negative remainder and the identity strip
+   * silently fell back to a generic label — no error, no failing test, just a
+   * surface that stopped saying anything specific.
+   */
+  it("would go silent if measured against a clock that did not judge it", () => {
+    const wallClock = "2026-09-12T00:00:00.000Z";
+    expect(remainingLabel(openState, wallClock)).toBeNull();
+    expect(remainingLabel(openState, NOW)).toBe("6 hours");
+  });
+
+  it("says 1 day rather than 1 days", () => {
+    expect(remainingLabel(openState, "2026-09-07T17:00:00.000Z")).toBe("1 day");
+    expect(remainingLabel(openState, "2026-09-06T17:00:00.000Z")).toBe("2 days");
+    expect(remainingLabel(openState, "2026-09-08T17:00:00.000Z")).toBe("1 hour");
+  });
+
+  it("offers no duration for a token that is not open", () => {
+    expect(remainingLabel({ status: "unknown" }, NOW)).toBeNull();
+    expect(remainingLabel({ status: "expired", row }, NOW)).toBeNull();
   });
 });
 

@@ -7,6 +7,8 @@ import { ClipboardList, Inbox, Link2, Route, Scale, ShieldCheck, Syringe } from 
 import { cn } from "@/lib/utils";
 import { DemoDataControl } from "./demo-data-control";
 import { RoleSwitcher } from "@/components/shells/role-switcher";
+import { IdentityBar } from "@/components/shells/identity-bar";
+import type { RoleIdentity } from "@/lib/workbench/service";
 
 const PRIMARY = [
   { href: "/operator/inbox", label: "Inbox", icon: Inbox },
@@ -30,7 +32,13 @@ const EVIDENCE = [
  */
 const STANDALONE = ["/courier", "/confirm"];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  identity,
+  children,
+}: {
+  identity: RoleIdentity;
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
 
   if (STANDALONE.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
@@ -97,24 +105,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
+        {/* The identity strip carries who this is; repeating it here would be
+            two sources for one fact. What stays is the provenance claim, which
+            the strip does NOT make: the identity is simulated and the
+            signatures are real. */}
         <div className="mt-auto border-t pt-4">
-          <div className="px-2 text-xs font-medium">Operator · OP-01</div>
-          <div className="mt-1 px-2 text-xs leading-4 text-muted-foreground">
+          <div className="px-2 text-xs leading-4 text-muted-foreground">
             Simulated identity · real Ed25519 signatures
           </div>
         </div>
       </aside>
 
       <div className="ml-56 min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-8 backdrop-blur-sm">
-          <div className="text-sm text-muted-foreground">Process handoffs that need a decision</div>
-          <div className="flex items-center gap-4">
-            <RoleSwitcher />
-            <Suspense fallback={<div className="h-8 w-[26rem]" aria-hidden="true" />}>
-              <DemoDataControl />
-            </Suspense>
-          </div>
-        </header>
+        <div className="sticky top-0 z-30">
+          {/* Same strip, same place, on all three surfaces. That is what makes
+              a paused frame legible: a viewer compares one band against the
+              one they saw a moment ago, not two different page designs. */}
+          <IdentityBar identity={identity} />
+
+          <header className="flex h-16 items-center justify-between border-b bg-background/95 px-8 backdrop-blur-sm">
+            <div className="text-sm text-muted-foreground">
+              Process handoffs that need a decision
+            </div>
+            <div className="flex items-center gap-4">
+              <RoleSwitcher />
+              <Suspense fallback={<div className="h-8 w-[26rem]" aria-hidden="true" />}>
+                <DemoDataControl />
+              </Suspense>
+            </div>
+          </header>
+        </div>
         <main className="mx-auto max-w-[1680px] px-8 py-6">{children}</main>
       </div>
     </div>
