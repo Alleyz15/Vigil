@@ -53,3 +53,5 @@ next-env.d.ts
 
 AGENTS.md
 
+
+.tmp-dev.*.log
