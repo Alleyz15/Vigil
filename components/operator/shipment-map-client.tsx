@@ -219,7 +219,7 @@ export function ShipmentMapClient({
   }
 
   return (
-    <div className="relative h-[430px] overflow-hidden rounded-md border bg-muted">
+    <div className="relative h-[430px] overflow-hidden rounded-md bg-muted">
       <MapContainer center={latLng(current)} zoom={11} scrollWheelZoom className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

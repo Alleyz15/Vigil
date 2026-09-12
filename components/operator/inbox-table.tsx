@@ -22,7 +22,7 @@ export function InboxTable({ items }: { items: HandoffSummary[] }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-md border bg-card">
+    <div className="overflow-hidden rounded-md bg-card shadow-sm">
       <table className="operator-table">
         <thead>
           <tr>

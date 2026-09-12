@@ -1170,6 +1170,110 @@ npm run db:migrate
 
 ## Session log
 
+### Session 19 — role separation, the co-sign split, and the landing page (complete)
+
+658 tests passing, 7 skipped. `tsc --noEmit` clean, eslint clean, the production build clean.
+`lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% branch coverage. No detector
+threshold moved and no experiment was rerun. **The ninth mechanically enforced constraint landed.**
+
+**The test was one frame of video, no audio, no captions.** If a viewer paused on a courier
+screenshot could mistake it for the console, the separation had not worked. Three shells now
+differ in structure before they differ in colour: the courier gets a narrow device-shaped column
+with **no sidebar**, the recipient a centred card with **no chrome at all**, the operator keeps the
+workspace. The absence of a sidebar says "this is not the console" faster than any label.
+
+Each carries an identity strip with the role, the name and a **key fingerprint**, because in this
+system the key *is* the identity — `vigil:courierId` is an unverified claim by construction, and
+the Ed25519 key is what a credential is actually checked against. The recipient's strip shows an
+expiry instead, because a recipient holds no key and inventing a fingerprint for them would be the
+same class of fabrication as plotting `not_evaluated` at the origin.
+
+**`/demo/cosign` performs the co-signature live across two surfaces.** Sign and submit on the left,
+approve and co-sign on the right, both calling the same endpoints `/courier` and `/operator` use —
+a demo control with its own private path would be a second implementation of the thing it claims
+to demonstrate. The bar underneath states what the two halves add up to, derived from
+`verifyCredential`'s booleans rather than chosen per phase. Verified in **all three phases** at
+1920x1080, because each changes the height of both panes.
+
+**The landing page at `/` plays by the other set of rules** — see *Two surfaces, two rules*. Every
+figure on it is measured, cited to the experiment that produced it, and followed by a route where
+the claim can be checked. A narrative that only tells is a brochure for a system nobody can audit.
+
+#### Four defects a rendered frame found, and none of them markup
+
+Reading HTML said the page was fine every time. **Looking at the PNG is what worked.**
+
+| # | Defect | Why markup could not show it |
+|---|---|---|
+| 1 | `sensor.gps.point=[object Object]` on the split screen | the string was present, and wrong |
+| 2 | the fix matched `lat`/`lng`; evidence carries `latitude`/`longitude` | still a string, still wrong |
+| 3 | the credential bar clipped at 1080 | the element existed and was laid out |
+| 4 | the courier card saying "insufficient" beside a bar saying "sealed" | both true, contradictory only together |
+
+**Number 3 is the instructive one. I trimmed the bar twice before diagnosing it.** The overflow was
+never the bar — a back-link header rendered OUTSIDE the `min-h-screen` container added its height
+to a layout already asking for a full viewport. Shaving pixels off the thing that is not the
+problem is the shape of fixing before reading.
+
+#### The reference is the blind spot (rule 1i)
+
+The courier and recipient shells were both designed *against* the console, both verified by
+comparison, and **the console shipped with no identity strip at all**. Every check I ran was a
+comparison, and a comparison cannot evaluate its own reference. Found by curling all three pages
+and counting matches for `ed25519` — one row per surface, so the missing one showed as a gap in a
+column.
+
+#### Three clock bugs are one bug (rule 1h, promoted)
+
+The recipient strip read a generic label for every open token, because the token's **status** was
+judged against the workbench's seeded clock while the **remaining time** was measured against
+`Date.now()` — days apart in a demo whose world sits on the scenario date. That is the third
+instance after sessions 4 and 18, none of which threw, so 1h is now a standing check rather than a
+SQL rule.
+
+#### The suite's 5-second default was reporting phantom regressions
+
+Three `lib/generate` tests fail as **timeouts** whenever a dev server and a headless Chrome run
+alongside — which is the normal state of a session doing visual verification. They pass alone and
+they pass at 20 seconds. That failure mode is worse than slowness: it looks exactly like a
+regression in files the session never touched. `testTimeout` is now 20s, as a ceiling rather than
+a budget.
+
+#### Two things I got wrong, recorded because the pattern repeats
+
+- **A test asserting `"1 minutes"`.** The page rendered `expires in 1 days` and the suite was
+  green, because I had written the defect into the assertion. Rule 1f's second failure mode.
+- **A test asserting `101.712345 -> 101.71235`.** The nearest double sits below the midpoint, so
+  the correct output is `...34`. The code was right and my arithmetic was wrong — caught the same
+  session the rule was written down.
+
+#### Design decisions worth not re-litigating
+
+- **The "Two axes, never summed" heading lives inside `AxisPair`**, not on the page. Rule 1j.
+- **Card outlines are gone; table row rules stayed.** At twelve dense multi-line rows the hairline
+  is doing real work, and banding that many rows is noisier than the line it replaces.
+- **`/demo/cosign` renders bare**, because wrapping a courier pane in operator chrome nests one of
+  the two things being contrasted inside the other. It is the third entry in the `STANDALONE`
+  list — the trap now recorded in Known Limitations.
+- **There is no reset.** Replaying the co-sign demo means restarting the server, which the page
+  says plainly rather than offering a button that would rewrite sealed history.
+- **`devIndicators: false`**, because the demo records from the dev server and the badge sits
+  bottom-left exactly where the argument prints.
+
+#### Capture tooling
+
+`npm run qa:capture` now writes **seven** frames including the split screen and the recipient
+surface, and its lookups retry so a transient connection reset does not discard frames already on
+disk. Two capture traps worth knowing: a URL **fragment** returns a blank frame in headless
+Chrome, and a tall `--window-size` distorts any `vh`-based layout, so a hero centred in `78vh`
+looks nothing like what a viewer sees. Verifying a scrolled view needs a real 1080 viewport driven
+over CDP.
+
+#### Still open after 19
+
+The submission artefacts — write-up, recorded demo, a RESULTS.md refresh. The `(console)` route
+group. `seedDraftIdentity`'s fold-back.
+
 ### Session 18 — the AI argument on screen, and tools that do something (complete)
 
 634 tests passing, 7 live-provider tests skipped. `tsc --noEmit` clean, eslint clean, production

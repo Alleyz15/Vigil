@@ -1,3 +1,6 @@
+"use client";
+
+import NumberFlow from "@number-flow/react";
 import { CircleDashed, Gauge } from "lucide-react";
 import type { AxisValue } from "@/lib/workbench";
 
@@ -18,14 +21,17 @@ import type { AxisValue } from "@/lib/workbench";
  */
 
 function Axis({ label, value, variant }: { label: string; value: AxisValue; variant: Variant }) {
-  const evaluated = value.evaluable && value.score !== null;
+  // Bound as a value rather than a boolean: a `const ok = ...` flag does not
+  // narrow `value.score` for the compiler, and the score is genuinely nullable
+  // because an axis that could not be evaluated has no number (rule 4).
+  const score = value.evaluable ? value.score : null;
 
   if (variant === "compact") {
     return (
       <div className="min-w-20">
         <div className="text-xs font-semibold uppercase text-muted-foreground">{label}</div>
-        {evaluated ? (
-          <div className="mt-0.5 font-mono text-base font-semibold tabular-nums">{value.score}</div>
+        {score !== null ? (
+          <div className="mt-0.5 font-mono text-base font-semibold tabular-nums">{score}</div>
         ) : (
           <div
             className="mt-0.5 text-xs font-medium text-muted-foreground"
@@ -41,8 +47,15 @@ function Axis({ label, value, variant }: { label: string; value: AxisValue; vari
   return (
     <div className="rounded-md bg-muted/60 px-3 py-2.5">
       <div className="text-xs text-muted-foreground">{label}</div>
-      {evaluated ? (
-        <div className="mt-0.5 text-2xl font-semibold tabular-nums">{value.score}</div>
+      {score !== null ? (
+        <div className="mt-0.5 text-2xl font-semibold tabular-nums">
+          {/*
+            Counts only in the feature size. In a queue row the number is being
+            scanned against dozens of others and motion there is noise; here a
+            viewer is being asked to look at one number.
+          */}
+          <NumberFlow value={score} />
+        </div>
       ) : (
         <>
           {/*

@@ -143,7 +143,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
           </ol>
         </section>
 
-        <aside className="self-start rounded-md border bg-card p-4 shadow-sm">
+        <aside className="self-start rounded-md bg-card p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Decision and action</h2>
             <ProvenanceLabel>{detail.summary.sealed ? "sealed" : "pending"}</ProvenanceLabel>
@@ -223,7 +223,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             <p className="mt-1 text-xs text-muted-foreground">Frozen trace contract. State changes below are execution timing, not decorative animation.</p>
             <ol className="mt-3 grid grid-cols-4 gap-2">
               {trace.map((node) => (
-                <li key={node.node} className="rounded-md border bg-card p-3">
+                <li key={node.node} className="rounded-md bg-card p-3 shadow-sm">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-xs font-semibold">{node.node}</span>
                     <Badge variant="outline" className="text-xs">{node.status}</Badge>
@@ -239,7 +239,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
         </section>
 
         <div className="flex flex-col gap-4">
-          <section className="rounded-md border bg-card p-4">
+          <section className="rounded-md bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">Agent explanation</h2>
               <ProvenanceLabel>{detail.explanation.source}</ProvenanceLabel>
@@ -247,7 +247,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             <p className="mt-3 text-sm leading-6 text-muted-foreground">{detail.explanation.text ?? "No explanation was produced."}</p>
           </section>
 
-          <section className="rounded-md border bg-card p-4">
+          <section className="rounded-md bg-card p-4 shadow-sm">
             <div className="flex items-center gap-2"><CloudRain className="size-4" /><h2 className="text-sm font-semibold">External context</h2></div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
               {detail.externalContext?.summary ?? "Weather was not selected for this run."}
@@ -257,7 +257,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             )}
           </section>
 
-          <section className="rounded-md border bg-card p-4">
+          <section className="rounded-md bg-card p-4 shadow-sm">
             <div className="flex items-center gap-2"><ShieldAlert className="size-4" /><h2 className="text-sm font-semibold">Reroute</h2></div>
             {detail.reroute?.status === "proposed" ? (
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
@@ -276,7 +276,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             Sits next to the outcome rather than in a separate view, because the
             option set is only meaningful beside the option taken.
           */}
-          <section className="rounded-md border bg-card p-4">
+          <section className="rounded-md bg-card p-4 shadow-sm">
             <PlanAlternatives
               considered={detail.planConsidered}
               source={detail.plan.source}
@@ -284,7 +284,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             />
           </section>
 
-          <section className="rounded-md border bg-card p-4">
+          <section className="rounded-md bg-card p-4 shadow-sm">
             <div className="flex items-center gap-2"><Link2 className="size-4" /><h2 className="text-sm font-semibold">Seal and ledger</h2></div>
             <dl className="mt-3 grid grid-cols-[7rem_1fr] gap-y-2 text-xs">
               <dt className="text-muted-foreground">Ledger sequence</dt><dd className="font-mono">{detail.ledger.sequence ?? "not written"}</dd>
@@ -295,7 +295,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
         </div>
       </div>
 
-      <details className="mt-8 rounded-md border bg-card px-4 py-3">
+      <details className="mt-8 rounded-md bg-card px-4 py-3 shadow-sm">
         <summary className="cursor-pointer text-sm font-semibold">Raw synthetic EPCIS event</summary>
         <pre className="mt-3 max-h-96 overflow-auto text-xs leading-5 text-muted-foreground">{JSON.stringify(detail.event, null, 2)}</pre>
       </details>

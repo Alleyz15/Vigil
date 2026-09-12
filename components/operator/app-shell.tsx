@@ -40,7 +40,7 @@ const EVIDENCE = [
  * without editing it silently inherits the console shell, and nothing fails.
  * The structural fix is a `(console)` route group.
  */
-const STANDALONE = ["/courier", "/confirm", "/demo/cosign"];
+const STANDALONE = ["/courier", "/confirm", "/demo/cosign", "/"];
 
 export function AppShell({
   identity,
@@ -51,7 +51,13 @@ export function AppShell({
 }) {
   const pathname = usePathname();
 
-  if (STANDALONE.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    // `pathname === prefix` first, and the prefix form skipped for "/", or the
+  // root entry would match every route in the application and the console
+  // would lose its shell entirely.
+  const bare = STANDALONE.some(
+    (prefix) => pathname === prefix || (prefix !== "/" && pathname.startsWith(`${prefix}/`)),
+  );
+  if (bare) {
     return <div className="min-h-screen bg-background">{children}</div>;
   }
 
