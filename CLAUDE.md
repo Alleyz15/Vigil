@@ -993,6 +993,126 @@ npm run db:migrate
 
 ## Session log
 
+### Session 17B — courier, recipient, rejected alternatives, browser verification (complete)
+
+629 tests passing, 7 live-provider tests skipped. `tsc --noEmit` clean, eslint clean, the
+production build clean; `lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% statements,
+branches, functions and lines. No detector threshold moved and no experiment was rerun.
+
+Four surfaces landed, and every one was walked in a browser rather than only compiled.
+
+**The operator-action invariant was weaker than 17A claimed.** There was one test and it covered
+`reject`. `OperatorActionName` has five members, so four were unguarded — and the unguarded one
+that matters is `approve`, the only action that legitimately writes. It is now table-driven over
+the whole enum with a coverage check that fails when a sixth action is added, plus a structural
+ban on `.update(verdicts)` / `.delete(verdicts)` as **the seventh constraint verified by running
+the suite**. See rule 3f for why `approve` needs a different assertion from the other four.
+
+**`/courier` makes the two-phase co-sign legible.** Unsigned halts `PENDING_COURIER_SIGNATURE`,
+writes nothing, and is deliberately **not queued** — nobody is waiting on an operator, so queueing
+it would hand them work they cannot action. A courier-only credential reads *"Signature valid, but
+insufficient"*, derived from `VerificationResult` rather than hardcoded. The co-signed rerun seals
+as a **first sighting, not `EVENT_ID_REUSE`**, which is rule 3c asserted rather than described. A
+later retry of the same bytes is a **NO-OP replay** — behaviour that has existed since session 1
+and had never been visible anywhere.
+
+**`/confirm/[token]` closes the P2 loop in data, not on screen.** E1 measured that the careful
+fraudster is caught by the customer complaint; that input used to come from the generator writing
+disputes directly. The load-bearing test asserts a dispute raised through the recipient's own link
+is read by `assemblePatternInput` — same table, same join, no special wiring.
+
+**Rejected alternatives are disclosed for both selectors.** `covers` became `refusal`, returning
+the predicate that failed, so the panel says *"this parcel is outside the mandate's EPC scope"*
+instead of the true-and-useless *"no authorised reroute exists"*. See rule 3g.
+
+**`/verify` recomputes the hash chain in the visitor's browser.** Verified live: *"Chain intact
+across 19 records"*, then *"Chain breaks at record 2"* on a tampered copy, then the served ledger
+byte-identical afterwards.
+
+#### `walkChain` takes precomputed hashes, and the obvious "improvement" would break it
+
+The tempting refactor is to let the walker own its hashing. **It must not.** Node hashes
+synchronously with `node:crypto`; a browser can only hash asynchronously through `crypto.subtle`.
+A walker that owned the digest would force one of those two to keep its own copy of the sequence
+ordering, the `prevHash` linkage and the first-broken-index — and the copy that drifts is always
+the one without the tests. Passing the hashes in confines the async/sync difference to *"how do I
+hash a string"*, which is exactly where it belongs, and keeps **one chain walker** shared by
+`NonceLedger.verifyChain()` and the page. That single walker is what makes the whole exercise
+worth anything: the page and the server cannot reach different conclusions about the same file.
+
+`canonicalize` was **moved**, not copied, for the same class of reason — see rule 5.
+
+#### The Node / Web Crypto pin in `chain.test.ts`
+
+`crypto.subtle` exists in Node 24, so the code that runs in a visitor's browser is exercised by
+vitest directly rather than only by clicking a button. One test asserts the Node and Web Crypto
+recipes produce **identical entry hashes on real records**.
+
+> **A verification tool that miscomputes would confidently report a break in an intact chain —
+> accusing the artefact of exactly what it exists to disprove.**
+
+That is the sharpest statement of why the test exists, and a future session must not weaken it to
+"both return a 64-character string". The two digests are the only thing that differs between the
+server and the page; if they disagree, `/verify` becomes a machine for manufacturing false
+accusations against our own ledger.
+
+#### The `qa:capture` regression — the fifth instance, and the most instructive
+
+Reserving S1's delivery leg for the courier removed the pending co-signature from the operator's
+queue at boot. That is the correct product behaviour. It also **silently broke
+`npm run qa:capture`**, which had been looking that case up by assuming it existed at boot.
+
+**I introduced it in Part A and found it by accident in Part D**, while diagnosing something else
+entirely. A green suite of 621 tests, a clean typecheck, a clean lint, a successful production
+build — and the one script the demo video depends on threw on its first line of real work.
+
+**The demo-critical scripts are not covered by the test suite.** `npm run qa:capture`,
+`npm run weather:cache:s6` and the `scripts/experiments/` entry points are run by hand or not at
+all, and nothing will tell us if they break again. **Run them manually before submission**, and
+treat a change to workbench construction or scenario shape as a reason to run the capture script
+specifically.
+
+The script now submits the courier draft before looking for the pending case, so it captures the
+*flow* rather than a fixture, and fails loudly if the draft has already been co-signed instead of
+writing a frame that does not show what its filename claims.
+
+#### Tooling note, timeboxed and unresolved
+
+**The interactive browser pane's `screenshot` action returns blank frames** on the operator detail
+page, intermittently and including after `scroll_to`. **The headless capture path is healthy** —
+`npm run qa:capture` renders all five frames at 1920x1080 with Leaflet tiles loaded, under
+`--virtual-time-budget=5000` and `--run-all-compositor-stages-before-draw`.
+
+Since the demo video uses the headless path, this was timeboxed and left. Content and structure
+were verified by reading the rendered markup instead, which is honest verification of what is in
+the DOM and **not** verification of visual presentation. A future session should not re-diagnose
+this from scratch: the two paths are different, and only the healthy one matters for submission.
+
+#### Design decisions worth not re-litigating
+
+- **Courier drafts are legs RESERVED from their own scenario**, never separately-seeded instances.
+  The first attempt duplicated an event identity; see rule 1g.
+- **A positive confirmation never enters `disputes`** — it would corrupt P2's numerator *and* the
+  fleet baseline computed from the same table.
+- **`no_response` is written only when a window closes**, and the API rejects it with a 400 from a
+  caller. Silence is an observation, never an assertion.
+- **The recipient link is scoped to the handoff on screen**, never listed. A listing endpoint
+  hands out every capability at once.
+- **The heuristic's reasons are never presented as the model's rationale.** Rule 3g's corollary.
+
+#### New rules recorded this session
+
+`1f` (an injection that changes nothing proves nothing), `1g` (a suite verifies the invariants
+someone thought to write, with the two defect categories and their different defences), `3g` (text
+that restates a decision must be derived from it), and `4f` extended to five instances.
+
+#### Still open after 17B
+
+Rejected-alternative disclosure for `propose_reroute`'s **success** path is unexercised: no seeded
+scenario yields a proposal, so the panel shows the rejection half and says so with a provenance
+label. `seedDraftIdentity` remains a deliberate duplicate awaiting its fold-back. The submission
+artefacts — write-up, recorded demo, RESULTS.md refresh — are the remaining work.
+
 ### Session 17A — operator workbench and spatial evidence (complete)
 
 **The product now opens on work, not an explanation of the system.** `/operator/inbox` is the
