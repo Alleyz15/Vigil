@@ -14,9 +14,20 @@ import {
 } from "react-leaflet";
 import type { MapOverlay, MapPoint, ShipmentMapModel } from "@/lib/workbench";
 
-const ROUTE_COLOR = "#266b57";
-const FUTURE_COLOR = "#9aa7a3";
+/**
+ * Three kinds of line, told apart WITHOUT reading a tooltip.
+ *
+ * The route is what happened; the contradiction is the accusation. When both
+ * were saturated and the same weight, a viewer could not tell which line was
+ * the argument — they read as one network diagram. So the route recedes to a
+ * neutral grey and the contradiction is the only coloured, dashed, heavy line
+ * on the map. Weight and dash carry it; colour alone would not survive
+ * compression or a colour-blind viewer.
+ */
+const ROUTE_COLOR = "#64748b";
+const FUTURE_COLOR = "#cbd5e1";
 const ALERT_COLOR = "#c24138";
+const CONTEXT_COLOR = "#16778a";
 
 function latLng(point: MapPoint): [number, number] {
   return [point.latitude, point.longitude];
@@ -114,7 +125,7 @@ function OverlayFeature({
   const color = feature.group === "s2-recipients"
     ? ROUTE_COLOR
     : feature.id === "s1-cell-coverage"
-      ? "#16778a"
+      ? CONTEXT_COLOR
       : ALERT_COLOR;
   const eventHandlers = { click: onSelect };
   const tooltip = (
@@ -133,9 +144,11 @@ function OverlayFeature({
         pathOptions={{
           className: selected ? "map-evidence-selected" : undefined,
           color: ALERT_COLOR,
-          dashArray: "7 8",
-          weight: selected ? 5 : 3,
-          opacity: 0.9,
+          dashArray: "10 7",
+          // Heavier than the heaviest route segment (5), deliberately. This is
+          // the only line on the map making a claim.
+          weight: selected ? 8 : 6,
+          opacity: 1,
         }}
       >
         <Tooltip permanent direction="center">GPS ↔ cell contradiction</Tooltip>

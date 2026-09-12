@@ -71,7 +71,25 @@ export function OperatorActions({
           <ShieldAlert data-icon="inline-start" />
           Escalate
         </Button>
-        <Button variant="destructive" disabled={pending} onClick={() => act("reject")}>
+        {/*
+          REJECT IS QUIET, AND THAT IS DELIBERATE.
+
+          A filled red button is the loudest thing in the panel, so the most
+          destructive disposition was drawing the eye first and reading as the
+          expected answer. Visual weight should follow what the operator is
+          being invited to do, not how severe the action is — an operator who
+          reaches for reject because it was the brightest control has been
+          nudged by the layout rather than by the evidence.
+
+          The colour stays only on the text, so it still reads as the
+          destructive one at the moment of choosing.
+        */}
+        <Button
+          variant="ghost"
+          disabled={pending}
+          onClick={() => act("reject")}
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
           <X data-icon="inline-start" />
           Reject
         </Button>

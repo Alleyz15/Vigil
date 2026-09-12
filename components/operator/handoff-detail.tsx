@@ -150,8 +150,12 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
           </div>
 
           <div className="mt-4 border-y py-4">
-            <AxisPair inconsistency={detail.summary.inconsistency} pattern={detail.summary.pattern} />
-            <p className="mt-2 text-xs text-muted-foreground">{detail.summary.coverageLine ?? "Evidence coverage unavailable"}</p>
+            <AxisPair
+              variant="feature"
+              inconsistency={detail.summary.inconsistency}
+              pattern={detail.summary.pattern}
+              coverageLine={detail.summary.coverageLine}
+            />
           </div>
 
           <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 py-4 text-xs">

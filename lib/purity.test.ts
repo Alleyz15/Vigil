@@ -613,6 +613,65 @@ describe("the two axes are never combined into one number", () => {
     }
   });
 
+  /**
+   * THE NINTH CONSTRAINT: an evidence value reaches the screen through one
+   * function.
+   *
+   * `{evidence.value}`, `String(flag.value)` and `JSON.stringify(item.value)`
+   * all render a structured reading — a GPS point, most importantly — as
+   * `[object Object]` or as an unreadable blob. The row then CLAIMS to show the
+   * signal that contradicted another and shows nothing, which is worse than
+   * omitting it: a populated-looking line cannot be told apart from a real one.
+   *
+   * There were three near-copies of this formatter before session 19 (one
+   * private to the timeline, one inline in the handoff detail, one broken on
+   * the co-sign split), and the broken one was found by looking at a rendered
+   * PNG rather than by any test. Stated as a check, a fourth copy cannot be
+   * introduced quietly.
+   */
+  it("renders every evidence value through the one formatter", () => {
+    const VIEW_TREES = [
+      "components/console",
+      "components/operator",
+      "components/courier",
+      "components/recipient",
+      "components/demo",
+      "components/shells",
+    ];
+
+    // `value` is the field name on Evidence. Each of these puts an unknown
+    // straight into the DOM.
+    const BANNED = [
+      { pattern: /\{\s*\w+\.value\s*\}/, why: "interpolates an evidence value directly into JSX" },
+      { pattern: /String\(\s*\w+\.value\s*\)/, why: "calls String() on an evidence value" },
+      { pattern: /JSON\.stringify\(\s*\w+\.value\s*\)/, why: "calls JSON.stringify() on an evidence value" },
+      { pattern: /\$\{\s*\w+\.value\s*\}/, why: "puts an evidence value in a template literal" },
+    ];
+
+    let scanned = 0;
+    for (const tree of VIEW_TREES) {
+      const dir = join(LIB, "..", ...tree.split("/"));
+      if (!existsSync(dir)) continue;
+
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isFile() || !/\.tsx?$/.test(entry.name)) continue;
+        const source = stripComments(readFileSync(join(dir, entry.name), "utf8"));
+        scanned += 1;
+
+        for (const { pattern, why } of BANNED) {
+          expect(
+            pattern.test(source),
+            `${tree}/${entry.name} ${why}. A structured reading renders as "[object Object]" that way, and the row then claims to show what contradicted what while showing nothing. Use formatEvidenceValue from lib/display/evidence.`,
+          ).toBe(false);
+        }
+      }
+    }
+
+    // The scan must actually have read files; an empty sweep passes every
+    // assertion above without checking anything.
+    expect(scanned).toBeGreaterThan(10);
+  });
+
   it("catches a violation when one is introduced", () => {
     // Guards the guard: a stripComments bug that ate everything would make the
     // checks above pass vacuously.
