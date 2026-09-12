@@ -3,7 +3,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Inbox, Link2, Route, Scale, ShieldCheck, Syringe } from "lucide-react";
+import { ClipboardList, Inbox, Link2, PenLine, Route, Scale, ShieldCheck, Syringe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DemoDataControl } from "./demo-data-control";
 import { RoleSwitcher } from "@/components/shells/role-switcher";
@@ -20,6 +20,7 @@ const EVIDENCE = [
   { href: "/verify", label: "Verify the ledger", icon: Link2 },
   { href: "/demo/models", label: "Model divergence", icon: Scale },
   { href: "/demo/injection", label: "Injection", icon: Syringe },
+  { href: "/demo/cosign", label: "Co-sign, side by side", icon: PenLine },
 ];
 
 /**
@@ -29,8 +30,17 @@ const EVIDENCE = [
  * either — they are different people with different authority, and putting the
  * work queue behind every route would be the surveillance framing anti-
  * reference 3 rules out. These render bare.
+ *
+ * `/demo/cosign` is bare for a different reason: it puts a courier surface and
+ * an operator surface side by side, and wrapping that in the operator console
+ * would nest one of the two panes inside the very chrome it is being
+ * contrasted against.
+ *
+ * THIS ARRAY IS THE TRAP RECORDED IN KNOWN LIMITATIONS. A fourth surface added
+ * without editing it silently inherits the console shell, and nothing fails.
+ * The structural fix is a `(console)` route group.
  */
-const STANDALONE = ["/courier", "/confirm"];
+const STANDALONE = ["/courier", "/confirm", "/demo/cosign"];
 
 export function AppShell({
   identity,

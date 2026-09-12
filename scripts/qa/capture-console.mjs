@@ -108,3 +108,74 @@ capture(
 );
 capture("courier-submission-1920x1080.png", "/courier");
 capture("gate-evidence-1920x1080.png", "/demo/gate");
+
+/**
+ * The split screen, at the beat that carries the argument.
+ *
+ * The submission above put this handoff into `awaiting_cosignature`, so the
+ * frame lands on "courier signature valid, and still not a credential" without
+ * the script arranging anything of its own. Captured AFTER the operator frames
+ * and BEFORE any co-signature, because co-signing moves it to the sealed phase
+ * and there is deliberately no way back in a process (no reset endpoint).
+ */
+capture("cosign-split-1920x1080.png", "/demo/cosign");
+
+/**
+ * The recipient surface, so all three roles exist as evidence at one size.
+ *
+ * The token is resolved from the workbench at capture time, exactly like the
+ * pending event id above. Hardcoding one would bind this script to a seed.
+ */
+/**
+ * The dev server intermittently resets a connection when several large JSON
+ * responses are requested back to back, right after Chrome has been driving
+ * it. That is a transient transport failure, not a missing fixture, and it
+ * must not throw away six frames that are already on disk.
+ */
+async function getJson(url, attempts = 3) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (error) {
+      if (attempt === attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    }
+  }
+  return null;
+}
+
+const handoffsPayload = await getJson(`${BASE}/api/operator/handoffs`);
+if (!handoffsPayload) {
+  throw new Error("Operator handoffs could not be read.");
+}
+const { items: handoffs } = handoffsPayload;
+
+// Bounded and fault-tolerant on purpose: each detail response is a large
+// object and the dev server resets the connection under a rapid sequential
+// scan of all of them. A transient reset must not fail a capture run that has
+// already written six good frames.
+let recipientToken = null;
+for (const handoff of handoffs.slice(0, 12)) {
+  try {
+    const body = await getJson(
+      `${BASE}/api/operator/handoffs/${encodeURIComponent(handoff.eventId)}`,
+    );
+    if (body?.recipientConfirmation) {
+      recipientToken = body.recipientConfirmation.tokenId;
+      break;
+    }
+  } catch {
+    // Try the next handoff rather than abandoning the run.
+  }
+}
+
+if (!recipientToken) {
+  throw new Error(
+    "No recipient confirmation token was found on any handoff. The recipient frame would " +
+      "otherwise be captured from a page that cannot show what its filename claims.",
+  );
+}
+
+capture("recipient-confirm-1920x1080.png", `/confirm/${encodeURIComponent(recipientToken)}`);

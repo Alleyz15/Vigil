@@ -17,6 +17,7 @@ import {
 import { motion, useReducedMotion } from "motion/react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
+import { formatEvidenceValue } from "@/lib/display/evidence";
 import { cn } from "@/lib/utils";
 import {
   initialPlayback,
@@ -448,7 +449,7 @@ function LegDetail({ leg }: { leg: LegView }) {
                           {item.field}
                         </dt>
                         <dd className="break-all font-mono text-xs text-foreground/80">
-                          {formatValue(item.value)}
+                          {formatEvidenceValue(item.value)}
                         </dd>
                       </div>
                     ))}
@@ -485,8 +486,4 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
+

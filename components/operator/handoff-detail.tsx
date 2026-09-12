@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, CircleDashed, CloudRain, KeyRound, Link2, Paus
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { HandoffDetail } from "@/lib/workbench";
+import { formatEvidenceValue } from "@/lib/display/evidence";
 import { cn } from "@/lib/utils";
 import { AxisPair } from "./axis-pair";
 import { detailStatusMessage, traceNodeStates } from "./handoff-detail-model";
@@ -205,7 +206,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                   {flag.evidence.map((evidence, index) => (
                     <span key={`${evidence.field}-${index}`} className="min-w-0 break-all text-xs text-muted-foreground">
-                      <span className="font-mono text-foreground">{evidence.field}</span> = {JSON.stringify(evidence.value)}
+                      <span className="font-mono text-foreground">{evidence.field}</span> = {formatEvidenceValue(evidence.value)}
                     </span>
                   ))}
                 </div>
