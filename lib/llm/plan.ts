@@ -62,6 +62,15 @@ const MAX_TOOLS = 2;
  * Only `parse` and `lookup` have run at this point, so it can key on identity,
  * value and the raw signal bundle — never on a score, because none exists yet.
  */
+/** Delivery-type steps, where the recipient address is the subject of the scan. */
+function isDeliveryStep(ctx: AgentContext): boolean {
+  const step = ctx.event?.bizStep;
+  return (
+    step === "urn:epcglobal:cbv:bizstep:delivering" ||
+    step === "urn:epcglobal:cbv:bizstep:accepting"
+  );
+}
+
 export function considerTools(ctx: AgentContext): ToolConsideration[] {
   const signals = ctx.event ? vigilSignalsOf(ctx.event) : undefined;
   const accuracy = signals?.gps?.point.accuracyMeters;
@@ -88,6 +97,26 @@ export function considerTools(ctx: AgentContext): ToolConsideration[] {
       eligible: !signals?.gps || (accuracy !== undefined && accuracy > 50) || !signals?.cell,
       taken: "the location signals are degraded or absent",
       passed: "the location signals are present and precise enough to judge",
+    },
+    {
+      tool: "check_address_history",
+      // The question the other tools cannot answer: a courier may be ordinary
+      // and a recipient may be new while the ADDRESS has a history — a tower
+      // with a reception desk, a gated compound, a building where deliveries
+      // routinely fail.
+      //
+      // Gated on a delivery that arrived WITHOUT proof of delivery, which is a
+      // raw signal available at plan time and the case where the building's
+      // own history actually distinguishes something: a reception desk that
+      // routinely takes parcels without a signature looks identical, on this
+      // one event, to a courier who never went. Firing on every delivery would
+      // break the heuristic's most important property — that it asks for
+      // nothing when nothing about the handoff calls for it.
+      eligible: isDeliveryStep(ctx) && !signals?.pod,
+      taken: "a delivery arrived with no proof of delivery, so the address's own history is relevant",
+      passed: signals?.pod
+        ? "the delivery carried proof of delivery, so the address's history adds nothing"
+        : "not a delivery scan, so the recipient address is not the subject",
     },
     {
       tool: "lookup_recipient_history",

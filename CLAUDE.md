@@ -331,6 +331,22 @@ decision. Before relying on a property of code you did not just write, go and re
 | 2 | Ollama base URL calling a route that does not exist (session 14) | code no test could reach |
 | 3 | `propose_reroute` success path, never exercised (session 17B) | code no test could reach |
 | 4 | `uuidFrom` ignoring the world seed (session 17B) | **invariant no test expressed** |
+| 5 | `npm run qa:capture` broken by reserving S1's leg (session 17B) | code no test could reach |
+| 6 | `fetch_route_history` and `lookup_recipient_history` selecting nothing (session 18) | **code no test could reach — and the most consequential yet** |
+
+**Number 6 is the one that cost the most.** Two of the plan node's three tools had **no
+implementation at all**. They were in the closed enum, in the deterministic heuristic, and named
+in the prompt the model reads — and `externalContext` returned early unless the selected tool was
+`check_traffic_weather`. Choosing either did nothing.
+
+Every test passed, because **nothing asserted that selecting a tool had an effect**. The parity
+tests assert the verdict does not change when tools change, which is the opposite property and is
+equally satisfied by a tool that does nothing at all. The enum, the heuristic and the prompt all
+described a capability the system did not have.
+
+That is why the whole Agentic AI story looked thin: the model's one real decision mostly selected
+inert options. A future session proposing "the model's contribution looks optional" should check
+whether the options do anything before concluding the model is redundant.
 
 The first three are **unexercised code**: something written once, unreachable by any real test,
 and therefore never questioned. They are found by **tracing before building** — reading the

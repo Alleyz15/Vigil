@@ -35,6 +35,15 @@ export function collectEvidenceIds(ctx: AgentContext): Set<string> {
 
   if (ctx.externalContext?.status === "available") ids.add("weather");
 
+  // A tool result becomes citable ONLY when it found something. A lookup that
+  // came back empty is a real outcome worth showing an operator, and it is
+  // exactly the sentence a model must not be able to source: "the recipient has
+  // no dispute history" is a claim about evidence we looked for and did not
+  // find, and a citation would dress that absence as a record.
+  for (const result of ctx.toolResults ?? []) {
+    if (result.found) ids.add(result.tool);
+  }
+
   for (const flag of ctx.engineResult?.hardFailures ?? []) ids.add(flag.id);
   for (const flag of ctx.engineResult?.flags ?? []) ids.add(flag.id);
   for (const flag of ctx.patternOutcome?.flags ?? []) ids.add(flag.id);

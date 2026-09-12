@@ -18,6 +18,7 @@ Choose between 0 and 2 tools from EXACTLY this list:
 - fetch_route_history: what this courier has been doing recently
 - check_traffic_weather: conditions that might explain a slow or odd route
 - lookup_recipient_history: whether this recipient has a history of disputes
+- check_address_history: what has happened at this delivery address before
 
 Choosing none is a valid and often correct answer.
 

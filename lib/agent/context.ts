@@ -36,8 +36,27 @@ export const ToolName = z.enum([
   "fetch_route_history",
   "check_traffic_weather",
   "lookup_recipient_history",
+  "check_address_history",
 ]);
 export type ToolName = z.infer<typeof ToolName>;
+
+/**
+ * What one context tool found.
+ *
+ * `found: false` is a real outcome and is recorded, not omitted — see
+ * `toolResults`. It is deliberately NOT citable: prose saying "the recipient
+ * has no dispute history" is a claim about evidence we looked for and did not
+ * find, which is exactly the kind of sentence a model should not be able to
+ * attach a citation id to.
+ */
+export type ToolResult = {
+  tool: ToolName;
+  found: boolean;
+  /** One line for the operator, built from counted rows. Never provider prose. */
+  summary: string;
+  /** Counted facts the summary was built from. Numbers only. */
+  detail: Record<string, number | string>;
+};
 
 /** What `plan` is allowed to return. At most two tools; zero is a valid plan. */
 export const ToolPlan = z.strictObject({
@@ -169,6 +188,17 @@ export type AgentContext = {
         summary: string;
         reason: string;
       };
+
+  /**
+   * external_context — results from the non-weather tools `plan` selected.
+   *
+   * ONE ENTRY PER TOOL THAT ACTUALLY RAN. A tool that was selected but found
+   * nothing still records a result saying so: "this recipient has no prior
+   * disputes" is a finding, while an absent entry is indistinguishable from a
+   * tool that was never asked. The `found` flag is what decides whether the id
+   * becomes citable, so a model cannot cite a lookup that came back empty.
+   */
+  toolResults?: ToolResult[];
 
   /** gate — credential verification, run against the gate's own threshold */
   credential?: VerificationResult;

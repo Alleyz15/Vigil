@@ -16,6 +16,11 @@ import {
   mergeResolutions,
 } from "@/lib/assemble";
 import { persistEvent, persistExplanation, persistVerdict } from "@/lib/assemble/persist";
+import {
+  checkAddressHistory,
+  fetchRouteHistory,
+  lookupRecipientHistory,
+} from "@/lib/assemble/context-tools";
 import { explainVerdict, planTools } from "@/lib/llm";
 import type { LlmProvider, LlmTelemetry } from "@/lib/llm";
 import { verificationKeys, verifyCredential } from "@/lib/credential";
@@ -25,7 +30,7 @@ import type { PatternInput } from "@/lib/pattern/types";
 import type { GateInput } from "@/lib/gate/types";
 import type { WeatherProvider } from "@/lib/weather";
 import { assembleRerouteInput, persistReroute, proposeReroute } from "@/lib/reroute";
-import type { AgentContext, Node } from "./context";
+import type { AgentContext, Node, ToolResult } from "./context";
 
 /**
  * The eight node implementations.
@@ -345,6 +350,14 @@ export const fetchHistory: NodeFn = (ctx, deps) => {
  * is as much a result as evidence that raises one.
  */
 export const externalContext: NodeFn = async (ctx, deps) => {
+  // THE NON-WEATHER TOOLS, WHICH UNTIL SESSION 18 DID NOTHING.
+  //
+  // `fetch_route_history` and `lookup_recipient_history` were in the enum, in
+  // the heuristic and in the prompt, with no implementation behind them —
+  // selecting one was a no-op and every test passed, because nothing asserted
+  // that choosing a tool had an effect. See CLAUDE.md rule 1g, defect 6.
+  runLookupTools(ctx, deps);
+
   if (!ctx.plan?.tools.includes("check_traffic_weather")) return;
 
   const event = ctx.event;
@@ -512,6 +525,36 @@ export const gate: NodeFn = (ctx, deps) => {
     if (ctx.reroute.status === "proposed") persistReroute(deps.db, ctx.reroute.proposal);
   }
 };
+
+/**
+ * Run the row-reading context tools the plan selected.
+ *
+ * These read and count; they never score and never reach `GateInput`. A tool
+ * that found nothing still records a result, so "we looked and there was
+ * nothing" is distinguishable from "we never looked" — and that result is
+ * marked `found: false`, which keeps it out of the citable set.
+ */
+function runLookupTools(ctx: AgentContext, deps: NodeDeps): void {
+  const tools = ctx.plan?.tools ?? [];
+  if (tools.length === 0) return;
+
+  const event = ctx.event;
+  const epc = event ? epcsOf(event)[0] : undefined;
+  const at = event?.recordTime ?? event?.eventTime ?? deps.now().toISOString();
+  const results: ToolResult[] = [];
+
+  if (tools.includes("fetch_route_history") && ctx.courier?.courierId) {
+    results.push(fetchRouteHistory(deps.db, ctx.courier.courierId, at));
+  }
+  if (tools.includes("lookup_recipient_history") && epc) {
+    results.push(lookupRecipientHistory(deps.db, epc, at));
+  }
+  if (tools.includes("check_address_history") && epc) {
+    results.push(checkAddressHistory(deps.db, epc, at));
+  }
+
+  if (results.length > 0) ctx.toolResults = results;
+}
 
 /**
  * Check the presented credential against the threshold the gate just set.
