@@ -54,8 +54,8 @@ export function ConfirmView({
   const Icon = state.status === "answered" ? CheckCircle2 : state.status === "open" ? PackageCheck : CircleAlert;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 py-12">
-      <div className="rounded-lg border bg-card p-8">
+    <div>
+      <div>
         <Icon
           aria-hidden="true"
           className={
@@ -90,7 +90,7 @@ export function ConfirmView({
           </p>
         )}
 
-        <p className="mt-6 border-t pt-4 text-xs leading-5 text-muted-foreground">
+        <p className="mt-6 text-xs leading-5 text-muted-foreground">
           This link is about one parcel and works once. It is not an account, and answering it
           gives no access to anything else.
         </p>

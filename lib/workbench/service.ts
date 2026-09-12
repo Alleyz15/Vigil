@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { runAgent } from "@/lib/agent/machine";
+import { sha256Hex } from "@/lib/ledger";
 import type { AgentContext } from "@/lib/agent/context";
 import { closeDb, type VigilDb } from "@/lib/db/client";
 import {
@@ -81,6 +82,34 @@ const START_MS = Date.parse("2026-09-07T14:30:00+08:00");
 const OPERATOR_ID = "OP-01";
 
 type StoredEntry = WorkbenchEntry & { harness: IngestHarness; actions: ActionView[] };
+
+/** Who is acting, and the key that proves it. */
+export type RoleIdentity = {
+  role: "courier" | "operator" | "recipient";
+  label: string;
+  subject: string;
+  /** Short form of a REAL Ed25519 public key, or null when none applies. */
+  keyFingerprint: string | null;
+};
+
+/**
+ * A readable short form of a public key: a HASH of it, not a truncation.
+ *
+ * The first attempt sliced the base64 directly and produced `ed25519:MCow…T1CY`
+ * for the courier and `ed25519:MCow…WPoI` for the operator. Those differ, but
+ * only in the last four characters — `MCow` is the DER header every Ed25519
+ * SPKI key carries, so on a paused video frame both strips read as the same
+ * identity. A fingerprint whose leading characters are constant across all keys
+ * is not a fingerprint.
+ *
+ * Hashing first is also what the convention is: SSH shows `SHA256:` of the key
+ * for exactly this reason. Every character now varies with the key.
+ */
+function fingerprint(publicKey: string | undefined): string | null {
+  if (!publicKey) return null;
+  const digest = sha256Hex(publicKey);
+  return `ed25519:${digest.slice(0, 4)}…${digest.slice(4, 8)}`;
+}
 
 function priorityFor(state: CaseState | null, decision?: string): number {
   if (state === "timed_out") return 500;
@@ -735,6 +764,36 @@ export class OperatorWorkbench {
     });
 
     return this.getHandoff(eventId)!;
+  }
+
+  /**
+   * Who the demo is acting as, with the fingerprint of the key that signs.
+   *
+   * THE FINGERPRINT IS OF A REAL KEY. `scenario.courier.keys.publicKey` is the
+   * Ed25519 key that actually signs the courier's submissions, and
+   * `harness.operator.publicKey` is the one that actually co-signs. A decorative
+   * hex string on a page arguing that THE KEY IS THE IDENTITY would be the same
+   * class of invention as plotting `not_evaluated` at the origin or giving an
+   * unlocated flag a map marker — a claim dressed as a measurement. See rule 3e.
+   */
+  identities(): { courier: RoleIdentity; operator: RoleIdentity } {
+    const entry = [...this.entries.values()][0] ?? [...this.drafts.values()][0];
+    const courier = entry?.scenario.courier;
+
+    return {
+      courier: {
+        role: "courier",
+        label: courier?.displayName ?? "Courier",
+        subject: courier?.courierId ?? "unknown",
+        keyFingerprint: fingerprint(courier?.keys.publicKey),
+      },
+      operator: {
+        role: "operator",
+        label: "Ops Console",
+        subject: OPERATOR_ID,
+        keyFingerprint: fingerprint(entry?.harness.operator.publicKey),
+      },
+    };
   }
 
   /**

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ClipboardList, Inbox, Link2, Route, Scale, ShieldCheck, Syringe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DemoDataControl } from "./demo-data-control";
+import { RoleSwitcher } from "@/components/shells/role-switcher";
 
 const PRIMARY = [
   { href: "/operator/inbox", label: "Inbox", icon: Inbox },
@@ -107,9 +108,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="ml-56 min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-8 backdrop-blur-sm">
           <div className="text-sm text-muted-foreground">Process handoffs that need a decision</div>
-          <Suspense fallback={<div className="h-8 w-[26rem]" aria-hidden="true" />}>
-            <DemoDataControl />
-          </Suspense>
+          <div className="flex items-center gap-4">
+            <RoleSwitcher />
+            <Suspense fallback={<div className="h-8 w-[26rem]" aria-hidden="true" />}>
+              <DemoDataControl />
+            </Suspense>
+          </div>
         </header>
         <main className="mx-auto max-w-[1680px] px-8 py-6">{children}</main>
       </div>

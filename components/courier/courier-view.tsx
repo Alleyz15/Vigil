@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw } from "lucide-react";
 import type { CourierOutcome, CourierOutcomeKind } from "@/lib/workbench/courier";
 import type { CourierDraft } from "@/lib/workbench/service";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  * courier, scores them, or shows them anyone else's work.
  */
 
-const TONE: Record<CourierOutcomeKind, { ring: string; text: string; Icon: typeof ShieldCheck }> = {
+const TONE: Record<CourierOutcomeKind, { ring: string; text: string; Icon: typeof CheckCircle2 }> = {
   sealed: { ring: "border-emerald-500/40 bg-emerald-500/5", text: "text-emerald-700 dark:text-emerald-400", Icon: CheckCircle2 },
   replay_noop: { ring: "border-emerald-500/30 bg-emerald-500/5", text: "text-emerald-700 dark:text-emerald-400", Icon: RotateCcw },
   signature_insufficient: { ring: "border-blue-500/40 bg-blue-500/5", text: "text-blue-700 dark:text-blue-400", Icon: CircleDashed },
@@ -59,29 +59,25 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <header className="mb-2 flex items-center gap-3">
-        <span className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <ShieldCheck aria-hidden="true" className="size-5" />
-        </span>
-        <div>
-          <h1 className="text-xl font-semibold leading-tight">Courier handoffs</h1>
-          <p className="text-sm text-muted-foreground">Submit a scan and sign it with your device key.</p>
-        </div>
-      </header>
+    <div>
+      {/* No page header here: the shell's identity strip already says who this
+          is, and repeating it would spend the narrow column on furniture. */}
+      <h1 className="text-base font-semibold">Your handoffs</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Submit a scan and sign it with your device key.
+      </p>
 
-      <div className="mb-8 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <ProvenanceLabel>Seeded synthetic shipments</ProvenanceLabel>
-        <ProvenanceLabel>Simulated identity · real Ed25519 signatures</ProvenanceLabel>
       </div>
 
       {error && (
-        <p role="alert" className="mb-4 rounded-md border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+        <p role="alert" className="mt-4 rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-400">
           {error}
         </p>
       )}
 
-      <ul className="flex flex-col gap-4">
+      <ul className="mt-4 flex flex-col gap-4">
         {drafts.map((draft) => (
           <DraftCard
             key={draft.draftId}
@@ -108,8 +104,8 @@ function DraftCard({
   const sealed = draft.attempts.some((attempt: Attempt) => attempt.outcome.sealed);
 
   return (
-    <li className="rounded-lg border bg-card">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b px-4 py-4">
+    <li className="overflow-hidden rounded-lg bg-muted/40">
+      <div className="flex flex-wrap items-start justify-between gap-4 px-4 pt-4">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">{draft.title}</h2>
           <p className="mt-1 font-mono text-xs text-muted-foreground">{draft.waybillNo}</p>
@@ -147,7 +143,7 @@ function OutcomePanel({ outcome }: { outcome: CourierOutcome }) {
   const Icon = tone.Icon;
 
   return (
-    <div className={cn("border-t px-4 py-4", tone.ring)}>
+    <div className={cn("mx-4 mb-4 rounded-md px-3 py-3", tone.ring)}>
       <div className="flex items-start gap-3">
         <Icon aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", tone.text)} />
         <div className="min-w-0">
@@ -188,7 +184,7 @@ function OutcomePanel({ outcome }: { outcome: CourierOutcome }) {
  */
 function AttemptHistory({ attempts }: { attempts: Attempt[] }) {
   return (
-    <div className="border-t px-4 py-3">
+    <div className="px-4 pb-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Submission history
       </div>
