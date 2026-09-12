@@ -45,6 +45,15 @@ export function ArchitectureDiagram() {
           securityLevel: "strict",
           theme: "neutral",
           fontFamily: "var(--font-inter), system-ui, sans-serif",
+          /*
+            Mermaid draws its own SVG text, so the 12px type floor the purity
+            test enforces cannot see it — the guard reads Tailwind classes in
+            our source, and none of this markup is ours. Its default lands
+            below that floor and softens badly under video compression, which
+            is the one thing this diagram cannot afford: the node names ARE the
+            claim about where the model sits.
+          */
+          themeVariables: { fontSize: "15px" },
         });
         const { svg } = await mermaid.render("vigil-agent-graph", GRAPH);
         if (!cancelled && ref.current) ref.current.innerHTML = svg;
