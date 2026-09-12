@@ -55,3 +55,8 @@ AGENTS.md
 
 
 .tmp-dev.*.log
+
+# Other AI coding tools drop config here. Not this project's, and swept in twice by `git add -A`.
+.cursor/
+.superdesign/
+.windsurfrules
