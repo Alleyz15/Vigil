@@ -12,7 +12,27 @@ import type { Rng } from "../rng";
  * depart from, and half the engine has no history to compare against.
  */
 
-export type ScenarioId = "S0" | "S1" | "S2" | "S3" | "S4" | "S5" | "S6";
+/**
+ * The seven authored scenarios, plus anything the scenario builder composes.
+ *
+ * `B-` ids come from `lib/generate/builder.ts`, which lets a viewer pick an
+ * origin, a destination and a fault and runs a real shipment between them. They
+ * are `GeneratedScenario`s in every other respect and go through the same
+ * `ingestScenario` — session 7's lesson, that the second code path is always
+ * the one without the tests.
+ *
+ * The prefix is not decoration: `uuidFrom` derives event ids from the id and
+ * the leg name alone, so a built run sharing a prefix with a seeded one would
+ * silently overwrite it in the workbench. That is rule 1g's defect 4, and the
+ * namespace split is what makes the collision impossible rather than unlikely.
+ */
+export type BuiltScenarioId = `B-${string}`;
+
+export type ScenarioId = "S0" | "S1" | "S2" | "S3" | "S4" | "S5" | "S6" | BuiltScenarioId;
+
+/** The seven authored ones, for anywhere that must enumerate rather than accept. */
+export const AUTHORED_SCENARIO_IDS = ["S0", "S1", "S2", "S3", "S4", "S5", "S6"] as const;
+export type AuthoredScenarioId = (typeof AUTHORED_SCENARIO_IDS)[number];
 
 /** What a scenario expects to happen, and where. */
 export type ScenarioExpectation = {

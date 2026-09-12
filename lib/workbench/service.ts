@@ -22,9 +22,11 @@ import {
   seedFleetBackground,
   type BuiltEvent,
   type GeneratedScenario,
+  type GeneratedWorld,
   type IngestHarness,
   type ScenarioId,
 } from "@/lib/generate";
+import { buildRequestedScenario, type BuildRequest } from "@/lib/generate/builder";
 import { createOpenMeteoProvider, OPEN_METEO_CACHE_DIR } from "@/lib/weather";
 import { epcsOf } from "@/lib/epcis";
 import { rmSync } from "node:fs";
@@ -180,11 +182,32 @@ function upsertScenarioParcels(harness: IngestHarness, scenario: GeneratedScenar
  * holding back a middle scan would break H1 for every leg after it.
  */
 async function buildScenarioEntries(
-  id: ScenarioId,
-  options: { holdBackFinalLeg?: boolean } = {},
+  source: ScenarioId | { scenario: GeneratedScenario; world: GeneratedWorld },
+  options: {
+    holdBackFinalLeg?: boolean;
+    /**
+     * Which leg is submitted COURIER-ONLY, so the gate gets to ask for a
+     * co-signature and the case lands in the operator's queue.
+     *
+     * Authored scenarios name their own leg. A built run passes the delivery
+     * leg, which makes "pending" DERIVED from what the gate decided rather than
+     * declared in advance: a shipment whose declared value crosses the
+     * mandate's co-sign figure halts and waits for an operator; one that does
+     * not, seals. Same submission either way.
+     */
+    leavePendingAt?: (built: BuiltEvent, scenario: GeneratedScenario) => boolean;
+  } = {},
 ): Promise<{ entries: StoredEntry[]; draft?: StoredDraft }> {
-  const world = buildWorld(SEED);
-  const scenario = buildScenario(id, { world, rng: makeRng(SEED), startMs: START_MS });
+  // A pre-built scenario travels the IDENTICAL path from here on. The scenario
+  // builder composes a `GeneratedScenario` and hands it over; nothing below
+  // knows or cares whether it was authored or requested. Session 7's lesson:
+  // the second code path is always the one without the tests.
+  const world = typeof source === "string" ? buildWorld(SEED) : source.world;
+  const scenario =
+    typeof source === "string"
+      ? buildScenario(source, { world, rng: makeRng(SEED), startMs: START_MS })
+      : source.scenario;
+  const id = scenario.id;
   const harness = createHarness(world);
   harness.deps.weather = createOpenMeteoProvider({
     cacheDir: OPEN_METEO_CACHE_DIR,
@@ -207,8 +230,9 @@ async function buildScenarioEntries(
 
   const entries: StoredEntry[] = [];
   for (const built of timeline) {
-    const leavePending =
-      (id === "S1" || id === "S5") && built.leg === scenario.expectation.exceptionAtLeg;
+    const leavePending = options.leavePendingAt
+      ? options.leavePendingAt(built, scenario)
+      : (id === "S1" || id === "S5") && built.leg === scenario.expectation.exceptionAtLeg;
     const result = leavePending
       ? { ctx: await ingestEvent(harness, built, credentialArgs), neededCosign: false }
       : await ingestWithApproval(harness, built, credentialArgs);
@@ -552,6 +576,54 @@ export class OperatorWorkbench {
 
     this.promote(draft, ctx);
     return { draft: this.listCourierDrafts().find((d) => d.draftId === draftId)!, run, outcome };
+  }
+
+  /**
+   * Run a shipment the viewer composed, and say where to look at it.
+   *
+   * This is the scenario builder's only entry point into the workbench, and it
+   * reuses `buildScenarioEntries` wholesale — the same ingest, the same
+   * `runAgent`, the same entry construction, the same case rows. What arrives
+   * is an ordinary `GeneratedScenario`; nothing downstream knows it was
+   * requested rather than authored.
+   *
+   * The final leg is submitted COURIER-ONLY, so whether it waits for an
+   * operator is DERIVED from the gate rather than declared here: a declared
+   * value over the mandate's co-sign figure halts and queues, and one under it
+   * seals. Same submission, different outcome, for a reason the sender caused.
+   */
+  async runBuilt(request: BuildRequest): Promise<
+    | { ok: true; runId: string; eventIds: string[]; landOnEventId: string }
+    | { ok: false; reason: string }
+  > {
+    const world = buildWorld(SEED);
+    const built = buildRequestedScenario(request, { world, startMs: START_MS });
+    if (!built.ok) return { ok: false, reason: built.reason };
+
+    const { entries } = await buildScenarioEntries(
+      { scenario: built.scenario, world },
+      {
+        leavePendingAt: (event, scenario) =>
+          event.legIndex === scenario.timeline.length - 1,
+      },
+    );
+
+    for (const entry of entries) {
+      this.entries.set(entry.built.event.eventID, entry);
+      this.harnesses.add(entry.harness);
+    }
+
+    // Land on the leg that is actually worth looking at: whatever the gate
+    // stopped on, or the delivery if it accepted everything.
+    const exception = entries.find((entry) => entry.state !== null);
+    const last = entries[entries.length - 1];
+
+    return {
+      ok: true,
+      runId: built.runId,
+      eventIds: entries.map((entry) => entry.built.event.eventID),
+      landOnEventId: (exception ?? last).built.event.eventID,
+    };
   }
 
   /**

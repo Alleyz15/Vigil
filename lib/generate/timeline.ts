@@ -191,6 +191,18 @@ export function buildLegEvent(args: {
   startMs: number;
   rng: Rng;
   eventIdSeed: string;
+  /**
+   * Where this route's facilities actually are.
+   *
+   * OPTIONAL, AND ITS ABSENCE IS THE OLD BEHAVIOUR. Every seeded scenario runs
+   * one fixed lane and omits this, so it keeps the two module-level hubs and
+   * stays byte-identical — `generate.test.ts` asserts that, and it is the same
+   * discipline as the noise model's level 0.
+   *
+   * The scenario builder supplies real depots for an arbitrary origin and
+   * destination, which is the only reason this seam exists.
+   */
+  hubs?: { origin: GeoPoint; destination: GeoPoint };
   overrides?: LegOverrides;
   /**
    * Environmental noise for this leg.
@@ -241,8 +253,8 @@ export function buildLegEvent(args: {
     (leg.where === "recipient"
       ? jitterPoint(rng, args.noise?.trueScanPoint ?? parcel.recipientPoint, 30)
       : leg.where === "origin_hub"
-        ? jitterPoint(rng, HUBS.kl, 40)
-        : jitterPoint(rng, HUBS.shahAlam, 40));
+        ? jitterPoint(rng, args.hubs?.origin ?? HUBS.kl, 40)
+        : jitterPoint(rng, args.hubs?.destination ?? HUBS.shahAlam, 40));
 
   // A scenario's stated position is what the scenario says it is. Only a
   // naturally-generated one picks up the environment's error.
@@ -377,6 +389,8 @@ export function buildTimeline(args: {
   /** Per-leg overrides, keyed by leg name. This is how a scenario injects. */
   overrides?: Partial<Record<LegName, LegOverrides>>;
   legs?: LegSpec[];
+  /** This route's depots. Omitted by every seeded scenario; see `buildLegEvent`. */
+  hubs?: { origin: GeoPoint; destination: GeoPoint };
   /**
    * How rough the world is. 0 is the control and draws no randomness, so a
    * level-0 timeline is byte-identical to the pre-noise dataset that every
@@ -421,6 +435,7 @@ export function buildTimeline(args: {
       startMs,
       rng: rng.derive(idSeed),
       eventIdSeed: idSeed,
+      hubs: args.hubs,
       // The scenario's statement wins over the episode's.
       overrides: { ...plan.extras.get(legIndex), ...overrides[leg.name] },
       noise: shipment
