@@ -87,11 +87,21 @@ type StoredEntry = WorkbenchEntry & { harness: IngestHarness; actions: ActionVie
 
 /** Who is acting, and the key that proves it. */
 export type RoleIdentity = {
-  role: "courier" | "operator" | "recipient";
+  role: "courier" | "operator" | "recipient" | "sender";
   label: string;
   subject: string;
   /** Short form of a REAL Ed25519 public key, or null when none applies. */
   keyFingerprint: string | null;
+  /**
+   * Why there is no key, for the parties that do not hold one.
+   *
+   * A BLANK WOULD BE A WORSE ANSWER THAN AN EXPLANATION. Sender and recipient
+   * are structurally different from courier and operator: they supply
+   * declarations, and signatures come from the parties who take actions. Saying
+   * so on the strip states the argument while identifying the user — the same
+   * job the fingerprint does for the other two.
+   */
+  note?: string;
 };
 
 /**
@@ -859,7 +869,7 @@ export class OperatorWorkbench {
    * class of invention as plotting `not_evaluated` at the origin or giving an
    * unlocated flag a map marker — a claim dressed as a measurement. See rule 3e.
    */
-  identities(): { courier: RoleIdentity; operator: RoleIdentity } {
+  identities(): { courier: RoleIdentity; operator: RoleIdentity; sender: RoleIdentity } {
     const entry = [...this.entries.values()][0] ?? [...this.drafts.values()][0];
     const courier = entry?.scenario.courier;
 
@@ -876,6 +886,37 @@ export class OperatorWorkbench {
         subject: OPERATOR_ID,
         keyFingerprint: fingerprint(entry?.harness.operator.publicKey),
       },
+      sender: {
+        role: "sender",
+        label: "Merchant despatch",
+        subject: "SENDER-01",
+        keyFingerprint: null,
+        note:
+          "No signing key — the sender's declarations are claims, verified against what the " +
+          "courier and recipient independently report.",
+      },
+    };
+  }
+
+  /**
+   * The limits a sender's declaration is measured against.
+   *
+   * READ FROM THE MANDATE, never restated. The form tells a viewer that a
+   * declared value above this figure will require a co-signature, and that
+   * sentence has to come from the same place the gate reads — otherwise it is a
+   * second copy of the rule and the two part company the first time the mandate
+   * moves (rule 3g).
+   */
+  senderPolicy(): { cosignOverSen: number | null; codCapSen: number; maxValueSen: number; courier: string } {
+    const entry = [...this.entries.values()][0] ?? [...this.drafts.values()][0];
+    const mandate = entry?.scenario.courier.mandate;
+    const cosign = mandate?.requiresCosignIf.find((rule) => rule.kind === "parcel_value_over_sen");
+
+    return {
+      cosignOverSen: cosign?.value ?? null,
+      codCapSen: mandate?.limits.codCashCapSen ?? 0,
+      maxValueSen: mandate?.limits.maxParcelValueSen ?? 0,
+      courier: entry?.scenario.courier.displayName ?? "the assigned courier",
     };
   }
 

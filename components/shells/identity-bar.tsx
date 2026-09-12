@@ -1,4 +1,4 @@
-import { KeyRound, Smartphone, Monitor, Clock } from "lucide-react";
+import { KeyRound, Smartphone, Monitor, Clock, PackagePlus, ShieldOff } from "lucide-react";
 import type { RoleIdentity } from "@/lib/workbench/service";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +35,20 @@ const ROLE_STYLE = {
     band: "bg-violet-950 text-violet-50",
     accent: "text-violet-200",
   },
+  /**
+   * The sender. AMBER, and a fourth shape.
+   *
+   * With four surfaces the single-frame test gets harder, not easier: colour
+   * alone stops being enough to separate them and structure has to do more.
+   * The sender is a merchant at a desk filling a form — wider than the
+   * courier's phone-shaped column, no operator sidebar, and a band nobody else
+   * uses.
+   */
+  sender: {
+    Icon: PackagePlus,
+    band: "bg-amber-950 text-amber-50",
+    accent: "text-amber-200",
+  },
 } as const;
 
 export function IdentityBar({
@@ -59,6 +73,17 @@ export function IdentityBar({
       {identity.keyFingerprint ? (
         <span className={cn("ml-auto font-mono text-xs", style.accent)}>
           {identity.keyFingerprint}
+        </span>
+      ) : identity.note ? (
+        /*
+          NOT A BLANK. The parties without keys are not parties with a missing
+          field — they supply declarations, and signatures come from whoever
+          takes an action. Saying that here states the argument in the same
+          place the other two surfaces state their key.
+        */
+        <span className={cn("ml-auto inline-flex items-center gap-2 text-xs", style.accent)}>
+          <ShieldOff aria-hidden="true" className="size-3 shrink-0" />
+          {identity.note}
         </span>
       ) : (
         <span className={cn("ml-auto inline-flex items-center gap-2 font-mono text-xs", style.accent)}>

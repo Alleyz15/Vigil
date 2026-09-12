@@ -121,6 +121,15 @@ capture("gate-evidence-1920x1080.png", "/demo/gate");
 capture("cosign-split-1920x1080.png", "/demo/cosign");
 
 /**
+ * The sender, so all four role surfaces exist as evidence at one size.
+ *
+ * Captured on a FRESH form rather than after a submission: the declaration is
+ * the thing this surface is for, and a viewer comparing the four frames should
+ * see a merchant at a desk, not a result page.
+ */
+capture("sender-1920x1080.png", "/sender");
+
+/**
  * The recipient surface, so all three roles exist as evidence at one size.
  *
  * The token is resolved from the workbench at capture time, exactly like the

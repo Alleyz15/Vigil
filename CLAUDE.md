@@ -672,6 +672,56 @@ this?"* to that panel will believe it is an improvement; it is the failure rule 
 prevent, one layer further out. If the reason cannot be obtained from whoever actually decided,
 the honest rendering is to say who decided and show the alternative separately.
 
+### 3h. The party that DECLARES and the party that CONFIRMS must never be one party
+
+Sender and recipient are separate parties, and a future session must not merge them into a
+single "customer" role because they look adjacent on a shipment.
+
+**The sender declares the reference data. The recipient is checked against it.** Merging them
+would make the claim certify itself — the same error session 16 refused when it rejected using
+`vigil:courierId` to authorise an AssociationEvent, where the unverified claim would have been
+its own authority.
+
+Three things break, and each is load-bearing somewhere else:
+
+| What breaks | Why |
+|---|---|
+| **I15's independence** | The channel is declared by the sender and verified against what the OTP service actually delivered to the recipient. One party means one source, and the rule stops being a contradiction between two signals (rule 4b) |
+| **P2's temporal independence** | *"P1 is a property of the set; P2 is an outcome that ARRIVES LATER."* The sender declares before the shipment; the recipient answers after it. Collapse them and the later outcome is no longer independent of the earlier declaration |
+| **The stale-record limitation** | Known Limitations says the system is as sensitive to stale records as to fraud. That statement has no subject if the declarer and the confirmer are the same person — a record cannot be stale relative to itself |
+
+**What the sender's declarations actually feed**, none of which is new machinery:
+
+- recipient address → I10/I11 measure the delivery scan's distance against it
+- declared value → the mandate's `requiresCosignIf: parcel_value_over_sen` and its COD cap, which
+  decide whether an operator's signature is constitutive for that handoff
+- recipient channel → I15's independent-channel check
+- a mid-route address correction → session 10 measured this as the LEADING false-positive
+  contributor at noise level 1
+
+Before `/sender` existed those values appeared from nowhere. That was the real cost of not
+modelling the party: the inputs the engine cross-checks had no author.
+
+### 3i. Sender and recipient hold no keys, and the surfaces say so
+
+Two families, split by whether the party takes an ACTION or makes a DECLARATION:
+
+| Holds a key | Holds no key |
+|---|---|
+| **courier** — sky, narrow device column, no navigation | **sender** — amber, a form on a working surface, no sidebar |
+| **operator** — slate, sidebar workspace, dense tables | **recipient** — violet, centred card, no chrome at all |
+
+Signatures come from the parties who act. A sender declares and a recipient answers; neither
+signs anything, and the identity strip states that rather than showing an empty slot where a
+fingerprint would be:
+
+> *"No signing key — the sender's declarations are claims, verified against what the courier and
+> recipient independently report."*
+
+That label identifies the user and states the argument in the same breath, which is exactly the
+job the fingerprint does on the other two surfaces. A blank would be a worse answer than an
+explanation — see rule 4f: the absence is a FACT about this party, not a missing field.
+
 ### 4. Missing evidence is not clean evidence
 
 Every rule returns **three** states, never a boolean:
@@ -1248,6 +1298,43 @@ finally adds the file.
 `HeroBackdrop` owns the stacking order internally — ground, media, scrim — so a future session
 **cannot** put footage over the headline. There is no JSX for them to get wrong. Rule 1j: the
 guarantee belongs to the component, not to whoever edits the page next.
+
+#### The sender, and the scenario builder inside it
+
+**`/sender` is a fourth role, not a demo affordance.** Its declarations were always engine inputs;
+they simply had no author before. See rule 3h for why it must never merge with the recipient, and
+3i for the two families the four surfaces now split into.
+
+**The declared-value chain is the default demo path, and it is entirely existing behaviour.**
+The courier's mandate carries `requiresCosignIf: parcel_value_over_sen`, so the sender declaring
+above that figure is what CAUSES the co-signature. The form reads the figure from the mandate and
+says so AS THE VIEWER TYPES — cause before effect, so the courier's later failure to seal is the
+consequence of something they entered rather than a surprise. Measured across two shipments
+differing only in declared value:
+
+| declared | requiresCosign | sealed | ledger seq | credential | state |
+|---|---|---|---|---|---|
+| RM 120 | false | true | 19 | valid | accepted |
+| RM 900 | true | false | null | courier ✓ operator ✗ **invalid** | awaiting_cosignature |
+
+**The scenario builder sits inside the sender as a demo control, visibly separated.** Creating a
+shipment is product behaviour; injecting a GPS spoof is not, and blurring them would make the
+sender look like a place where fraud is configured — anti-reference 3 in miniature. The
+separation is structural (its own panel, its own provenance label), not a note asking the viewer
+to remember.
+
+A built run composes a `GeneratedScenario` and goes through the same `ingestScenario` and the same
+`runAgent`; `buildScenarioEntries` was parameterised to accept one rather than always constructing
+from an id. **No second code path** — session 7's lesson.
+
+**Faults are composed, never reimplemented**, through the same `LegOverrides` and `replay` seams.
+Batch scanning is REFUSED rather than degraded: one parcel scanned from one spot is a delivery,
+and P4 contradicts clustered scans against SPREAD addresses, which one address cannot supply. The
+refusal names what the fault would need and points at S2.
+
+**Whether a built run waits for an operator is DERIVED, not declared.** Its final leg is submitted
+courier-only, so the gate decides: over the mandate's figure it halts and queues, under it seals.
+Same submission either way.
 
 #### Depots are derived, and k=3 is a measured choice rather than a limitation
 

@@ -6,21 +6,30 @@ import { FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Move between the three roles. A DEMO AFFORDANCE, labelled as one.
+ * Move between the roles. A DEMO AFFORDANCE, labelled as one.
  *
  * In production nobody changes identity: a courier is a courier because they
  * hold a courier key, and no control anywhere hands them the operator's. This
  * exists so one person can walk an audience through a flow that in reality
- * involves three people and two devices.
+ * involves four parties and several devices.
  *
  * Same discipline as the scenario picker (anti-reference 2): a demo control
  * belongs in a quiet corner and must say honestly what it is, rather than
  * looking like a product feature that lets staff impersonate each other.
  */
 
+/**
+ * Four roles now, in the order a parcel meets them.
+ *
+ * The recipient is deliberately absent: their surface is reached by a scoped
+ * one-time link, not by picking a role. Putting it here would imply staff can
+ * open a recipient's capability at will, which is the very thing Known
+ * Limitations says production must not allow.
+ */
 const ROLES = [
-  { href: "/operator/inbox", label: "Operator", match: "/operator" },
+  { href: "/sender", label: "Sender", match: "/sender" },
   { href: "/courier", label: "Courier", match: "/courier" },
+  { href: "/operator/inbox", label: "Operator", match: "/operator" },
   { href: "/demo/cosign", label: "Both", match: "/demo/cosign" },
 ] as const;
 

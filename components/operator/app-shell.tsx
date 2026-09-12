@@ -40,7 +40,7 @@ const EVIDENCE = [
  * without editing it silently inherits the console shell, and nothing fails.
  * The structural fix is a `(console)` route group.
  */
-const STANDALONE = ["/courier", "/confirm", "/demo/cosign", "/"];
+const STANDALONE = ["/courier", "/confirm", "/sender", "/demo/cosign", "/"];
 
 export function AppShell({
   identity,

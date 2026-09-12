@@ -77,6 +77,37 @@ describe("a built shipment reaches the operator's surfaces", () => {
     expect(valuableDelivery!.ledger.sequence).toBeNull();
   });
 
+  /**
+   * RULE 3e'S INVERSE CASE, guarded where it would bite.
+   *
+   * A hard check ABORTS rather than scoring, so H2 comes back as score 0 with
+   * an empty flag list. Rendered as a score and a flag list that reads as
+   * "nothing found" — when it is the most severe outcome the engine produces.
+   *
+   * The read model must therefore report the axis as NOT EVALUATED naming the
+   * abort, and must surface the hard failure among the flags. A view that read
+   * `score` and `flags` alone would show a clean handoff that was frozen.
+   */
+  it("shows a hard abort as an abort, never as a zero score with no findings", async () => {
+    const workbench = await getWorkbench();
+    const result = await workbench.runBuilt({ ...BASE, fault: "out_of_scope", seed: "wb-scope" });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const detail = workbench.getHandoff(result.landOnEventId)!;
+
+    expect(detail.gate.decision).toBe("freeze");
+
+    // NOT rendered as a measured zero.
+    expect(detail.summary.inconsistency.evaluable).toBe(false);
+    expect(detail.summary.inconsistency.source).toBe("not_evaluated");
+    expect(detail.summary.inconsistency.reason).toMatch(/hard check failed \(H2\)/);
+
+    // And the failure itself is visible, not swallowed by the empty I-list.
+    expect(detail.flags.map((f) => f.id)).toContain("H2");
+  });
+
   it("refuses a fault the route cannot express, without touching the queue", async () => {
     const workbench = await getWorkbench();
     const before = workbench.listHandoffs().items.length;
