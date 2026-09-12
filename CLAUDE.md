@@ -153,6 +153,21 @@ DATASET.md, and it is changed only when the claim about the world is wrong — n
 what it does to a number downstream. Swapping *"our clean data does not trip our rules"* for
 *"our noisy data happens to trip our rules"* leaves the circularity exactly where it was.
 
+#### Three times this project has declined to fit a figure to its own detectors
+
+The temptation is always the same: a number is about to make a demo untidy, and moving it would
+fix that. The tally is kept because the pattern is only visible together.
+
+| # | Session | The figure | What fitting it would have bought |
+|---|---|---|---|
+| 1 | 9, 10 | the implied-speed threshold, 120 km/h | E6 showed 50 km/h is better ON THIS DATA. Not changed — the dataset has no expressway leg, so lowering it would fit a gap in the generator |
+| 2 | 10 | the noise model's parameters | Level 3 could have been turned up until E3 produced a quotable number. Not done — that is `0%` written in a different file |
+| 3 | 20 | the builder's 45 km/h road speed | Choosing it against I3's cut would guarantee no built route ever alerts. Chosen on world grounds; the highest implied speed across all 552 routes is 46.4 km/h and that is **reported**, not engineered |
+
+**In all three the honest number and the convenient number happened to agree.** That is luck, and
+it is exactly why the rule has to be followed when they do — a habit only formed on easy cases is
+not a habit.
+
 ### 3. Approval is constitutive, not decorative
 
 Operator approval is **not** `approved = true` in a table. A high-risk handoff requires a
@@ -307,6 +322,24 @@ the assertion can be wrong.** A green suite is evidence about the code only to t
 assertions describe behaviour somebody actually wanted. When writing an expectation for text a
 person will read, read the expected string as that person — not as a value that makes the test
 pass.
+
+#### A third: a test that proves determinism and reads like a stability guard
+
+`generate.test.ts` has *"generates byte-identical scenarios"*. It builds a scenario twice **in the
+same process, from the same code**, and compares. That proves the generator is deterministic —
+no unseeded randomness, no wall-clock leak — and it is worth having.
+
+**It cannot detect drift.** If a change alters what the generator emits, both halves of the
+comparison change together and the test stays green. Session 20 added a routing seam to
+`buildLegEvent` and that test would have passed whether or not the authored lane moved.
+
+The actual check is a hash of the output compared **across the change**: stash the edit, hash,
+restore, hash, compare. All seven scenarios' timelines and warm-ups came back `075380b3…` both
+ways, which is the claim "the seam changed nothing" as a measurement rather than an assertion.
+
+> **A test that reruns the current code tells you the code is deterministic. Only a value carried
+> from BEFORE the change tells you the code is unchanged.** The first reads like the second, which
+> is what makes it worth writing down.
 
 ### 1g. A test suite verifies the invariants someone thought to write
 
@@ -530,6 +563,30 @@ Two ways the console could lie without a word of it being false, both banned:
   a marker, circle or polygon. Evidence without measured coordinates stays unlinked. Guessing a
   location so every flag can pulse on the map would turn an absent measurement into a spatial
   claim, exactly like plotting `not_evaluated` at zero.
+
+#### The inverse case: an empty-looking result that is the opposite of empty
+
+The three above are things that LOOK measured and are not. This one looks like nothing and is the
+most severe outcome the engine can produce.
+
+**A hard check aborts; it does not score.** So a handoff that fails H1, H2 or H3 comes back with
+`score: 0`, `flags: []` and `aborted: true` — because I-scoring is suppressed behind the abort,
+not because nothing was found. Rendered as a score and a flag list, that reads as *"zero
+findings, nothing to see"*, which is exactly backwards: it is a `freeze`.
+
+> **A populated-looking line that is empty and an empty-looking result that is severe are the
+> same error in opposite directions. Both come from rendering the shape of the data instead of
+> its meaning.**
+
+**So a hard abort must never render as a zero score with no flags.** It renders as the abort:
+the code (`H2`), what that check is, and what it means for the handoff. `EngineResult` already
+carries `aborted`, `abortCode` and `hardFailures` separately from `score` and `flags` precisely
+so a view can tell the two situations apart — a view that reads only `score` and `flags` has
+thrown that distinction away.
+
+Found while building the scenario builder, where `out_of_scope` returns
+`single=0 flags=[] decision=freeze` and the gap between the first two numbers and the third is
+the whole point.
 
 All three are the same class of error as collapsing the three-state `RuleResult` into a boolean
 (rule 4). The console displays what was measured, says what was not, and marks what is
@@ -1191,6 +1248,31 @@ finally adds the file.
 `HeroBackdrop` owns the stacking order internally — ground, media, scrim — so a future session
 **cannot** put footage over the headline. There is no JSX for them to get wrong. Rule 1j: the
 guarantee belongs to the component, not to whoever edits the page next.
+
+#### Depots are derived, and k=3 is a measured choice rather than a limitation
+
+**A future session reading "32% of routes are local" will assume that is a defect and reach for
+more depots. It is not.** The number was measured across all 552 ordered pairs of the 24 cached
+addresses before k was chosen:
+
+| k | local routes | haul median | haul min |
+|---|---|---|---|
+| 2 | 49% | 9.0 km | 9.0 km |
+| **3** | **32%** | **11.8 km** | **7.5 km** |
+| 4 | 26% | 8.9 km | 3.5 km |
+| 5 | 18% | 9.0 km | 3.3 km |
+| 6 | 15% | 9.8 km | 3.3 km |
+
+Raising k trades local routes for **short** ones. At k=5 nearly a fifth of "line-hauls" are
+around 3 km — and a 3 km line-haul is not a line-haul, it is a van crossing a suburb with a
+misleading label on it.
+
+> **A local shipment LABELLED local is more honest than a fabricated short haul.** When the
+> builder says line-haul it means one; when it cannot, it says so.
+
+Same instinct as refusing to invent a coordinate for an unlabelled map click, and as refusing to
+route a parcel via a depot it has no reason to visit purely so a leg exists. The address set is
+KL-centric; 32% is what that geography actually implies.
 
 #### The scrim shipped early on purpose, and a probe found it was too weak
 
