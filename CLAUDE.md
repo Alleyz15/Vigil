@@ -292,6 +292,22 @@ touched, and confirm the failing test is the one aimed at that violation. A guar
 probe that wrote an identical value, deleted an empty table, or edited a file nothing reads has
 not been verified at all.
 
+#### The other way the test is the unreliable part: an assertion that protects the defect
+
+Session 19's `remainingLabel` shipped with a test asserting `"1 minutes"`. The page rendered
+`expires in 1 days`, which is wrong English on a surface a recipient reads — and the test was
+**green**, because I had written the defect into the assertion.
+
+> **A test that asserts the wrong behaviour does not merely fail to catch the defect. It PROTECTS
+> it.** The next person to fix the grammar gets a failing suite and reasonable grounds to believe
+> they broke something.
+
+Same family as the inert injection above, and the pair is the point: **the probe can be wrong, and
+the assertion can be wrong.** A green suite is evidence about the code only to the extent the
+assertions describe behaviour somebody actually wanted. When writing an expectation for text a
+person will read, read the expected string as that person — not as a value that makes the test
+pass.
+
 ### 1g. A test suite verifies the invariants someone thought to write
 
 **Found by opening the page, not because anything reported it.**
@@ -362,7 +378,30 @@ from a scenario already present, not from choosing a seed and trusting it.
 **So: a browser walk-through of a new surface is not decoration on top of a green suite. It is the
 only instrument that detects category 4.**
 
-### 1h. Never range-filter a timestamp column in SQL. It fails silently.
+### 1h. Two values compared, one of them a time? Ask which clock each came from.
+
+**THIS IS A STANDING CHECK, NOT A SQL RULE.** It began as one and has since fired three times in
+three unrelated places, so it is stated as the general form first: **whenever two values are
+compared and either is a time, name the clock each one came from before trusting the comparison.**
+If the two clocks differ — normalised versus verbatim, seeded versus wall, server versus device —
+the comparison is wrong, and it will be wrong *quietly*.
+
+| # | Session | The two clocks | Symptom |
+|---|---|---|---|
+| 1 | 4 | fixture server clock in UTC vs `+08:00` `eventTime` | every event looked 485 minutes skewed; I4 fired on clean fixtures |
+| 2 | 18 | `Z`-normalised SQL bound vs stored `+08:00` TEXT | window matched nothing; "no earlier handoffs on file" about a courier who had sealed one 30 seconds earlier |
+| 3 | 19 | token status judged on the workbench's seeded clock vs remainder measured on `Date.now()` | every open token computed a negative remainder; the identity strip fell back to a generic label |
+
+**None of the three threw.** Not one produced an error, a constraint violation or a failing test
+at the moment it went wrong. Instance 1 fired a rule on clean data, instance 2 returned an empty
+result that every caller read as a true answer, and instance 3 degraded a label to something that
+still looked deliberate. **A wrong clock does not crash; it answers confidently.**
+
+That is why this is a check to run rather than a bug to remember. The three look like three
+unrelated defects — a fixture problem, a SQL problem, a UI problem — and they are one problem
+wearing three coats.
+
+#### The original SQL instance, which is still the sharpest example
 
 **Stored timestamps carry their offset verbatim.** `events.eventTime` holds
 `2026-09-08T10:15:00+08:00`, not a normalised instant, because the offset is evidence — rule 4e
@@ -394,6 +433,28 @@ because the generator writes `+08:00` everywhere and callers pass `+08:00` bound
 comparison is like-for-like. **That is a coincidence of the dataset, not a property of the code.**
 A fleet spanning two offsets would break it silently. Left unchanged in session 18 because
 `lib/assemble` time semantics were not in scope, and recorded here so it is not rediscovered.
+
+### 1i. When several things are defined relative to one of them, the reference is the blind spot
+
+Session 19 built three role surfaces. The courier shell's reasoning is *"no sidebar, because a
+sidebar is what says console"*; the recipient shell's is *"no chrome at all, unlike either of the
+others"*. Both were designed, reviewed and verified **against the operator console** — and the
+console was the only one of the three that shipped with **no identity strip at all**.
+
+Every check I ran was a comparison. *Does the courier look unlike the console? Does the recipient
+look unlike both?* Both answers were yes, and both would still have been yes if the console had
+been a blank page. **A comparison against a reference cannot evaluate the reference.**
+
+> **The thing the others are defined against is the thing nobody checks.** It is load-bearing
+> precisely because it is assumed, and assumed things do not get looked at.
+
+It was found by curling all three pages and counting matches for `ed25519` — one row per surface,
+so the absent one was visible as a gap in a column. Nothing reported it: the page returned 200,
+the build was clean, the suite was green. Same detection story as rule 1g's defect 4.
+
+**The cheap defence is a table, not a stare.** When N things are being differentiated, enumerate
+all N and assert the distinguishing property of each *independently* — never "A differs from B".
+A property stated as a difference is only ever evaluated on one side.
 
 ### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
 
@@ -1007,6 +1068,24 @@ silently converts real controls into a reset-on-refresh facade.
 editing `lib/workbench/` in `next dev` recompiles the module and keeps the OLD object. A new
 method appears as `workbench.X is not a function` until the dev server is restarted. That is dev
 ergonomics, not a product defect — but it will waste an hour if it is not written down.
+
+**And `pkill` does not stop `next dev` on Windows.** It reports success and kills nothing. The old
+server keeps holding port 3000 and keeps serving the OLD build, while the "restarted" one quietly
+falls back to **port 3001** — so every check against `localhost:3000` still reads stale output and
+looks exactly like a change that did not take effect. It cost a full round of confused
+verification in session 19, on top of the HMR trap above, which produces the same symptom for a
+different reason.
+
+Use `taskkill /PID <pid> /F`. Next's own message names the PID to kill:
+
+```
+⨯ Another next dev server is already running.
+- Local:  http://localhost:3000
+- PID:    30064
+```
+
+**Read the dev log before concluding an edit did not work.** Both of these failures present as
+"my change is not showing up", and neither is about the change.
 
 **Entries are keyed by event id, and generated event ids are not as unique as they look.**
 `uuidFrom` derives the id from the scenario name and leg alone (`"S1-delivery"`), so the world
@@ -2448,6 +2527,36 @@ The operator's signing key is the thing that makes approval constitutive, and a 
 var can be read by anything that can read the process environment. Production needs an HSM or a
 managed KMS. `lib/credential/keys.ts` is the only file that touches the environment, so the
 swap is contained — but it has not been made.
+
+**A pathname list decides which pages get which shell, and nothing enforces it.**
+`AppShell` renders bare for a hardcoded `STANDALONE = ["/courier", "/confirm"]` and renders the
+operator console for everything else. Two consequences, one cosmetic and one structural.
+
+The cosmetic one: because the root layout passes the operator identity into `AppShell` and the
+choice is made at runtime from `usePathname()`, **the operator's key fingerprint is serialised into
+the RSC payload of every route** — the courier's and the recipient's included. Nothing is rendered
+there and nothing usable is disclosed: it is a sha256 truncation of a **public** key, the same
+value the console prints on its own header. It is still the recipient's page carrying a fact about
+a role their capability does not reach, which sits badly next to the shell's own stated reasoning
+about scope.
+
+The structural one is the reason this is written down. **A future session adding a fourth surface
+gets the operator console, with its sidebar and its queue, unless someone remembers to edit that
+array.** Nothing fails, no test covers it, and the wrong result looks deliberate — which is the
+shape this project has now caught six times under rule 1g.
+
+**The fix is a `(console)` route group**: move `/operator`, `/demo` and `/verify` under
+`app/(console)/` with its own layout that fetches the identity and renders the console shell, and
+leave the root layout as `html`/`body`. URLs do not change. That deletes the pathname list
+entirely — the route tree then *expresses* which surfaces are consoles instead of a string match
+asserting it — and the operator identity stops being fetched, let alone serialised, on the two
+surfaces that are not the console.
+
+**Deferred in session 19 deliberately.** It is a directory move touching every console route, and
+it landed at the point where the console layout had just been verified at 1920x1080 for recording.
+The cost of being wrong is a broken demo capture; the cost of waiting is one stale array and a
+harmless payload field. Recorded here rather than only in the session log, because the trap is
+permanent and the session note is not.
 
 **Identity is simulated; the signatures are real.** The courier, recipient and operator entry
 routes use hardcoded demo identities rather than authentication. Recipient links are scoped
