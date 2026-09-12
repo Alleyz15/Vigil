@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
 import { ArrowRight, Monitor, Smartphone } from "lucide-react";
 import { HERO, LIMITS, SECTIONS, type Stat } from "@/lib/landing/content";
+import { HERO_MEDIA, planHeroBackdrop } from "@/lib/landing/hero-media";
 import { cn } from "@/lib/utils";
 import { ArchitectureDiagram } from "./architecture-diagram";
 
@@ -41,42 +42,140 @@ export function LandingView() {
 
 function Hero() {
   return (
-    <header className="flex min-h-[78vh] flex-col justify-center py-20">
+    <header className="relative isolate flex min-h-[82vh] flex-col justify-center py-20">
+      <HeroBackdrop />
+
       <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
         Vigil · agentic handoff trust verifier
       </p>
 
-      <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-[1.1] tracking-tight sm:text-5xl">
+      {/*
+        THE SIZE CONTRAST IS THE POINT. One sentence gets the whole viewport and
+        everything else is support — a judge reads the claim before they decide
+        whether to read the page. The previous 48/18 pairing was a heading above
+        a paragraph; this is a statement with a caption under it.
+      */}
+      <h1 className="mt-5 max-w-[16ch] text-5xl font-semibold leading-[0.95] tracking-[-0.03em] sm:text-7xl lg:text-[7.5rem]">
         {HERO.title}
       </h1>
 
-      <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">{HERO.standfirst}</p>
+      <p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground">{HERO.standfirst}</p>
 
-      <ol className="mt-8 max-w-2xl space-y-3">
+      <ol className="mt-6 max-w-xl space-y-2">
         {HERO.questions.map((question, index) => (
-          <li key={question} className="flex gap-4 text-lg leading-8">
-            <span className="mt-1 font-mono text-sm text-muted-foreground">{index + 1}</span>
+          <li key={question} className="flex gap-3 text-base leading-7">
+            <span className="mt-px font-mono text-sm text-muted-foreground">{index + 1}</span>
             <span className="font-medium">{question}</span>
           </li>
         ))}
       </ol>
 
-      <div className="mt-10 flex flex-wrap gap-3">
+      {/*
+        Joined, not spaced. Two buttons sharing an edge read as one control with
+        a default and an alternative; two buttons with a gap read as two equal
+        options, which is not what is being offered. The filled one is where a
+        judge should start.
+      */}
+      <div className="mt-9 flex w-fit flex-wrap">
         <Link
           href="/operator/inbox"
-          className="inline-flex h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          className="inline-flex h-12 items-center gap-2 rounded-l-md bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           Open the console
           <ArrowRight aria-hidden="true" className="size-4" />
         </Link>
         <Link
           href="/demo/cosign"
-          className="inline-flex h-11 items-center gap-2 rounded-md bg-muted px-5 text-sm font-medium transition-colors hover:bg-muted/70"
+          className="-ml-px inline-flex h-12 items-center rounded-r-md border border-foreground/20 px-6 text-sm font-medium transition-colors hover:bg-muted"
         >
           See the co-signature
         </Link>
       </div>
     </header>
+  );
+}
+
+/**
+ * The reserved media slot.
+ *
+ * Everything here is painted today. The gradient is the design; the scrim is
+ * the legibility guarantee; the video is the only missing piece, and it arrives
+ * by setting `HERO_MEDIA.src` in `lib/landing/hero-media.ts` and nothing else.
+ *
+ * STACKING ORDER IS OWNED HERE, not by a caller: static ground, then media,
+ * then scrim, then the page content above all of it. A future session cannot
+ * accidentally put footage over the top of the text, because there is no JSX
+ * for them to write.
+ */
+function HeroBackdrop() {
+  const reducedMotion = usePrefersReducedMotion();
+  const plan = planHeroBackdrop(HERO_MEDIA, { reducedMotion });
+
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+      {/* 1. The static ground. A finished treatment, not a placeholder. */}
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_78%_15%,var(--color-muted)_0%,transparent_60%)]" />
+
+      {/* 2. The media, when there is any. */}
+      {plan.kind === "video" && (
+        <video
+          className="absolute inset-0 size-full object-cover"
+          src={plan.src}
+          poster={plan.poster ?? undefined}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+      )}
+      {plan.kind === "poster" && (
+        /* A decorative backdrop sized entirely by CSS. next/image would add a
+           layout pass and an optimisation pipeline for an image that is always
+           object-cover over a fixed box. */
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="absolute inset-0 size-full object-cover" src={plan.poster} alt="" />
+      )}
+
+      {/*
+        3. The scrim, ALWAYS, and in TWO layers. White over white today, so it
+        is invisible and changes nothing — that is the guarantee: it has sat
+        over this headline since before any footage existed, so the contrast
+        behind the text is already known rather than re-litigated on the day a
+        video lands.
+
+        TWO LAYERS BECAUSE ONE WAS NOT ENOUGH, and a probe found that rather
+        than a review. Painting a real screenshot into the media slot showed the
+        image still plainly readable on the right at a single horizontal
+        gradient — and at this type size the headline runs most of the way
+        across, so its right-hand half sat over visible imagery. A lighter video
+        would have survived that; a darker one would not.
+
+        The flat wash knocks any media back to texture everywhere. The gradient
+        then adds opacity on the left, where the text actually lives. A
+        background video here is meant to be felt, not watched.
+      */}
+      <div className="absolute inset-0 bg-background/88" />
+      <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-transparent" />
+    </div>
+  );
+}
+
+/**
+ * Subscribed rather than read in an effect.
+ *
+ * `useSyncExternalStore` is the idiomatic way to read a media query: it avoids
+ * a state write in an effect body, keeps the server snapshot explicit, and
+ * updates if the viewer changes the setting while the page is open.
+ */
+function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    () => false,
   );
 }
 

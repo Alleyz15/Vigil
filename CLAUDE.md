@@ -1170,6 +1170,59 @@ npm run db:migrate
 
 ## Session log
 
+### Session 20 — the hero video slot, reserved before the video exists (in progress)
+
+665 tests passing, 7 skipped. `tsc --noEmit` clean, eslint clean, the production build clean.
+
+**The slot is reserved so that adding footage is a file drop, not a refactor.** The only edit a
+future session should need is two strings in `lib/landing/hero-media.ts`:
+
+```ts
+export const HERO_MEDIA: HeroMedia = { src: null, poster: null };
+```
+
+`planHeroBackdrop` is pure and tested, so the contract is a check rather than a promise:
+a source starts playing with no other change, a poster without a source shows nothing (a hero
+waiting for something looks unfinished), and **a viewer who asked for reduced motion is never
+handed a looping video** — they get the still if there is one, and the static layer if there is
+not. That last assertion exists now precisely so it cannot be forgotten in the session that
+finally adds the file.
+
+`HeroBackdrop` owns the stacking order internally — ground, media, scrim — so a future session
+**cannot** put footage over the headline. There is no JSX for them to get wrong. Rule 1j: the
+guarantee belongs to the component, not to whoever edits the page next.
+
+#### The scrim shipped early on purpose, and a probe found it was too weak
+
+A legibility layer added on the same day as the media is a layer nobody has tested against the
+media. This one has been sitting over the headline since before any footage existed, so the
+contrast is already known.
+
+**Known because it was measured, not asserted.** A real screenshot was painted into the media slot
+and the frame read: at a single horizontal gradient the image was still plainly legible on the
+right, and at this type size the headline runs most of the way across, so its second half sat over
+visible imagery. A light video would have survived that; a dark one would not.
+
+It is now two layers — a flat 88% wash that reduces any media to texture, plus a gradient adding
+opacity on the left where the text lives. Re-probed: the same screenshot is a ghost and the
+headline is crisp over it. **A screenshot dense with text is a far harsher backdrop than video
+will ever be**, which is what makes it the right probe.
+
+#### Two things taken from sui.io's hero, and four deliberately not
+
+Taken: the **extreme headline-to-subhead contrast** (the old 48/18 pairing was a heading above a
+paragraph; it is now a statement with a caption under it, roughly 7x at the large breakpoint), and
+**two adjacent buttons sharing an edge**, one filled and one outlined. Joined reads as one control
+with a default and an alternative; spaced and equal-weight reads as two options, which is not what
+is being offered.
+
+Not taken: their dark palette, their video, their announcement banner, their multi-level nav.
+The tokens and the three anti-references still bind.
+
+**The outlined button is not a regression of session 19's border pass.** That pass removed *card*
+outlines in the console, where a filled surface already separates from the ground. A button
+outline is an affordance, not a container edge, and this is the narrative surface.
+
 ### Session 19 — role separation, the co-sign split, and the landing page (complete)
 
 658 tests passing, 7 skipped. `tsc --noEmit` clean, eslint clean, the production build clean.
