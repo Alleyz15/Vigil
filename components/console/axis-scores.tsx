@@ -21,7 +21,7 @@ type AxisScoreProps = {
 function AxisScore({ label, score, evaluable, reason, high }: AxisScoreProps) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       {evaluable && score !== null ? (
         <div
           className={cn(

@@ -77,7 +77,7 @@ export function OperatorActions({
         </Button>
       </div>
 
-      {!rerouteAvailable && <p className="mt-2 text-[11px] leading-4 text-muted-foreground">{rerouteReason}</p>}
+      {!rerouteAvailable && <p className="mt-2 text-xs leading-4 text-muted-foreground">{rerouteReason}</p>}
       {error && <p role="alert" className="mt-3 text-xs font-medium text-destructive">{error}</p>}
     </div>
   );

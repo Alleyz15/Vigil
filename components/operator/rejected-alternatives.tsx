@@ -31,7 +31,7 @@ function Row({
   meta?: string;
 }) {
   return (
-    <li className="flex items-start gap-2.5 py-2">
+    <li className="flex items-start gap-3 py-2">
       <span
         className={cn(
           "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full",
@@ -45,7 +45,7 @@ function Row({
           <span className={cn("font-mono text-xs", selected ? "font-semibold" : "text-muted-foreground")}>
             {title}
           </span>
-          {meta && <span className="text-[11px] text-muted-foreground">{meta}</span>}
+          {meta && <span className="text-xs text-muted-foreground">{meta}</span>}
         </span>
         <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{reason}</span>
       </span>
@@ -125,7 +125,7 @@ export function RerouteAlternatives({ reroute }: { reroute: RerouteOutcome | nul
       </p>
 
       {considered.length === 0 ? (
-        <p className="rounded-md border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
+        <p className="rounded-md border border-dashed px-3 py-3 text-xs text-muted-foreground">
           No destinations were weighed — this handoff was accepted, so no reroute was sought.
         </p>
       ) : (

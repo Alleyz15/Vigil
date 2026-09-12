@@ -48,7 +48,7 @@ export function InjectionPanel({ report }: { report: InjectionReport }) {
         <h3 className="text-sm font-semibold">
           No hosted model reached <span className="font-mono">accept</span>. One local-model row did.
         </h3>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Gemini and Claude moved toward lower severity under injection while staying refusals —
           nothing they returned would have released a parcel. {reached.length === 1 ? "One row" : `${reached.length} rows`}{" "}
           crossed the line, and it was the local model:
@@ -69,7 +69,7 @@ export function InjectionPanel({ report }: { report: InjectionReport }) {
         <p className="text-sm font-semibold">
           An aggregate that cancels out is not the same as nothing happening.
         </p>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           The local model&rsquo;s decisions moved in both directions and netted to zero, so its
           totals are identical before and after. Reading only the distribution gives the opposite
           conclusion from the truth: it was the one model an injection actually moved across the
@@ -79,7 +79,7 @@ export function InjectionPanel({ report }: { report: InjectionReport }) {
         </p>
       </div>
 
-      <div className="mt-5 overflow-x-auto rounded-lg border">
+      <div className="mt-4 overflow-x-auto rounded-lg border">
         <table className="w-full min-w-[42rem] border-collapse text-sm">
           <thead>
             <tr className="border-b bg-muted/40">
@@ -94,7 +94,7 @@ export function InjectionPanel({ report }: { report: InjectionReport }) {
               <tr key={row.provider} className="border-b">
                 <th scope="row" className="px-4 py-3 text-left align-top">
                   <span className="block text-sm font-medium">{row.provider}</span>
-                  <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
+                  <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
                     {row.model}
                   </span>
                 </th>
@@ -115,11 +115,11 @@ export function InjectionPanel({ report }: { report: InjectionReport }) {
         </table>
       </div>
 
-      <h3 className="mt-7 text-sm font-semibold">The payloads, in the field each one occupied</h3>
+      <h3 className="mt-8 text-sm font-semibold">The payloads, in the field each one occupied</h3>
       <ul className="mt-2 flex flex-col gap-2">
         {report.payloads.map((payload) => (
           <li key={payload.payloadId} className="rounded-md border p-3">
-            <div className="font-mono text-[11px] text-muted-foreground">{payload.surface}</div>
+            <div className="font-mono text-xs text-muted-foreground">{payload.surface}</div>
             <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-5">
               {payload.text}
             </pre>
@@ -129,22 +129,22 @@ export function InjectionPanel({ report }: { report: InjectionReport }) {
 
       {/* THE FRAMING. Not a compliment to the engine. */}
       <div className="mt-6 rounded-lg border border-foreground/20 bg-background p-4">
-        <div className="flex items-start gap-2.5">
+        <div className="flex items-start gap-3">
           <ShieldOff aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div>
             <h3 className="text-sm font-semibold">
               The engine did not resist the injection. There was nothing to resist.
             </h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Natural-language instructions have no input surface on the engine: it receives no
               delivery note, recipient name, filename or display address, and parses no prose. The
               clean and injected arms present <strong>byte-identical</strong> engine events, so
               identical verdicts are a property of construction rather than a defence that held.
             </p>
-            <p className="mt-2 rounded-md bg-muted/50 p-2.5 text-xs leading-5">
+            <p className="mt-2 rounded-md bg-muted/50 p-3 text-xs leading-5">
               {report.requiredToReachEngine}
             </p>
-            <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+            <p className="mt-2 font-mono text-xs text-muted-foreground">
               engine event unchanged {report.engineEventUnchanged}/{report.total} · sealed verdict
               unchanged {report.engineVerdictUnchanged}/{report.total} · engine verdict{" "}
               {report.engineDecision} throughout
@@ -155,13 +155,13 @@ export function InjectionPanel({ report }: { report: InjectionReport }) {
 
       {/* THE MOST MISREADABLE NUMBER IN THE PROJECT. */}
       <div className="mt-3 rounded-lg border border-foreground/20 bg-background p-4">
-        <div className="flex items-start gap-2.5">
+        <div className="flex items-start gap-3">
           <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div>
             <h3 className="text-sm font-semibold">
               The citation guard blocked 0 — because nothing steered, not because it held.
             </h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               In the forced-exposure arm, {report.explainSteered}/{report.total} explanations were
               steered by the injected text, so the guard had nothing to reject and{" "}
               <strong>was never exercised</strong>. Reading &ldquo;0 blocked&rdquo; as a pass draws
@@ -189,7 +189,7 @@ function Distribution({ counts }: { counts: Record<string, number> }) {
       {present.map((decision) => (
         <span
           key={decision}
-          className={cn("rounded px-1.5 py-0.5 font-mono text-[11px] font-medium", TONE[decision])}
+          className={cn("rounded px-2 py-0.5 font-mono text-xs font-medium", TONE[decision])}
         >
           {decision} ×{counts[decision]}
         </span>

@@ -531,6 +531,88 @@ describe("the two axes are never combined into one number", () => {
     }
   });
 
+  /**
+   * THE TYPE FLOOR, mechanically enforced.
+   *
+   * Session 12 raised operational copy from 10-12px to 12-14px because it was
+   * weak under recording compression. By session 18 there were 48 uses of
+   * `text-[11px]`, 13 of `text-[10px]` and two more arbitrary sizes across
+   * twelve files — a decision taken deliberately, eroded quietly, and noticed
+   * only by an audit.
+   *
+   * THAT IS THE PATTERN THIS PROJECT KEEPS FINDING: what is guarded has never
+   * regressed; what is merely decided has. So the floor is a check rather than
+   * a convention. Tailwind's named sizes are allowed without limit; only the
+   * arbitrary `text-[Npx]` escape hatch is policed, because that is the one
+   * that drifts.
+   *
+   * `components/ui/` is exempt: those are shadcn/Radix primitives whose metrics
+   * belong to the component library, not to us.
+   */
+  it("uses no arbitrary text size below the 12px floor", () => {
+    const ROOTS = ["components", "app"];
+    const FLOOR = 12;
+
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      if (!existsSync(dir)) return;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          // The primitives own their own metrics.
+          if (full.split(sep).join("/").endsWith("components/ui")) continue;
+          walk(full);
+        } else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+          const source = stripComments(readFileSync(full, "utf8"));
+          for (const match of source.matchAll(/text-\[(\d+)px\]/g)) {
+            if (Number(match[1]) < FLOOR) {
+              offenders.push(`${full.split(sep).join("/")}: ${match[0]}`);
+            }
+          }
+        }
+      }
+    };
+    for (const root of ROOTS) walk(join(LIB, "..", root));
+
+    expect(
+      offenders,
+      `Text below ${FLOOR}px does not survive video compression — session 12 raised this copy once already and it drifted back. Use text-xs (12px) or larger. Offenders: ${offenders.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * TWO SURFACES, TWO RULES — enforced so it is a fact rather than a claim.
+   *
+   * Scroll-driven motion is correct on the landing page, where an argument is
+   * being told to someone who has just arrived, and wrong in the console, where
+   * an operator is processing work and any easing reads as lag. Stated as prose
+   * that reads like a contradiction to anyone who has not been here for
+   * nineteen sessions; stated as a check, it cannot become one.
+   *
+   * The landing page may import `lenis` and `mermaid`. The console may not.
+   */
+  it("keeps landing-page libraries out of the console", () => {
+    const CONSOLE_TREES = ["components/console", "components/operator", "components/courier", "components/recipient"];
+    const BANNED = [/from\s+["']lenis["']/, /from\s+["']mermaid["']/];
+
+    for (const tree of CONSOLE_TREES) {
+      const dir = join(LIB, "..", ...tree.split("/"));
+      if (!existsSync(dir)) continue;
+
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (!entry.isFile() || !/\.tsx?$/.test(entry.name)) continue;
+        const source = stripComments(readFileSync(join(dir, entry.name), "utf8"));
+
+        for (const pattern of BANNED) {
+          expect(
+            pattern.test(source),
+            `${tree}/${entry.name} imports a landing-page library. Inertial scroll and diagram rendering belong to the narrative surface; in the console they add latency to work an operator repeats dozens of times a shift. See CLAUDE.md, Console conventions.`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
   it("catches a violation when one is introduced", () => {
     // Guards the guard: a stripComments bug that ate everything would make the
     // checks above pass vacuously.

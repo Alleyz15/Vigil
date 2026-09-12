@@ -39,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background">
       <aside className="fixed inset-y-0 left-0 flex w-56 flex-col border-r bg-sidebar px-3 py-4">
-        <Link href="/operator/inbox" className="flex items-center gap-2 px-2 py-1.5">
+        <Link href="/operator/inbox" className="flex items-center gap-2 px-2 py-2">
           <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <ShieldCheck aria-hidden="true" />
           </span>
@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
 
-        <nav className="mt-7 flex flex-col gap-1" aria-label="Operator navigation">
+        <nav className="mt-8 flex flex-col gap-1" aria-label="Operator navigation">
           {PRIMARY.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
@@ -58,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors",
+                  "flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors",
                   active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className="mt-7 px-2 text-[11px] font-semibold uppercase text-muted-foreground">
+        <div className="mt-8 px-2 text-xs font-semibold uppercase text-muted-foreground">
           Demo evidence
         </div>
         <nav className="mt-2 flex flex-col gap-1" aria-label="Demo evidence">
@@ -83,7 +83,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex h-9 items-center gap-2 rounded-md px-2.5 text-sm transition-colors",
+                  "flex h-9 items-center gap-2 rounded-md px-3 text-sm transition-colors",
                   active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -98,20 +98,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="mt-auto border-t pt-4">
           <div className="px-2 text-xs font-medium">Operator · OP-01</div>
-          <div className="mt-1 px-2 text-[11px] leading-4 text-muted-foreground">
+          <div className="mt-1 px-2 text-xs leading-4 text-muted-foreground">
             Simulated identity · real Ed25519 signatures
           </div>
         </div>
       </aside>
 
       <div className="ml-56 min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-7 backdrop-blur-sm">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-8 backdrop-blur-sm">
           <div className="text-sm text-muted-foreground">Process handoffs that need a decision</div>
           <Suspense fallback={<div className="h-8 w-[26rem]" aria-hidden="true" />}>
             <DemoDataControl />
           </Suspense>
         </header>
-        <main className="mx-auto max-w-[1680px] px-7 py-6">{children}</main>
+        <main className="mx-auto max-w-[1680px] px-8 py-6">{children}</main>
       </div>
     </div>
   );

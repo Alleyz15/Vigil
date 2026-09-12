@@ -15,10 +15,10 @@ export default async function DemoGatePage() {
 
   return (
     <div>
-      <header className="mb-5 flex items-start justify-between gap-8">
+      <header className="mb-4 flex items-start justify-between gap-8">
         <div>
           <h1 className="text-2xl font-semibold">Orthogonal gate evidence</h1>
-          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             This is a demo instrument, not the operator&apos;s work queue. It shows why identical totals can require different actions when the two axes remain separate.
           </p>
         </div>

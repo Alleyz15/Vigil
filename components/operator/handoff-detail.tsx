@@ -55,7 +55,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
 
   return (
     <div>
-      <header className="mb-5">
+      <header className="mb-4">
         <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/operator/inbox" />}>
           <ArrowLeft data-icon="inline-start" />
           Back to inbox
@@ -66,20 +66,20 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
               <h1 className="text-2xl font-semibold">{detail.summary.parcel.waybillNo}</h1>
               <HandoffStateBadge state={detail.summary.state} />
             </div>
-            <p className="mt-1.5 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-muted-foreground">
               {detail.summary.courier.displayName} · {detail.summary.bizStep} · seeded synthetic shipment {detail.summary.scenarioId}
             </p>
           </div>
           <div className="text-right">
-            <div className="text-[10px] font-semibold uppercase text-muted-foreground">Correlation ID</div>
-            <div className="mt-1 max-w-md break-all font-mono text-[11px]">{detail.summary.eventId}</div>
+            <div className="text-xs font-semibold uppercase text-muted-foreground">Correlation ID</div>
+            <div className="mt-1 max-w-md break-all font-mono text-xs">{detail.summary.eventId}</div>
           </div>
         </div>
       </header>
 
       <section
         className={cn(
-          "mb-5 flex items-start gap-3 rounded-md border px-4 py-3",
+          "mb-4 flex items-start gap-3 rounded-md border px-4 py-3",
           status.tone === "pending" && "border-amber-300 bg-amber-50 text-amber-950",
           status.tone === "alert" && "border-red-200 bg-red-50 text-red-950",
           status.tone === "accepted" && "border-emerald-200 bg-emerald-50 text-emerald-950",
@@ -93,7 +93,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
         </div>
       </section>
 
-      <div className="grid grid-cols-[minmax(0,1.7fr)_23rem] gap-5">
+      <div className="grid grid-cols-[minmax(0,1.7fr)_23rem] gap-4">
         <section>
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold">Route and contradiction evidence</h2>
@@ -134,7 +134,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
                     leg.legIndex === activeLegIndex ? "border-primary bg-accent" : "bg-card hover:bg-muted",
                   )}
                 >
-                  <span className="block text-[10px] font-semibold uppercase text-muted-foreground">Leg {leg.legIndex + 1}</span>
+                  <span className="block text-xs font-semibold uppercase text-muted-foreground">Leg {leg.legIndex + 1}</span>
                   <span className="mt-0.5 block truncate text-xs font-medium capitalize">{leg.bizStep}</span>
                 </button>
               </li>
@@ -150,7 +150,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
 
           <div className="mt-4 border-y py-4">
             <AxisPair inconsistency={detail.summary.inconsistency} pattern={detail.summary.pattern} />
-            <p className="mt-2 text-[11px] text-muted-foreground">{detail.summary.coverageLine ?? "Evidence coverage unavailable"}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{detail.summary.coverageLine ?? "Evidence coverage unavailable"}</p>
           </div>
 
           <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 py-4 text-xs">
@@ -178,7 +178,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
         </aside>
       </div>
 
-      <div className="mt-7 grid grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)] gap-7">
+      <div className="mt-8 grid grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)] gap-8">
         <section>
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold">Evidence behind the decision</h2>
@@ -186,7 +186,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
           </div>
           <div className="mt-3 flex flex-col gap-2">
             {detail.flags.length === 0 ? (
-              <div className="border-y px-2 py-5 text-sm text-muted-foreground">No contradiction flags were raised.</div>
+              <div className="border-y px-2 py-4 text-sm text-muted-foreground">No contradiction flags were raised.</div>
             ) : detail.flags.map((flag) => (
               <button
                 key={flag.id}
@@ -202,9 +202,9 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
                   <span className="text-sm font-semibold">{flag.label}</span>
                   <span className="ml-auto font-mono text-xs tabular-nums">+{flag.points}</span>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                   {flag.evidence.map((evidence, index) => (
-                    <span key={`${evidence.field}-${index}`} className="min-w-0 break-all text-[11px] text-muted-foreground">
+                    <span key={`${evidence.field}-${index}`} className="min-w-0 break-all text-xs text-muted-foreground">
                       <span className="font-mono text-foreground">{evidence.field}</span> = {JSON.stringify(evidence.value)}
                     </span>
                   ))}
@@ -213,7 +213,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             ))}
           </div>
 
-          <section className="mt-7">
+          <section className="mt-8">
             <h2 className="text-base font-semibold">Eight-node run</h2>
             <p className="mt-1 text-xs text-muted-foreground">Frozen trace contract. State changes below are execution timing, not decorative animation.</p>
             <ol className="mt-3 grid grid-cols-4 gap-2">
@@ -221,9 +221,9 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
                 <li key={node.node} className="rounded-md border bg-card p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-xs font-semibold">{node.node}</span>
-                    <Badge variant="outline" className="text-[10px]">{node.status}</Badge>
+                    <Badge variant="outline" className="text-xs">{node.status}</Badge>
                   </div>
-                  <div className="mt-2 text-[11px] text-muted-foreground">
+                  <div className="mt-2 text-xs text-muted-foreground">
                     {node.durationMs === null ? "not reached" : `${node.durationMs} ms`}
                     {node.flags.length > 0 && ` · ${node.flags.join(", ")}`}
                   </div>
@@ -233,7 +233,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
           </section>
         </section>
 
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
           <section className="rounded-md border bg-card p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">Agent explanation</h2>
@@ -248,7 +248,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
               {detail.externalContext?.summary ?? "Weather was not selected for this run."}
             </p>
             {detail.externalContext?.status === "available" && (
-              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">Open-Meteo archive · approximately 9 km reanalysis · regional context, not an observation at the address.</p>
+              <p className="mt-2 text-xs leading-4 text-muted-foreground">Open-Meteo archive · approximately 9 km reanalysis · regional context, not an observation at the address.</p>
             )}
           </section>
 
@@ -290,12 +290,12 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
         </div>
       </div>
 
-      <details className="mt-7 rounded-md border bg-card px-4 py-3">
+      <details className="mt-8 rounded-md border bg-card px-4 py-3">
         <summary className="cursor-pointer text-sm font-semibold">Raw synthetic EPCIS event</summary>
-        <pre className="mt-3 max-h-96 overflow-auto text-[11px] leading-5 text-muted-foreground">{JSON.stringify(detail.event, null, 2)}</pre>
+        <pre className="mt-3 max-h-96 overflow-auto text-xs leading-5 text-muted-foreground">{JSON.stringify(detail.event, null, 2)}</pre>
       </details>
 
-      <section className="mt-7 border-t pt-7">
+      <section className="mt-8 border-t pt-8">
         <h2 className="text-base font-semibold">Replay this event through the live agent</h2>
         <p className="mt-1 mb-4 text-xs leading-5 text-muted-foreground">
           Native EventSource streams the frozen eight-node contract. Prior legs are replayed first to rebuild courier history; the browser never computes the verdict.

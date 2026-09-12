@@ -143,7 +143,7 @@ export function TimelineView({
       </ol>
 
       {state.revealed === 0 && (
-        <div className="mt-6 rounded-lg border border-dashed border-border/60 px-5 py-8 text-center text-sm text-muted-foreground">
+        <div className="mt-6 rounded-lg border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
           Press play to watch this shipment leg by leg.
         </div>
       )}
@@ -210,7 +210,7 @@ function Controls({
 
       <div className="ml-auto flex items-center gap-2 border-l border-border/60 pl-3">
         <Gauge className="size-3.5 text-muted-foreground" aria-hidden="true" />
-        <span className="text-[11px] text-muted-foreground">Speed</span>
+        <span className="text-xs text-muted-foreground">Speed</span>
         <div
           role="group"
           aria-label="Timeline playback speed"
@@ -224,7 +224,7 @@ function Controls({
               aria-label={`${value} times playback speed${value === 1 ? ", recommended for recording" : ""}`}
               onClick={() => onSpeed(value)}
               className={cn(
-                "min-w-11 border-r border-border/60 px-2 font-mono text-[11px] tabular-nums last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset",
+                "min-w-11 border-r border-border/60 px-2 font-mono text-xs tabular-nums last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset",
                 speed === value
                   ? "bg-foreground text-background"
                   : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
@@ -281,7 +281,7 @@ function LegRow({
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-semibold">{stepLabel(leg.bizStep)}</span>
               {isException && (
-                <span className="inline-flex items-center gap-1 rounded bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200 ring-1 ring-inset ring-amber-400/25">
+                <span className="inline-flex items-center gap-1 rounded bg-amber-400/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-amber-200 ring-1 ring-inset ring-amber-400/25">
                   <AlertTriangle className="size-3" aria-hidden="true" />
                   exception detected
                 </span>
@@ -318,12 +318,12 @@ function LegRow({
             {/* A halt is not a decision, and the difference has to be legible
                 without expanding the leg. */}
             {halted && (
-              <div className="mt-1.5 inline-flex items-center rounded border border-dashed border-sky-400/50 bg-sky-400/[0.08] px-2 py-1 font-mono text-[10px] font-semibold uppercase leading-none text-sky-200">
+              <div className="mt-2 inline-flex items-center rounded border border-dashed border-sky-400/50 bg-sky-400/[0.08] px-2 py-1 font-mono text-xs font-semibold uppercase leading-none text-sky-200">
                 halted · nothing sealed
               </div>
             )}
             {!halted && leg.ledgerSeq !== null && (
-              <div className="mt-1 font-mono text-[10px] leading-tight text-muted-foreground">
+              <div className="mt-1 font-mono text-xs leading-tight text-muted-foreground">
                 ledger #{leg.ledgerSeq}
               </div>
             )}
@@ -345,10 +345,10 @@ function LegDetail({ leg }: { leg: LegView }) {
     <div className="border-t border-border/60 px-4 py-4">
       {leg.halted && (
         <div className="mb-4 rounded-md border border-sky-500/30 bg-sky-500/[0.06] px-3 py-2">
-          <div className="text-[13px] font-medium text-sky-300">
+          <div className="text-sm font-medium text-sky-300">
             Halted at <span className="font-mono">{leg.halted.at}</span> — {leg.halted.reason}
           </div>
-          <div className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+          <div className="mt-1 text-sm leading-relaxed text-muted-foreground">
             {leg.halted.reason === "PENDING_COSIGNATURE"
               ? "No verdict was written. The courier's signature verified, but this handoff needs an operator co-signature and none was presented — so there is no valid credential to seal."
               : leg.halted.reason === "PENDING_COURIER_SIGNATURE"
@@ -362,7 +362,7 @@ function LegDetail({ leg }: { leg: LegView }) {
         <Section title="Why a co-signature is required">
           <ul className="space-y-1">
             {leg.cosignReasons.map((reason) => (
-              <li key={reason} className="text-[13px] leading-relaxed text-muted-foreground">
+              <li key={reason} className="text-sm leading-relaxed text-muted-foreground">
                 {reason}
               </li>
             ))}
@@ -373,7 +373,7 @@ function LegDetail({ leg }: { leg: LegView }) {
       {leg.externalContext && (
         <Section title="External context">
           <div className="rounded-md border border-sky-500/25 bg-sky-500/[0.05] px-3 py-2">
-            <div className="flex items-center gap-2 text-[13px] font-medium text-sky-200">
+            <div className="flex items-center gap-2 text-sm font-medium text-sky-200">
               <CloudRain className="size-4" aria-hidden="true" />
               {leg.externalContext.status === "available"
                 ? `${leg.externalContext.condition} · ${leg.externalContext.precipitationMm} mm`
@@ -388,7 +388,7 @@ function LegDetail({ leg }: { leg: LegView }) {
                 </span>
               )}
             </div>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
               {leg.externalContext.summary}
             </p>
           </div>
@@ -400,20 +400,20 @@ function LegDetail({ leg }: { leg: LegView }) {
           {leg.reroute.status === "proposed" ? (
             <div className="rounded-md border border-violet-500/30 bg-violet-500/[0.06] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-[13px] font-medium text-violet-200">
+                <div className="flex items-center gap-2 text-sm font-medium text-violet-200">
                   <Route className="size-4" aria-hidden="true" />
                   {leg.reroute.targetLabel}
                 </div>
-                <span className="rounded border border-dashed border-violet-400/50 px-2 py-1 font-mono text-[10px] uppercase text-violet-200">
+                <span className="rounded border border-dashed border-violet-400/50 px-2 py-1 font-mono text-xs uppercase text-violet-200">
                   nothing approved · operator co-sign required
                 </span>
               </div>
-              <div className="mt-1 font-mono text-[11px] text-muted-foreground">
+              <div className="mt-1 font-mono text-xs text-muted-foreground">
                 {leg.reroute.kind.replaceAll("_", " ")} · {leg.reroute.targetBizLocation}
               </div>
             </div>
           ) : (
-            <div className="rounded-md border border-zinc-500/30 bg-zinc-500/[0.05] px-3 py-2 text-[13px] text-muted-foreground">
+            <div className="rounded-md border border-zinc-500/30 bg-zinc-500/[0.05] px-3 py-2 text-sm text-muted-foreground">
               {leg.reroute.reason}
             </div>
           )}
@@ -422,7 +422,7 @@ function LegDetail({ leg }: { leg: LegView }) {
 
       <Section title={`Checks that fired (${leg.flags.length})`}>
         {leg.flags.length === 0 ? (
-          <div className="text-[13px] text-muted-foreground">
+          <div className="text-sm text-muted-foreground">
             Nothing raised a concern on this leg.
           </div>
         ) : (
@@ -430,13 +430,13 @@ function LegDetail({ leg }: { leg: LegView }) {
             {leg.flags.map((flag) => (
               <div key={`${flag.id}-${flag.label}`} className="rounded-md border border-border/50 px-3 py-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-[11px] text-amber-300">{flag.id}</span>
+                  <span className="font-mono text-xs text-amber-300">{flag.id}</span>
                   {flag.points > 0 && (
-                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
                       +{flag.points}
                     </span>
                   )}
-                  <span className="text-[13px] leading-snug">{flag.label}</span>
+                  <span className="text-sm leading-snug">{flag.label}</span>
                 </div>
 
                 {/* The evidence behind the decision, naming field AND value. */}
@@ -462,11 +462,11 @@ function LegDetail({ leg }: { leg: LegView }) {
 
       {leg.explanation && (
         <Section title={leg.explanationFromFallback ? "Explanation (structured fallback)" : "Explanation"}>
-          <p className="text-[13px] leading-relaxed text-muted-foreground">{leg.explanation}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground">{leg.explanation}</p>
         </Section>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 font-mono text-[10px] text-muted-foreground">
+      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 font-mono text-xs text-muted-foreground">
         <span>event {leg.eventId.slice(0, 8)}</span>
         {leg.basis && <span>basis {leg.basis}</span>}
         {leg.matrixCell && <span>gate {leg.matrixCell}</span>}
@@ -479,7 +479,7 @@ function LegDetail({ leg }: { leg: LegView }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-4 last:mb-0">
-      <div className="mb-1.5 text-xs uppercase tracking-wider text-muted-foreground">{title}</div>
+      <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">{title}</div>
       {children}
     </div>
   );

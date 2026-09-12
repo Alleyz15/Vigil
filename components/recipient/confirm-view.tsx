@@ -55,7 +55,7 @@ export function ConfirmView({
 
   return (
     <div className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 py-12">
-      <div className="rounded-lg border bg-card p-7">
+      <div className="rounded-lg border bg-card p-8">
         <Icon
           aria-hidden="true"
           className={
@@ -69,12 +69,12 @@ export function ConfirmView({
 
         <h1 className="mt-4 text-xl font-semibold leading-tight">{message.headline}</h1>
         {waybillNo && (
-          <p className="mt-1.5 font-mono text-xs text-muted-foreground">Parcel {waybillNo}</p>
+          <p className="mt-2 font-mono text-xs text-muted-foreground">Parcel {waybillNo}</p>
         )}
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{message.detail}</p>
 
         {state.status === "open" && (
-          <div className="mt-6 flex flex-col gap-2.5">
+          <div className="mt-6 flex flex-col gap-3">
             <Button size="lg" onClick={() => answer("received")} disabled={busy}>
               Yes, I received it
             </Button>

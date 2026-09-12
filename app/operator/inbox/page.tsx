@@ -14,7 +14,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       <header className="mb-6 flex items-end justify-between gap-8">
         <div>
           <h1 className="text-2xl font-semibold">Operator inbox</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">Handoffs waiting for verification, co-signature, or escalation.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Handoffs waiting for verification, co-signature, or escalation.</p>
         </div>
         <div className="text-right">
           <div className="font-mono text-2xl font-semibold tabular-nums">{items.length}</div>

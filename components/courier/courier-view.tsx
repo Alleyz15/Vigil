@@ -59,8 +59,8 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-2 flex items-center gap-2.5">
+    <div className="mx-auto max-w-3xl px-6 py-8">
+      <header className="mb-2 flex items-center gap-3">
         <span className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <ShieldCheck aria-hidden="true" className="size-5" />
         </span>
@@ -70,18 +70,18 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
         </div>
       </header>
 
-      <div className="mb-7 flex flex-wrap items-center gap-2">
+      <div className="mb-8 flex flex-wrap items-center gap-2">
         <ProvenanceLabel>Seeded synthetic shipments</ProvenanceLabel>
         <ProvenanceLabel>Simulated identity · real Ed25519 signatures</ProvenanceLabel>
       </div>
 
       {error && (
-        <p role="alert" className="mb-5 rounded-md border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+        <p role="alert" className="mb-4 rounded-md border border-red-500/40 bg-red-500/5 px-3 py-2 text-sm text-red-700 dark:text-red-400">
           {error}
         </p>
       )}
 
-      <ul className="flex flex-col gap-5">
+      <ul className="flex flex-col gap-4">
         {drafts.map((draft) => (
           <DraftCard
             key={draft.draftId}
@@ -109,18 +109,18 @@ function DraftCard({
 
   return (
     <li className="rounded-lg border bg-card">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b px-5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b px-4 py-4">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">{draft.title}</h2>
           <p className="mt-1 font-mono text-xs text-muted-foreground">{draft.waybillNo}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{draft.recipientAddress}</p>
         </div>
-        <Badge variant="outline" className="font-mono text-[11px] font-normal">
+        <Badge variant="outline" className="font-mono text-xs font-normal">
           {draft.scenarioId} · {draft.leg}
         </Badge>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 px-5 py-4">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-4">
         <Button size="sm" onClick={() => onSubmit(true)} disabled={busy !== null}>
           {sealed ? "Submit again" : "Sign and submit"}
         </Button>
@@ -147,8 +147,8 @@ function OutcomePanel({ outcome }: { outcome: CourierOutcome }) {
   const Icon = tone.Icon;
 
   return (
-    <div className={cn("border-t px-5 py-4", tone.ring)}>
-      <div className="flex items-start gap-2.5">
+    <div className={cn("border-t px-4 py-4", tone.ring)}>
+      <div className="flex items-start gap-3">
         <Icon aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", tone.text)} />
         <div className="min-w-0">
           <p className={cn("text-sm font-semibold", tone.text)}>{outcome.headline}</p>
@@ -160,10 +160,10 @@ function OutcomePanel({ outcome }: { outcome: CourierOutcome }) {
 
           {outcome.problems.length > 0 && (
             <div className="mt-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 What the credential check reported
               </div>
-              <ul className="mt-1.5 flex flex-col gap-1">
+              <ul className="mt-2 flex flex-col gap-1">
                 {outcome.problems.map((problem) => (
                   <li key={problem} className="font-mono text-xs leading-5 text-muted-foreground">
                     {problem}
@@ -188,18 +188,18 @@ function OutcomePanel({ outcome }: { outcome: CourierOutcome }) {
  */
 function AttemptHistory({ attempts }: { attempts: Attempt[] }) {
   return (
-    <div className="border-t px-5 py-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="border-t px-4 py-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Submission history
       </div>
-      <ol className="mt-2 flex flex-col gap-1.5">
+      <ol className="mt-2 flex flex-col gap-2">
         {attempts.map((attempt) => (
           <li key={attempt.run.run} className="flex items-baseline gap-2 text-xs">
             <span className="font-mono text-muted-foreground">#{attempt.run.run}</span>
             <span className={cn("font-medium", TONE[attempt.outcome.kind].text)}>
               {attempt.outcome.headline}
             </span>
-            <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+            <span className="ml-auto font-mono text-xs text-muted-foreground">
               {attempt.run.ledgerStatus ?? "no ledger entry"}
             </span>
           </li>

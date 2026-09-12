@@ -256,7 +256,7 @@ export function ShipmentMapClient({
               className="block text-left"
             >
               <span className="block text-xs font-semibold">{notice.title}</span>
-              <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">{notice.detail}</span>
+              <span className="mt-1 block text-xs leading-4 text-muted-foreground">{notice.detail}</span>
             </button>
           ))}
         </div>

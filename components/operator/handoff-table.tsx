@@ -28,7 +28,7 @@ function basisLabel(value: string | null): string {
 export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summary: Summary }) {
   return (
     <div>
-      <div className="mb-5 flex items-end justify-between gap-8 border-y bg-card px-5 py-4">
+      <div className="mb-4 flex items-end justify-between gap-8 border-y bg-card px-4 py-4">
         <div>
           <p className="text-lg font-semibold tabular-nums">
             {summary.automaticallyAccepted} of {summary.total} handoffs automatically accepted
@@ -58,7 +58,7 @@ export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summ
             {items.map((item) => (
               <tr key={item.eventId}>
                 <td>
-                  <div className="font-mono text-[11px] tabular-nums text-muted-foreground">{formatDate(item.eventTime)}</div>
+                  <div className="font-mono text-xs tabular-nums text-muted-foreground">{formatDate(item.eventTime)}</div>
                   <Link href={`/operator/handoffs/${item.eventId}`} className="mt-1 block font-mono text-xs font-semibold hover:underline">
                     {item.parcel.waybillNo}
                   </Link>

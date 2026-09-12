@@ -60,7 +60,7 @@ export function DivergenceMatrix({ report }: { report: DivergenceReport }) {
               <tr key={provider} className="border-b">
                 <th scope="row" className="px-4 py-3 text-left align-top">
                   <span className="block text-sm font-medium">{provider}</span>
-                  <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
+                  <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
                     {report.cells.find((c) => c.provider === provider)?.model}
                   </span>
                 </th>
@@ -79,7 +79,7 @@ export function DivergenceMatrix({ report }: { report: DivergenceReport }) {
                         onClick={() => setOpen(open === id ? null : id)}
                         aria-expanded={open === id}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition-colors",
+                          "flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors",
                           DECISION_TONE[cell.decision] ?? "border-muted bg-muted/40",
                           // The divergent cells must be findable without reading.
                           cell.divergesFromEngine && "ring-2 ring-red-500/60",
@@ -87,7 +87,7 @@ export function DivergenceMatrix({ report }: { report: DivergenceReport }) {
                       >
                         <span className="flex-1">
                           <span className="block font-mono text-sm font-semibold">{cell.decision}</span>
-                          <span className="block text-[11px] opacity-80">
+                          <span className="block text-xs opacity-80">
                             {cell.agreed}/{cell.samples} consistent
                           </span>
                         </span>
@@ -101,22 +101,22 @@ export function DivergenceMatrix({ report }: { report: DivergenceReport }) {
                       </button>
 
                       {cell.divergesFromEngine && (
-                        <p className="mt-1.5 text-[11px] font-medium text-red-700 dark:text-red-400">
+                        <p className="mt-2 text-xs font-medium text-red-700 dark:text-red-400">
                           Differs from the engine, which said{" "}
                           <span className="font-mono">{cell.engineDecision}</span>
                         </p>
                       )}
 
                       {open === id && (
-                        <div className="mt-2 rounded-md border bg-background p-2.5">
-                          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <div className="mt-2 rounded-md border bg-background p-3">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             What the model actually returned
                           </div>
-                          <pre className="mt-1.5 max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">
+                          <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5">
                             {cell.rawResponse}
                           </pre>
                           {!cell.reasoningOffered && (
-                            <p className="mt-2 border-t pt-2 text-[11px] leading-5 text-muted-foreground">
+                            <p className="mt-2 border-t pt-2 text-xs leading-5 text-muted-foreground">
                               <strong>No reasoning was offered.</strong> The deciding prompt asked
                               for a decision and this model volunteered nothing else. The bare
                               response is the disclosure: there is no argument here to check,
@@ -133,7 +133,7 @@ export function DivergenceMatrix({ report }: { report: DivergenceReport }) {
 
             {/* The separator carries the argument: everything above is a model. */}
             <tr>
-              <td colSpan={report.scenarios.length + 1} className="bg-muted/60 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <td colSpan={report.scenarios.length + 1} className="bg-muted/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 and the deterministic engine, on the same events
               </td>
             </tr>
@@ -141,26 +141,26 @@ export function DivergenceMatrix({ report }: { report: DivergenceReport }) {
             <tr className="border-t-2 border-foreground/20 bg-primary/5">
               <th scope="row" className="px-4 py-3 text-left align-top">
                 <span className="block text-sm font-semibold">Vigil</span>
-                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                <span className="mt-0.5 block text-xs text-muted-foreground">
                   deterministic engine
                 </span>
               </th>
               {report.scenarios.map((s) => (
                 <td key={s.scenario} className="px-4 py-3 align-top">
-                  <div className={cn("rounded-md border px-2.5 py-2", DECISION_TONE[s.engineDecision])}>
+                  <div className={cn("rounded-md border px-3 py-2", DECISION_TONE[s.engineDecision])}>
                     <span className="block font-mono text-sm font-semibold">{s.engineDecision}</span>
-                    <span className="block text-[11px] opacity-80">same answer every run</span>
+                    <span className="block text-xs opacity-80">same answer every run</span>
                   </div>
                 </td>
               ))}
             </tr>
 
             <tr className="border-t bg-muted/20">
-              <th scope="row" className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+              <th scope="row" className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
                 Pairwise agreement between vendors
               </th>
               {report.scenarios.map((s) => (
-                <td key={s.scenario} className="px-4 py-2.5">
+                <td key={s.scenario} className="px-4 py-3">
                   <span
                     className={cn(
                       "font-mono text-sm font-semibold",
@@ -169,7 +169,7 @@ export function DivergenceMatrix({ report }: { report: DivergenceReport }) {
                   >
                     {(s.pairwiseAgreement * 100).toFixed(1)}%
                   </span>
-                  <span className="ml-2 text-[11px] text-muted-foreground">
+                  <span className="ml-2 text-xs text-muted-foreground">
                     {s.distinctDecisions} distinct {s.distinctDecisions === 1 ? "answer" : "answers"}
                   </span>
                 </td>

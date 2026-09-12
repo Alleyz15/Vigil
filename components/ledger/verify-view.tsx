@@ -76,8 +76,8 @@ export function VerifyView({ scenarios }: { scenarios: string[] }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-2 flex items-center gap-2.5">
+    <div className="mx-auto max-w-3xl px-6 py-8">
+      <header className="mb-2 flex items-center gap-3">
         <span className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Link2 aria-hidden="true" className="size-5" />
         </span>
@@ -98,7 +98,7 @@ export function VerifyView({ scenarios }: { scenarios: string[] }) {
         {scenarios.length > 1 && (
           <select
             aria-label="Scenario ledger"
-            className="h-9 rounded-md border bg-card px-2.5 text-sm"
+            className="h-9 rounded-md border bg-card px-3 text-sm"
             value={scenario}
             onChange={(event) => {
               setScenario(event.target.value);
@@ -134,9 +134,9 @@ export function VerifyView({ scenarios }: { scenarios: string[] }) {
 
       {state.phase === "done" && <Result state={state} />}
 
-      <section className="mt-8 border-t pt-5">
+      <section className="mt-8 border-t pt-4">
         <h2 className="text-sm font-semibold">What this actually checks</h2>
-        <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-5 text-xs leading-5 text-muted-foreground">
+        <ul className="mt-2 flex list-disc flex-col gap-2 pl-4 text-xs leading-5 text-muted-foreground">
           <li>Each record&rsquo;s sequence number is its position in the file.</li>
           <li>Each record&rsquo;s <span className="font-mono">prevHash</span> equals the previous record&rsquo;s <span className="font-mono">entryHash</span>.</li>
           <li>
@@ -160,11 +160,11 @@ function Result({ state }: { state: Extract<State, { phase: "done" }> }) {
   return (
     <div
       className={cn(
-        "rounded-lg border p-5",
+        "rounded-lg border p-4",
         ok ? "border-emerald-500/40 bg-emerald-500/5" : "border-red-500/40 bg-red-500/5",
       )}
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-3">
         {ok ? (
           <CheckCircle2 aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-emerald-700 dark:text-emerald-400" />
         ) : tampered ? (
@@ -180,7 +180,7 @@ function Result({ state }: { state: Extract<State, { phase: "done" }> }) {
               : `Chain breaks at record ${result.brokenAt}`}
           </p>
 
-          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             {ok
               ? "Every entry hash was recomputed from the record's own content and every link matches the one before it."
               : result.reason}
@@ -196,7 +196,7 @@ function Result({ state }: { state: Extract<State, { phase: "done" }> }) {
             </p>
           )}
 
-          <p className="mt-3 font-mono text-[11px] text-muted-foreground">
+          <p className="mt-3 font-mono text-xs text-muted-foreground">
             {result.records} records read · hashes computed in this browser
           </p>
         </div>

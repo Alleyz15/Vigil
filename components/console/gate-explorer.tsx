@@ -278,7 +278,7 @@ export function GateExplorer({
 
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
             {(["accept", "flag", "escalate", "freeze"] as const).map((q) => (
-              <div key={q} className="flex items-center gap-1.5">
+              <div key={q} className="flex items-center gap-2">
                 <span
                   className="size-2.5 rounded-full"
                   style={{ backgroundColor: QUADRANT_COLOUR[q] }}
@@ -295,7 +295,7 @@ export function GateExplorer({
           </div>
 
           {hovered ? (
-            <div className="mt-2 space-y-1.5 text-[13px]">
+            <div className="mt-2 space-y-2 text-sm">
               <div className="font-mono">
                 {hovered.scenarioId} · leg {hovered.legIndex + 1}
               </div>
@@ -311,7 +311,7 @@ export function GateExplorer({
               />
             </div>
           ) : (
-            <dl className="mt-2 space-y-1.5 text-[13px]">
+            <dl className="mt-2 space-y-2 text-sm">
               <Stat label="events" value={counts.total} />
               <Stat label="both axes evaluated" value={counts.bothEvaluated} />
               <Stat label="pattern not evaluated" value={counts.patternUnknown} />
@@ -320,7 +320,7 @@ export function GateExplorer({
           )}
         </div>
 
-        <div className="rounded-lg border border-border/60 bg-card/40 p-4 text-[13px] leading-relaxed text-muted-foreground">
+        <div className="rounded-lg border border-border/60 bg-card/40 p-4 text-sm leading-relaxed text-muted-foreground">
           <p>
             Points in the shaded bands could not be evaluated on that axis. They are drawn outside
             the scale rather than at zero — plotting them at the origin would claim a measurement
@@ -350,8 +350,8 @@ function ThresholdSlider({
   return (
     <div className="mt-3">
       <div className="flex items-baseline justify-between">
-        <span className="text-[13px]">{label}</span>
-        <span className="font-mono text-[13px] tabular-nums">{value}</span>
+        <span className="text-sm">{label}</span>
+        <span className="font-mono text-sm tabular-nums">{value}</span>
       </div>
       <input
         type="range"

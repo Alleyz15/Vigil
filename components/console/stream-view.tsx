@@ -162,7 +162,7 @@ export function StreamView({
             {running ? "Stop" : "Run"}
           </Button>
 
-          <label className="ml-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+          <label className="ml-2 flex items-center gap-2 text-xs text-muted-foreground">
             leg
             <input
               type="number"
@@ -175,10 +175,10 @@ export function StreamView({
             <span className="font-mono">of {legCount}</span>
           </label>
 
-          {preparing && <span className="ml-auto text-[13px] text-sky-300">{preparing}…</span>}
+          {preparing && <span className="ml-auto text-sm text-sky-300">{preparing}…</span>}
         </div>
 
-        <ol className="mt-4 space-y-1.5">
+        <ol className="mt-4 space-y-2">
           {NODES.map((name, i) => (
             <NodeRow key={name} index={i} name={name} state={nodes[name]} />
           ))}
@@ -193,15 +193,15 @@ export function StreamView({
             Thoughts ({thoughts.length})
           </div>
           {thoughts.length === 0 ? (
-            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               The only frame a model ever authors. None yet — no model is configured, so the
               deterministic paths ran instead.
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
               {thoughts.map((t, i) => (
-                <li key={i} className="text-[13px] leading-relaxed">
-                  <span className="font-mono text-[10px] text-muted-foreground">{t.node}</span>
+                <li key={i} className="text-sm leading-relaxed">
+                  <span className="font-mono text-xs text-muted-foreground">{t.node}</span>
                   <div>{t.text}</div>
                 </li>
               ))}
@@ -222,7 +222,7 @@ function NodeRow({ index, name, state }: { index: number; name: NodeName; state:
       className={cn(
         // Colour transition only. No entrance animation: the timing a viewer
         // sees has to be the nodes actually running.
-        "rounded-lg border px-4 py-2.5 transition-colors duration-200",
+        "rounded-lg border px-4 py-3 transition-colors duration-200",
         state.status === "pending" && "border-border/40 bg-card/20 opacity-50",
         state.status === "running" && "border-sky-500/50 bg-sky-500/[0.07]",
         state.status === "done" && "border-border/60 bg-card/50",
@@ -230,18 +230,18 @@ function NodeRow({ index, name, state }: { index: number; name: NodeName; state:
       )}
     >
       <div className="flex items-center gap-3">
-        <span className="w-5 font-mono text-[11px] tabular-nums text-muted-foreground">
+        <span className="w-5 font-mono text-xs tabular-nums text-muted-foreground">
           {index + 1}
         </span>
         <span className="font-mono text-sm">{info.title}</span>
-        <span className="text-[13px] text-muted-foreground">{info.blurb}</span>
+        <span className="text-sm text-muted-foreground">{info.blurb}</span>
 
         <span className="ml-auto flex items-center gap-3">
           {state.score !== undefined && (
-            <span className="font-mono text-[12px] tabular-nums text-amber-300">{state.score}</span>
+            <span className="font-mono text-xs tabular-nums text-amber-300">{state.score}</span>
           )}
           {state.durationMs !== undefined && (
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
               {state.durationMs}ms
             </span>
           )}
@@ -254,7 +254,7 @@ function NodeRow({ index, name, state }: { index: number; name: NodeName; state:
           {state.flags!.map((flag) => (
             <span
               key={flag}
-              className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] text-amber-300"
+              className="rounded bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-amber-300"
             >
               {flag}
             </span>
@@ -263,19 +263,19 @@ function NodeRow({ index, name, state }: { index: number; name: NodeName; state:
       )}
 
       {state.coverage && (
-        <div className="mt-1.5 pl-8 text-[11px] text-muted-foreground">{state.coverage}</div>
+        <div className="mt-2 pl-8 text-xs text-muted-foreground">{state.coverage}</div>
       )}
 
       {name === "external_context" && state.status === "done" && state.detail && (
-        <div className="mt-1.5 pl-8 text-[11px] leading-relaxed text-sky-200">
+        <div className="mt-2 pl-8 text-xs leading-relaxed text-sky-200">
           {String(state.detail.summary ?? "Weather lookup was not selected.")}
         </div>
       )}
 
       {/* Shown honestly as a stub where it is one. */}
-      {isStub && <div className="mt-1.5 pl-8 text-[11px] text-zinc-400 italic">{info.stub}</div>}
+      {isStub && <div className="mt-2 pl-8 text-xs text-zinc-400 italic">{info.stub}</div>}
 
-      {state.error && <div className="mt-1.5 pl-8 text-[11px] text-rose-300">{state.error}</div>}
+      {state.error && <div className="mt-2 pl-8 text-xs text-rose-300">{state.error}</div>}
     </li>
   );
 }
@@ -297,7 +297,7 @@ function StatusDot({ status }: { status: NodeState["status"] }) {
 function ResultPanel({ result }: { result: ResultState | null }) {
   if (!result) {
     return (
-      <div className="rounded-lg border border-dashed border-border/60 p-4 text-[13px] text-muted-foreground">
+      <div className="rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
         The result frame arrives last, whether or not the run completed.
       </div>
     );
@@ -321,7 +321,7 @@ function ResultPanel({ result }: { result: ResultState | null }) {
       </div>
 
       {halted && (
-        <div className="mt-3 rounded-md border border-sky-500/30 bg-sky-500/[0.06] px-3 py-2 text-[13px] leading-relaxed">
+        <div className="mt-3 rounded-md border border-sky-500/30 bg-sky-500/[0.06] px-3 py-2 text-sm leading-relaxed">
           <div className="font-medium text-sky-300">
             Stopped at <span className="font-mono">{result.halted!.at}</span>
           </div>
@@ -343,7 +343,7 @@ function ResultPanel({ result }: { result: ResultState | null }) {
         patternEvaluable={result.patternScore !== undefined}
       />
 
-      <dl className="mt-4 space-y-1 text-[13px]">
+      <dl className="mt-4 space-y-1 text-sm">
         <Row label="basis" value={result.basis ?? "—"} />
         <Row label="co-signature" value={result.requiresCosign ? "required" : "not required"} />
         <Row label="flags" value={result.flags.length > 0 ? result.flags.join(", ") : "none"} />
@@ -356,7 +356,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right font-mono text-[11px]">{value}</dd>
+      <dd className="text-right font-mono text-xs">{value}</dd>
     </div>
   );
 }

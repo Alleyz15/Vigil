@@ -42,19 +42,19 @@ export function InboxTable({ items }: { items: HandoffSummary[] }) {
                 <Link href={`/operator/handoffs/${item.eventId}`} className="font-mono text-xs font-semibold hover:underline">
                   {item.parcel.waybillNo}
                 </Link>
-                <div className="mt-1 font-mono text-[10px] text-muted-foreground">{item.scenarioId} · leg {item.legIndex + 1}</div>
+                <div className="mt-1 font-mono text-xs text-muted-foreground">{item.scenarioId} · leg {item.legIndex + 1}</div>
               </td>
               <td>
                 <div className="text-sm font-medium">{item.courier.displayName}</div>
-                <div className="mt-1 font-mono text-[10px] text-muted-foreground">{item.courier.courierId}</div>
+                <div className="mt-1 font-mono text-xs text-muted-foreground">{item.courier.courierId}</div>
               </td>
               <td>
                 <HandoffStateBadge state={item.state} />
-                {!item.sealed && <div className="mt-2 text-[11px] font-semibold text-amber-800">Nothing sealed</div>}
+                {!item.sealed && <div className="mt-2 text-xs font-semibold text-amber-800">Nothing sealed</div>}
               </td>
               <td className="max-w-md">
-                <p className="text-[13px] leading-5 text-foreground">{item.reason}</p>
-                {item.coverageLine && <p className="mt-1 text-[11px] text-muted-foreground">{item.coverageLine}</p>}
+                <p className="text-sm leading-5 text-foreground">{item.reason}</p>
+                {item.coverageLine && <p className="mt-1 text-xs text-muted-foreground">{item.coverageLine}</p>}
               </td>
               <td><AxisPair inconsistency={item.inconsistency} pattern={item.pattern} /></td>
               <td className="font-mono text-xs tabular-nums text-muted-foreground">{ageLabel(item.ageMinutes)}</td>
