@@ -362,6 +362,39 @@ from a scenario already present, not from choosing a seed and trusting it.
 **So: a browser walk-through of a new surface is not decoration on top of a green suite. It is the
 only instrument that detects category 4.**
 
+### 1h. Never range-filter a timestamp column in SQL. It fails silently.
+
+**Stored timestamps carry their offset verbatim.** `events.eventTime` holds
+`2026-09-08T10:15:00+08:00`, not a normalised instant, because the offset is evidence — rule 4e
+turns on which side of a clock a divergence falls, and `Iso8601WithOffset` rejects unanchored
+timestamps for the same reason.
+
+**SQLite compares TEXT lexicographically.** So `gte(events.eventTime, from)` against a
+`Z`-normalised bound compares `"2026-09-08T10:15:00+08:00"` with `"2026-09-08T03:15:30.000Z"`
+character by character: `"1"` sorts after `"0"`, the row is excluded, and the later-sorting string
+is in fact the *earlier* instant.
+
+**The word that matters is SILENTLY.** Nothing throws. No constraint fires. The query returns
+zero rows and every caller treats that as a true answer. Session 18's first
+`fetchRouteHistory` reported *"no earlier handoffs on file for this courier"* about a courier who
+had sealed one thirty seconds earlier, and only a test asserting `found === true` caught it.
+
+**This is the second time offsets have bitten this project.** Session 4 had the seeded server
+clock in UTC against `+08:00` event times, which made every event look 485 minutes skewed and
+fired I4 on clean fixtures. Same root cause, different symptom: **one side normalised and the
+other did not.**
+
+So: narrow in SQL on the things SQL compares correctly — ids, enums, foreign keys, all of which
+are exact-match — and apply time windows in JS on `Date.parse` results. The row counts these
+queries touch are small (one courier, one window), so the cost is nil and the correctness is
+unconditional. `withinWindow` in `lib/assemble/context-tools.ts` is the reference.
+
+`assemblePatternInput` does range-filter `eventTime` in SQL and is *currently* correct only
+because the generator writes `+08:00` everywhere and callers pass `+08:00` bounds, so the
+comparison is like-for-like. **That is a coincidence of the dataset, not a property of the code.**
+A fleet spanning two offsets would break it silently. Left unchanged in session 18 because
+`lib/assemble` time semantics were not in scope, and recorded here so it is not rediscovered.
+
 ### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
 
 A model's response passes every gate or none of it is used. Do not implement
@@ -1008,6 +1041,95 @@ npm run db:migrate
 ---
 
 ## Session log
+
+### Session 18 — the AI argument on screen, and tools that do something (complete)
+
+634 tests passing, 7 live-provider tests skipped. `tsc --noEmit` clean, eslint clean, production
+build clean; `lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% branch coverage. No
+detector threshold moved, no experiment was rerun, and **no model is called to render anything**.
+
+**The enum goes 3 to 4. Working tools go 1 to 4.** That sentence is the headline of the session.
+`fetch_route_history` and `lookup_recipient_history` had **no implementation** — enum members,
+heuristic branches and prompt lines with nothing behind them, because `externalContext` returned
+early unless the selected tool was `check_traffic_weather`. Every test passed, since **nothing
+asserted that selecting a tool had an effect**: the parity tests assert the verdict does NOT change
+when tools change, which is the opposite property and is equally satisfied by a tool that does
+nothing at all. Recorded as rule 1g defect 6 — the sixth instance and the most consequential,
+because it is why the Agentic AI story looked thin.
+
+Three tools now read real rows, and three candidates were rejected:
+
+| Rejected | Why |
+|---|---|
+| `compare_fleet_peers` | Computes P2's baseline. A second pattern statistic presented as *context* invites exactly the confusion rule 2 exists to prevent — and **no mechanically enforced guard would catch it**, because it is the presentation-layer version of the same error. |
+| `check_device_changes` | `deviceEnrollments` stores current enrollment, not history. It would always report "no changes": absence of evidence dressed as evidence of absence. |
+| `lookup_parcel_lane_history` | Restates the timeline already on screen. A tool that repeats the display is decoration. |
+
+**A trigger that fires on everything is a trigger that says nothing.** The first
+`check_address_history` was eligible on every delivery, which broke the heuristic's most important
+property — that it asks for nothing when nothing calls for it. The test was right and the trigger
+was lazy. It is now gated on a delivery arriving **without proof of delivery**, where the
+building's own history genuinely distinguishes something: a reception desk that takes parcels
+unsigned looks identical, on one event, to a courier who never went. **Selecting everything is the
+same as selecting nothing** — it makes "which tools did the model choose" meaningless.
+
+**Parity passed unchanged after the enum widened**, stated explicitly rather than implied: *"seals
+the same verdict with no LLM, with fake A, and with fake B"*, *"seals the same verdict on an event
+that is NOT clean"*, *"lets only the prose differ"*, *"produces an identical ledger chain either
+way"*, and rule 1b's sharpest test *"a valid model selection changes what is gathered and not the
+verdict"*. Explain prose may now differ on runs that collect more evidence — that is the intended
+consequence of tools that finally do something. **Sealed verdicts and ledger chains are untouched.**
+
+#### The E4c correction, and why it makes the argument stronger
+
+`/demo/injection` computes its figures from the CSV rows rather than the distribution table, and
+that exposed something session 14 reported correctly but incompletely.
+
+> **An aggregate that cancels out is not the same as nothing happening.**
+
+Qwen's two paired changes move in opposite directions — `accept → flag` on one payload and
+**`flag → accept`** on another — so its distribution is genuinely unchanged while a refusal became
+an acceptance. Reading only the distribution gives the opposite conclusion from the truth.
+
+The corrected headline is **narrower and more useful** than the one it replaces: *no HOSTED model
+reached `accept`; one local-model row did*, under an instruction hidden in a photo filename. And
+it reinforces E4a rather than sitting beside it — qwen is also the model that accepted the obvious
+S1 spoof 5/5 while **offering no reasoning at all**. The smallest model is both the most lenient
+and the most steerable, which is now an explicit Known Limitation on the local-inference path.
+
+**The bare response is the disclosure.** Only Claude returned reasoning; Gemini and Qwen returned
+roughly twenty characters, because the deciding prompt asked for a decision and they volunteered
+nothing. A cell expanding to `{"decision":"accept"}` on an obvious spoof is a stronger exhibit
+than any paragraph would have been: there is no argument there to check, agree with, or refute.
+
+#### Both halves of E4a, because either alone misleads
+
+Every cell carries its `5/5`. **Each model was perfectly consistent with itself** — so "models are
+unreliable" is not the claim and would be refuted by that column. The claim is that **which model
+you ask changes the answer**: pairwise vendor agreement is 100% on S0 and **33.3% on both S1 and
+S6**. Two divergences from the engine are marked and they point in **opposite directions** — qwen
+under-called S1, Claude over-flagged S6. It is not that models are too lenient; it is that they do
+not agree on which way to err.
+
+#### A timestamp bug I introduced, and the rule it produced
+
+The first `fetchRouteHistory` range-filtered `events.eventTime` in SQL against a `Z`-normalised
+bound. The column stores `+08:00` verbatim and SQLite compares TEXT lexicographically, so the
+window matched nothing and a courier who had sealed a handoff thirty seconds earlier came back
+with *"no earlier handoffs on file"*. **Nothing threw.** Only a test asserting `found === true`
+caught it. Second time offsets have bitten this project after session 4's UTC-vs-`+08:00` fixture
+clock; now rule 1h.
+
+#### Verification
+
+`npm run qa:capture` was run manually as session 17B's note requires, since Part C changes the
+plan node and that is exactly the trigger that note watches for: **all five frames produced** at
+1920x1080. Both new views were checked by reading rendered markup — content and structure
+verified, visual presentation not, since the browser pane's screenshot tool still returns blank
+frames (17B, unresolved).
+
+`/demo/models` and `/demo/injection` sit under **Demo evidence** beside `/verify` and the gate
+explorer — argument views, never the operator's queue path.
 
 ### Session 17B — courier, recipient, rejected alternatives, browser verification (complete)
 
@@ -2301,6 +2423,25 @@ one you picked.**
 **Fold-back condition:** the next session with `lib/generate` in scope exports
 `seedIdentityReferences` and deletes the workbench copy. Until then, a change to the generator's
 identity seeding must be mirrored by hand, and nothing enforces that.
+
+**The local-inference path is the weakest of the three models, and that is the cost of the
+privacy argument.** Ollama is how *"sensitive logistics data need not leave the premises"* is
+implemented, and `qwen2.5:7b` is the model that, when asked to decide:
+
+- **accepted S1** — an obvious GPS spoof with an explicit cross-signal contradiction — 5/5, and
+  offered no reasoning at all, because the deciding prompt asked for none and it volunteered none;
+- was the **only** model an injection moved from a refusal to an acceptance, on an instruction
+  hidden in a **photo filename** (`flag → accept`).
+
+The smallest model is both the most lenient and the most steerable, and those two findings
+reinforce each other rather than being separate observations.
+
+**None of this reaches a verdict** — the model decides nothing, which is the entire architecture —
+so the privacy path costs nothing in *correctness*. What it costs is the quality of the
+**explanation** an operator reads, and the margin available if a future change ever gave a model
+more influence. A judge who likes the on-premise argument should hear its cost from us rather
+than find it themselves, and the honest framing is: run locally by all means, and do not let the
+local model near a decision.
 
 **Demo keys live in environment variables. This is a stated limitation, not an oversight.**
 The operator's signing key is the thing that makes approval constitutive, and a key in an env

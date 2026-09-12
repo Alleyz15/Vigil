@@ -3,7 +3,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Inbox, Link2, Route, ShieldCheck } from "lucide-react";
+import { ClipboardList, Inbox, Link2, Route, Scale, ShieldCheck, Syringe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DemoDataControl } from "./demo-data-control";
 
@@ -15,6 +15,8 @@ const PRIMARY = [
 const EVIDENCE = [
   { href: "/demo/gate", label: "Gate evidence", icon: Route },
   { href: "/verify", label: "Verify the ledger", icon: Link2 },
+  { href: "/demo/models", label: "Model divergence", icon: Scale },
+  { href: "/demo/injection", label: "Injection", icon: Syringe },
 ];
 
 /**

@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "provider": "open-meteo-archive",
+  "endpoint": "https://archive-api.open-meteo.com/v1/archive",
+  "query": {
+    "latitude": 3.1340623752864243,
+    "longitude": 101.68672351998953,
+    "hour": "2026-09-07T11:00:00.000Z"
+  },
+  "observation": {
+    "requestedLatitude": 3.1340623752864243,
+    "requestedLongitude": 101.68672351998953,
+    "gridLatitude": 3.1282952,
+    "gridLongitude": 101.68548,
+    "hour": "2026-09-07T11:00:00.000Z",
+    "temperatureC": 33.1,
+    "precipitationMm": 0,
+    "rainMm": 0,
+    "weatherCode": 3,
+    "windSpeedKmh": 7.6,
+    "condition": "Overcast",
+    "resolutionKm": 9
+  }
+}
