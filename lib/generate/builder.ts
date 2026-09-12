@@ -122,7 +122,20 @@ const WARMUP_PARCEL_OFFSET = 45;
 
 export function buildRequestedScenario(
   request: BuildRequest,
-  context: { world: GeneratedWorld; startMs: number },
+  context: {
+    world: GeneratedWorld;
+    startMs: number;
+    /**
+     * Extra overrides merged into the delivery leg.
+     *
+     * Used when the courier delivers somewhere other than the address on
+     * record — a mid-route correction. Rebuilding the whole run with the same
+     * request and seed keeps every earlier leg byte-identical and keeps the
+     * delivery's event id the same, because `uuidFrom` derives it from the run
+     * id and leg name: it is the SAME handoff, actually delivered.
+     */
+    deliveryOverride?: LegOverrides;
+  },
 ): BuildResult {
   if (request.fault === "batch_scan") {
     // A degraded version of this is not a smaller version of it: one parcel
@@ -197,13 +210,16 @@ export function buildRequestedScenario(
     idPrefix: runId,
     legs: routed.legs,
     hubs: { origin: routed.originHub, destination: routed.destinationHub },
-    overrides: overridesFor(request.fault, {
-      parcel,
-      rng: rng.derive("fault"),
-      deliveryMs,
-      world,
-      route: routed,
-    }),
+    overrides: mergeDelivery(
+      overridesFor(request.fault, {
+        parcel,
+        rng: rng.derive("fault"),
+        deliveryMs,
+        world,
+        route: routed,
+      }),
+      context.deliveryOverride,
+    ),
   });
 
   return {
@@ -249,6 +265,14 @@ function parcelFor(
     declaredValueSen: request.declaredValueSen,
     codAmountSen: request.codAmountSen ?? 0,
   };
+}
+
+function mergeDelivery(
+  base: Partial<Record<string, LegOverrides>>,
+  extra: LegOverrides | undefined,
+): Partial<Record<string, LegOverrides>> {
+  if (!extra) return base;
+  return { ...base, delivery: { ...base.delivery, ...extra } };
 }
 
 function overridesFor(

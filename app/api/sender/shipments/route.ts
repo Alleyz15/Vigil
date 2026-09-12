@@ -41,7 +41,10 @@ export async function POST(request: Request) {
   }
 
   const workbench = await getWorkbench();
-  const result = await workbench.runBuilt(parsed.data);
+  // Held at out-for-delivery. The delivery scan is a separate act by a
+  // different party, and that gap is what makes a mid-route correction
+  // possible at all — a correction after arrival is a data-entry fix.
+  const result = await workbench.runBuilt(parsed.data, { holdDelivery: true });
 
   // A refusal is a 200 carrying a reason, not a server error: the request was
   // well formed and the answer is "this fault cannot apply to this route".

@@ -1,4 +1,5 @@
 import { SenderForm } from "@/components/sender/sender-form";
+import { SenderShipments } from "@/components/sender/sender-shipments";
 import { SenderShell } from "@/components/shells/sender-shell";
 import { ADDRESSES } from "@/lib/generate/world";
 import { getWorkbench } from "@/lib/workbench";
@@ -16,6 +17,10 @@ export default async function SenderPage() {
   return (
     <SenderShell identity={workbench.identities().sender}>
       <SenderForm addresses={addresses} policy={workbench.senderPolicy()} />
+      <SenderShipments
+        shipments={workbench.listSenderShipments().filter((s) => !s.delivered)}
+        addresses={addresses}
+      />
     </SenderShell>
   );
 }

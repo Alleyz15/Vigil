@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, CircleDashed, CloudRain, KeyRound, Link2, Pause, Play, ShieldAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleDashed, CloudRain, KeyRound, Link2, MapPinned, Pause, Play, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { HandoffDetail } from "@/lib/workbench";
@@ -93,6 +93,8 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
           <p className="mt-0.5 text-xs leading-5 opacity-80">{status.detail}</p>
         </div>
       </section>
+
+      {detail.addressCorrection && <AddressCorrectionNotice detail={detail} />}
 
       <div className="grid grid-cols-[minmax(0,1.7fr)_23rem] gap-4">
         <section>
@@ -312,5 +314,56 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
         />
       </section>
     </div>
+  );
+}
+
+/**
+ * Why the distance check fired, when the courier did nothing wrong.
+ *
+ * WITHOUT THIS AN OPERATOR SEES A FLAG AND A RULE ID. I10 says "the delivery
+ * scan is far from the recipient address", which is true, and leaves them to
+ * conclude the courier delivered somewhere else. The cause is that the address
+ * changed after the parcel was already in transit and the registry the check
+ * compared against predates that.
+ *
+ * THE CORRECTION IS NOT AN ENGINE INPUT. The verdict was reached without it —
+ * the engine only ever compared a scan position against a stored coordinate. If
+ * it had been told a correction happened, the flag would be the system
+ * detecting a condition it was handed, and the whole demonstration circular.
+ * This panel is assembled from an independent record, which is exactly what an
+ * explanation is allowed to be.
+ *
+ * Session 10 measured mid-route address correction as the LEADING
+ * false-positive contributor at noise level 1. Known Limitations states that
+ * the system is as sensitive to stale records as to fraud; this is where a
+ * viewer watches it happen and sees it named.
+ */
+function AddressCorrectionNotice({ detail }: { detail: HandoffDetail }) {
+  const correction = detail.addressCorrection!;
+  const at = correction.correctedAt.replace("T", " ").slice(0, 16);
+
+  return (
+    <section className="rounded-md bg-sky-500/10 px-4 py-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-sky-900 dark:text-sky-200">
+        <MapPinned aria-hidden="true" className="size-4 shrink-0" />
+        A stale record, not a false delivery
+      </h2>
+
+      <p className="mt-1.5 max-w-prose text-xs leading-5 text-sky-900/90 dark:text-sky-200/90">
+        The sender corrected this parcel&apos;s address at <span className="font-mono">{at}</span>,
+        after it was already in transit — from{" "}
+        <span className="font-medium">{correction.fromLabel}</span> to{" "}
+        <span className="font-medium">{correction.toLabel}</span>. The courier delivered to the
+        corrected address. The distance check compared their scan against the delivery point
+        captured at dispatch, which predates the correction, so the two disagree for a reason
+        neither the courier nor the recipient caused.
+      </p>
+
+      <p className="mt-2 max-w-prose text-xs leading-5 text-sky-900/70 dark:text-sky-200/70">
+        Nothing told the engine a correction had happened; it compared a scan position against a
+        stored coordinate and found them apart. This panel is assembled from the correction record
+        afterwards, which is why it explains the verdict rather than producing it.
+      </p>
+    </section>
   );
 }

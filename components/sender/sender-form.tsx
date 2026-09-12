@@ -97,7 +97,9 @@ export function SenderForm({
         setError(body?.reason ?? body?.error ?? "That shipment could not be created.");
         return;
       }
-      router.push(`/operator/handoffs/${encodeURIComponent(body.landOnEventId)}`);
+      // Stays here: the parcel is out for delivery and the delivery scan is a
+      // separate act. That gap is what makes a mid-route correction possible.
+      router.refresh();
     });
   };
 
@@ -181,11 +183,11 @@ export function SenderForm({
       <div className="mt-7">
         <Button size="lg" disabled={!canSubmit} onClick={submit}>
           <PackagePlus data-icon="inline-start" />
-          {pending ? "Running the shipment…" : "Create and run the shipment"}
+          {pending ? "Dispatching…" : "Create and dispatch"}
         </Button>
         <p className="mt-2 max-w-prose text-xs leading-5 text-muted-foreground">
-          Every leg runs through the same agent as a seeded scenario. You land on the operator&apos;s
-          view of whichever leg the gate stopped on.
+          Collection through to out-for-delivery runs immediately, through the same agent as a
+          seeded scenario. The delivery scan waits below, so you can correct the address first.
         </p>
         {error && (
           <p role="alert" className="mt-3 max-w-prose text-sm leading-6 text-red-700 dark:text-red-400">

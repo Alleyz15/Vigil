@@ -89,6 +89,20 @@ export type HandoffDetail = {
   ledger: { sequence: number | null; chainValid: boolean; entries: number };
   /** The recipient capability for this handoff. Demo affordance; see service.ts. */
   recipientConfirmation: { tokenId: string; state: TokenState } | null;
+  /**
+   * A mid-route address correction behind this handoff, if there was one.
+   *
+   * NOT AN ENGINE INPUT. The verdict was reached without it — I10/I11 simply
+   * found the scan and the registry disagreeing. This is the independent record
+   * that explains WHY they disagreed, and it is the difference between an
+   * operator seeing "distance from recipient address" and an operator seeing
+   * that the address changed after the parcel was already moving.
+   */
+  addressCorrection: {
+    fromLabel: string;
+    toLabel: string;
+    correctedAt: string;
+  } | null;
   runs: RunView[];
   actions: ActionView[];
   timeline: HandoffSummary[];

@@ -28,7 +28,7 @@ describe("a built shipment reaches the operator's surfaces", () => {
     expect(result.eventIds).toHaveLength(6);
 
     // The same read model the console renders, not a builder-specific one.
-    const detail = workbench.getHandoff(result.landOnEventId);
+    const detail = workbench.getHandoff(result.landOnEventId!);
     expect(detail).toBeDefined();
     expect(detail!.flags.map((f) => f.id)).toContain("I1");
     expect(detail!.gate.decision).toBe("flag");
@@ -95,7 +95,7 @@ describe("a built shipment reaches the operator's surfaces", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    const detail = workbench.getHandoff(result.landOnEventId)!;
+    const detail = workbench.getHandoff(result.landOnEventId!)!;
 
     expect(detail.gate.decision).toBe("freeze");
 

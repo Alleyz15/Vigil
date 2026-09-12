@@ -512,6 +512,29 @@ score was not evaluated, this credential is a sidecar, nothing was sealed — **
 the data is rendered**, and give the component a compact variant if some callers need less. The
 compact variant is the honest way to serve a queue table; deleting the claim is not.
 
+### 1k. A distinguishing signal that separates three things may not separate four
+
+Session 19 gave the three role surfaces three colours, and colour carried the single-frame test.
+Session 20 added a fourth and it stopped carrying: four bands are four hues a viewer has to
+remember, and under video compression two of them are a guess.
+
+**The fix was a different axis, not more of the same one.** Each surface became a different
+STRUCTURE — the sender is the only one with a form, the operator the only one with a sidebar, the
+courier a narrow device column, the recipient a centred card with no chrome. Colour still helps;
+it is no longer what the distinction rests on.
+
+> **When a distinguishing signal starts to strain, adding more of it makes the problem worse.
+> Change axis.**
+
+The map fix is the same shape: route, contradiction and cell context were three colours at one
+weight, and the answer was not a fourth colour but making the contradiction the only **dashed,
+heavy** line — a distinction that survives compression and colour-blindness because it is not
+carried by hue at all.
+
+**The test for whether this applies:** if telling two things apart requires the viewer to recall
+which value means which, the signal is a legend rather than a distinction. Structure, weight and
+shape are read without a legend; hue past about three categories is not.
+
 ### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
 
 A model's response passes every gate or none of it is used. Do not implement
@@ -1298,6 +1321,40 @@ finally adds the file.
 `HeroBackdrop` owns the stacking order internally — ground, media, scrim — so a future session
 **cannot** put footage over the headline. There is no JSX for them to get wrong. Rule 1j: the
 guarantee belongs to the component, not to whoever edits the page next.
+
+#### The address correction: the limitation that demonstrates as a strength
+
+Known Limitations says the system is as sensitive to stale records as to fraud, and session 10
+measured mid-route address correction as the LEADING false-positive contributor at noise level 1.
+That was a sentence. It is now a sequence a person can watch:
+
+1. the sender dispatches; collection through out-for-delivery run, the delivery scan does not
+2. the sender corrects the recipient address — **real state, with a timestamp**
+3. the courier delivers to the corrected address, honestly
+4. `I10` fires, because the scan and the registry disagree
+5. the operator's view names the cause
+
+**THE CORRECTION DOES NOT REWRITE THE DELIVERY POINT ON RECORD.** That unreconciled gap IS the
+stale record: the courier was told, the registry was not. And **nothing informs the engine** — it
+compares a scan position against a stored coordinate and finds them apart. Had it been told, the
+system would be detecting a condition it was handed and the demonstration would be circular.
+
+**Position, cell and WiFi move together.** The courier is genuinely at the new address, so the
+scan is internally consistent there. Moving the position while still reporting the old address's
+tower would fire I1 on a contradiction nobody committed — turning an honest delivery into an
+apparent spoof and destroying the distinction the case exists to draw. Measured: `flags: [I10]`
+only, with `I1` and `I7` absent. Verified non-vacuous by injecting a correction that does not move
+the courier, which fails exactly the one test aimed at it.
+
+**Why it is the most valuable case in the demo.** A judge watching an honest delivery get flagged
+is watching a false positive — until the operator's panel shows the cause is a stale record rather
+than fraud, at which point they are watching explainability work. The panel is assembled from the
+correction record AFTERWARDS, which is precisely what an explanation is allowed to be: it explains
+the verdict rather than producing it.
+
+**It is product behaviour, not fault injection**, and sits in the product half of `/sender`
+accordingly. A merchant correcting an address is ordinary business; a GPS spoof is not. The
+structural separation built for the fault panel holds here.
 
 #### The sender, and the scenario builder inside it
 

@@ -27,6 +27,7 @@ import {
   type ScenarioId,
 } from "@/lib/generate";
 import { buildRequestedScenario, type BuildRequest } from "@/lib/generate/builder";
+import { ADDRESSES, jitterPoint, type GeneratedParcel } from "@/lib/generate/world";
 import { createOpenMeteoProvider, OPEN_METEO_CACHE_DIR } from "@/lib/weather";
 import { epcsOf } from "@/lib/epcis";
 import { rmSync } from "node:fs";
@@ -84,6 +85,71 @@ const START_MS = Date.parse("2026-09-07T14:30:00+08:00");
 const OPERATOR_ID = "OP-01";
 
 type StoredEntry = WorkbenchEntry & { harness: IngestHarness; actions: ActionView[] };
+
+/**
+ * A correction the sender made after the parcel was already moving.
+ *
+ * Real state with a real timestamp — and, importantly, state NO DETECTOR READS.
+ * The operator's explanation is assembled from it; the engine's verdict is not.
+ * That separation is what keeps the demonstration honest: the flag has to fall
+ * out of the registry being stale, not out of anyone being told.
+ */
+export type AddressCorrection = {
+  fromLabel: string;
+  toLabel: string;
+  toIndex: number;
+  toPoint: { latitude: number; longitude: number };
+  correctedAt: string;
+};
+
+type BuiltShipment = {
+  runId: string;
+  /** Kept so the run can be rebuilt byte-identically with a delivery override. */
+  request: BuildRequest;
+  scenario: GeneratedScenario;
+  world: GeneratedWorld;
+  harness: IngestHarness;
+  /** The delivery leg, built but not yet run. */
+  held: BuiltEvent;
+  parcel: GeneratedParcel;
+  route: { origin: { label: string } };
+  correction?: AddressCorrection;
+  deliveryEventId?: string;
+};
+
+export type SenderShipmentView = {
+  runId: string;
+  waybillNo: string;
+  originLabel: string;
+  /** The delivery point OF RECORD — unchanged by a correction, which is the point. */
+  recordedAddress: string;
+  declaredValueSen: number;
+  correction?: AddressCorrection;
+  delivered: boolean;
+  deliveryEventId: string | null;
+};
+
+/** One stored entry, built the same way the boot path builds them. */
+function storedEntryFor(shipment: BuiltShipment, built: BuiltEvent, ctx: AgentContext): StoredEntry {
+  const pending = ctx.halted?.reason === "PENDING_COSIGNATURE";
+  const actionable = pending || (ctx.decision !== undefined && ctx.decision !== "accept");
+  const state: CaseState | null = pending ? "awaiting_cosignature" : actionable ? "flagged" : null;
+
+  return {
+    scenario: shipment.scenario,
+    world: shipment.world,
+    built,
+    current: ctx,
+    runs: [ctx],
+    state,
+    caseId: state ? `CASE-${shipment.runId}-${built.legIndex}` : null,
+    priority: priorityFor(state, ctx.decision),
+    reason: reasonFor(ctx),
+    createdAt: built.event.recordTime ?? built.event.eventTime,
+    harness: shipment.harness,
+    actions: [],
+  };
+}
 
 /** Who is acting, and the key that proves it. */
 export type RoleIdentity = {
@@ -428,6 +494,8 @@ function makeDraft(
 export class OperatorWorkbench {
   private readonly entries = new Map<string, StoredEntry>();
   private readonly drafts = new Map<string, StoredDraft>();
+  /** Sender-created shipments whose delivery scan has not happened yet. */
+  private readonly shipments = new Map<string, BuiltShipment>();
   /** tokenId -> the handoff it asks about. */
   private readonly confirmations = new Map<string, StoredEntry>();
   private readonly harnesses = new Set<IngestHarness>();
@@ -602,8 +670,11 @@ export class OperatorWorkbench {
    * value over the mandate's co-sign figure halts and queues, and one under it
    * seals. Same submission, different outcome, for a reason the sender caused.
    */
-  async runBuilt(request: BuildRequest): Promise<
-    | { ok: true; runId: string; eventIds: string[]; landOnEventId: string }
+  async runBuilt(
+    request: BuildRequest,
+    options: { holdDelivery?: boolean } = {},
+  ): Promise<
+    | { ok: true; runId: string; eventIds: string[]; landOnEventId: string | null; inTransit: boolean }
     | { ok: false; reason: string }
   > {
     const world = buildWorld(SEED);
@@ -613,6 +684,7 @@ export class OperatorWorkbench {
     const { entries } = await buildScenarioEntries(
       { scenario: built.scenario, world },
       {
+        holdBackFinalLeg: options.holdDelivery,
         leavePendingAt: (event, scenario) =>
           event.legIndex === scenario.timeline.length - 1,
       },
@@ -623,6 +695,27 @@ export class OperatorWorkbench {
       this.harnesses.add(entry.harness);
     }
 
+    if (options.holdDelivery) {
+      // The parcel is out for delivery and the delivery scan has not happened.
+      // That gap is what makes a mid-route correction possible at all: a
+      // correction after the fact is a data-entry fix, not a stale record.
+      const parcel = built.scenario.parcels[0];
+      const held = built.scenario.timeline[built.scenario.timeline.length - 1];
+
+      this.shipments.set(built.runId, {
+        runId: built.runId,
+        request,
+        scenario: built.scenario,
+        world,
+        harness: entries[0].harness,
+        held,
+        parcel,
+        route: built.route,
+        correction: undefined,
+        deliveryEventId: undefined,
+      });
+    }
+
     // Land on the leg that is actually worth looking at: whatever the gate
     // stopped on, or the delivery if it accepted everything.
     const exception = entries.find((entry) => entry.state !== null);
@@ -631,9 +724,148 @@ export class OperatorWorkbench {
     return {
       ok: true,
       runId: built.runId,
+      inTransit: Boolean(options.holdDelivery),
       eventIds: entries.map((entry) => entry.built.event.eventID),
-      landOnEventId: (exception ?? last).built.event.eventID,
+      landOnEventId: options.holdDelivery ? null : (exception ?? last).built.event.eventID,
     };
+  }
+
+  /**
+   * The sender corrects the recipient address after dispatch.
+   *
+   * ORDINARY BUSINESS, NOT A FAULT. A customer moves, a flat number was wrong,
+   * a building has two entrances. This lives in the product half of the sender
+   * surface for that reason — the demo-control panel is for things a merchant
+   * would never do.
+   *
+   * WHAT IT DOES AND DELIBERATELY DOES NOT DO. It records the correction, with
+   * the time it was made. It does NOT rewrite `parcels.recipient_lat/lng`, and
+   * it tells the engine nothing. The delivery point OF RECORD is the one
+   * captured at dispatch; the correction reaches the courier out of band, the
+   * way a phone call does, and the registry has not been reconciled to it.
+   *
+   * **That unreconciled gap IS the stale record.** Nothing downstream is
+   * informed that a correction happened: I10/I11 simply compare where the scan
+   * was taken against the coordinate on file and find they disagree. If the
+   * engine had to be told, the demonstration would be circular — a system
+   * detecting a condition it was handed.
+   *
+   * Session 10 measured this as the LEADING false-positive contributor at noise
+   * level 1. Known Limitations states it as a sentence; this makes it a thing
+   * you can watch happen.
+   */
+  correctAddress(
+    runId: string,
+    addressIndex: number,
+  ): { ok: true; correction: AddressCorrection } | { ok: false; reason: string } {
+    const shipment = this.shipments.get(runId);
+    if (!shipment) {
+      return { ok: false, reason: "No shipment in transit under that reference." };
+    }
+    if (shipment.deliveryEventId) {
+      return {
+        ok: false,
+        reason:
+          "This parcel has already been delivered. Correcting the address now would be a " +
+          "data-entry fix after the fact, not a record the delivery was measured against.",
+      };
+    }
+
+    const address = ADDRESSES[addressIndex];
+    if (!address) return { ok: false, reason: "That address is not on file." };
+    if (address.label === shipment.parcel.recipientAddress) {
+      return { ok: false, reason: "That is already the address on record." };
+    }
+
+    const correction: AddressCorrection = {
+      fromLabel: shipment.parcel.recipientAddress,
+      toLabel: address.label,
+      toIndex: addressIndex,
+      // The courier's doorstep at the new address, derived the same way the
+      // registry derives one: the geocoded centroid is not the door.
+      toPoint: jitterPoint(makeRng(`${runId}::correction`), address, 60),
+      correctedAt: this.nowIso,
+    };
+
+    shipment.correction = correction;
+    return { ok: true, correction };
+  }
+
+  /**
+   * The courier delivers. To the corrected address, if there was a correction.
+   *
+   * The scan is INTERNALLY CONSISTENT at wherever the courier actually is —
+   * position, serving cell and access point all agree, because the courier is
+   * genuinely standing there. Moving the position without moving the observed
+   * sites would manufacture an I1 contradiction that nobody committed, and the
+   * whole point of this case is that the courier did nothing wrong.
+   *
+   * The only thing that disagrees is the registry.
+   */
+  async completeDelivery(
+    runId: string,
+  ): Promise<{ ok: true; eventId: string } | { ok: false; reason: string }> {
+    const shipment = this.shipments.get(runId);
+    if (!shipment) return { ok: false, reason: "No shipment in transit under that reference." };
+    if (shipment.deliveryEventId) {
+      return { ok: false, reason: "This parcel has already been delivered." };
+    }
+
+    const correction = shipment.correction;
+    let built = shipment.held;
+
+    if (correction) {
+      // POSITION, CELL AND WIFI MOVE TOGETHER. The courier is genuinely at the
+      // new address, so the scan is internally consistent there. Moving the
+      // position while still reporting the old address's tower would fire I1 on
+      // a contradiction nobody committed — turning an honest delivery into an
+      // apparent spoof and destroying the distinction this case exists to draw.
+      const sites = shipment.world.sitesByAddress[correction.toIndex];
+      const rebuilt = buildRequestedScenario(shipment.request, {
+        world: shipment.world,
+        startMs: START_MS,
+        deliveryOverride: {
+          scanPoint: correction.toPoint,
+          cellSiteId: sites.cell,
+          wifiBssid: sites.wifi,
+        },
+      });
+      if (!rebuilt.ok) return { ok: false, reason: rebuilt.reason };
+      built = rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1];
+    }
+
+    const ctx = await ingestEvent(shipment.harness, built, {
+      courierPrivateKey: shipment.scenario.courier.keys.privateKey,
+      mandateId: shipment.scenario.courier.mandate.mandateId,
+    });
+
+    const entry = storedEntryFor(shipment, built, ctx);
+    this.entries.set(built.event.eventID, entry);
+    shipment.deliveryEventId = built.event.eventID;
+
+    return { ok: true, eventId: built.event.eventID };
+  }
+
+  /** Shipments the sender has dispatched, for their own surface. */
+  listSenderShipments(): SenderShipmentView[] {
+    return [...this.shipments.values()].map((shipment) => ({
+      runId: shipment.runId,
+      waybillNo: shipment.parcel.waybillNo,
+      originLabel: shipment.route.origin.label,
+      recordedAddress: shipment.parcel.recipientAddress,
+      declaredValueSen: shipment.parcel.declaredValueSen,
+      correction: shipment.correction,
+      delivered: Boolean(shipment.deliveryEventId),
+      deliveryEventId: shipment.deliveryEventId ?? null,
+    }));
+  }
+
+  /** The correction behind a delivery, for the operator's explanation. */
+  correctionFor(eventId: string): AddressCorrection | null {
+    for (const shipment of this.shipments.values()) {
+      if (shipment.deliveryEventId === eventId) return shipment.correction ?? null;
+    }
+    return null;
   }
 
   /**
@@ -764,6 +996,16 @@ export class OperatorWorkbench {
        * once. See Known Limitations.
        */
       recipientConfirmation: this.confirmationFor(eventId) ?? null,
+      addressCorrection: (() => {
+        const correction = this.correctionFor(eventId);
+        return correction
+          ? {
+              fromLabel: correction.fromLabel,
+              toLabel: correction.toLabel,
+              correctedAt: correction.correctedAt,
+            }
+          : null;
+      })(),
       ledger: {
         sequence: entry.current.ledger?.status === "recorded" ? entry.current.ledger.seq : null,
         chainValid: entry.harness.deps.ledger.verifyChain().valid,
