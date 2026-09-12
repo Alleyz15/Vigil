@@ -1,59 +1,17 @@
 import { createHash } from "node:crypto";
+import { canonicalize } from "./canonical-form";
 
 /**
- * Canonical JSON serialisation, then sha256.
+ * Hashing over the canonical form.
  *
- * WHY NOT HASH THE RAW BYTES
- * --------------------------
- * The ledger's central rule is: same eventID + same payload => NO-OP, return the
- * original verdict. That rule exists to protect the courier who taps "delivered"
- * twice in a dead spot. If we hashed raw request bytes, a retry that merely
- * reordered JSON keys — which HTTP clients, proxies and retry libraries do
- * routinely — would hash differently and be reported as EVENT_ID_REUSE, i.e. as
- * FORGERY. A bad signal would become a fraud alert against an honest courier.
- *
- * False positives are explicitly scored in this competition, and this one would
- * be the worst kind: confidently wrong, and aimed at a person.
- *
- * So we hash the *parsed and canonicalised* value: keys sorted, no insignificant
- * whitespace, arrays left in order (array order is semantic, key order is not).
+ * `canonicalize` itself lives in `./canonical-form`, which imports nothing from
+ * Node, so the browser-side chain verifier can share the exact same
+ * serialisation while supplying its own digest. One canonicalisation, two
+ * digests. See that file for why a second copy would be a correctness bug
+ * rather than a tidiness one.
  */
 
-/** Deterministic serialisation. Object keys sorted by UTF-16 code unit. */
-export function canonicalize(value: unknown): string {
-  if (value === null) return "null";
-
-  switch (typeof value) {
-    case "number":
-      if (!Number.isFinite(value)) {
-        throw new TypeError("cannot canonicalize a non-finite number");
-      }
-      // Normalise -0 to 0 so two equal payloads cannot hash differently.
-      return JSON.stringify(value === 0 ? 0 : value);
-    case "boolean":
-    case "string":
-      return JSON.stringify(value);
-    case "undefined":
-      throw new TypeError("cannot canonicalize undefined at a value position");
-    case "bigint":
-    case "function":
-    case "symbol":
-      throw new TypeError(`cannot canonicalize a ${typeof value}`);
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalize).join(",")}]`;
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>)
-    // An absent key and a key set to undefined must hash the same, because
-    // JSON.parse can never produce the latter. Dropping them keeps a
-    // round-tripped payload identical to the one that was received.
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalize(v)}`).join(",")}}`;
-}
+export { canonicalize } from "./canonical-form";
 
 /** sha256 of the canonical form, lowercase hex. */
 export function canonicalHash(value: unknown): string {

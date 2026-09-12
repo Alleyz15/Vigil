@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { canonicalHash, sha256Hex } from "./canonical";
+import { entryHashInput, walkChain } from "./chain";
 import {
   type AbortRecord,
   type ChainVerification,
@@ -179,29 +180,19 @@ export class NonceLedger {
    * so an operator is told WHERE the tampering is.
    */
   verifyChain(): ChainVerification {
-    let expectedPrev = GENESIS_PREV_HASH;
     let records: LedgerRecord[];
-
     try {
       records = this.readRecords();
     } catch (err) {
       return { valid: false, brokenAt: -1, reason: (err as Error).message };
     }
 
-    for (const [i, record] of records.entries()) {
-      if (record.seq !== i) {
-        return { valid: false, brokenAt: i, reason: `expected seq ${i}, found ${record.seq}` };
-      }
-      if (record.prevHash !== expectedPrev) {
-        return { valid: false, brokenAt: i, reason: "prevHash does not match the preceding entry" };
-      }
-      if (entryHashOf(record) !== record.entryHash) {
-        return { valid: false, brokenAt: i, reason: "entryHash does not match this entry's content" };
-      }
-      expectedPrev = record.entryHash;
-    }
-
-    return { valid: true, entries: records.length };
+    // THE SAME WALK THE BROWSER RUNS. Node supplies a synchronous digest;
+    // `/verify` supplies crypto.subtle. Only the digest differs — the sequence
+    // ordering, the prevHash linkage and the first-broken-index are one
+    // implementation, so the page cannot reach a different conclusion from the
+    // server about the same file.
+    return walkChain(records, records.map(entryHashOf));
   }
 
   private appendVerdict(eventID: string, payloadHash: string, verdict: Verdict): number {
@@ -248,7 +239,8 @@ export class NonceLedger {
  * entryHash excluded, since a value cannot commit to itself.
  */
 export function entryHashOf(record: LedgerRecord | (Omit<VerdictRecord, "entryHash"> | Omit<AbortRecord, "entryHash">)): string {
-  const { entryHash: _omit, ...rest } = record as LedgerRecord;
-  void _omit;
-  return sha256Hex(canonicalHash(rest));
+  // Two rounds of sha256 over the shared canonical form. The browser applies
+  // the same two rounds with crypto.subtle; `chain.test.ts` asserts the two
+  // recipes agree on real records rather than trusting that they do.
+  return sha256Hex(sha256Hex(entryHashInput(record as LedgerRecord)));
 }

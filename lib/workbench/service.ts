@@ -737,6 +737,26 @@ export class OperatorWorkbench {
     return this.getHandoff(eventId)!;
   }
 
+  /**
+   * Where one scenario's ledger file lives, for the browser-side verifier.
+   *
+   * Returns a PATH, not contents and not a verdict. The route reads the bytes
+   * and hands them over unexamined; anything else would mean the server
+   * vouching for the file a visitor came to check for themselves.
+   */
+  ledgerSource(scenarioId?: string): { scenarioId: string; path: string } | undefined {
+    for (const entry of this.entries.values()) {
+      if (scenarioId && entry.scenario.id !== scenarioId) continue;
+      return { scenarioId: entry.scenario.id, path: entry.harness.deps.ledger.path };
+    }
+    return undefined;
+  }
+
+  /** Every scenario that has a ledger to verify. */
+  ledgerScenarios(): string[] {
+    return [...new Set([...this.entries.values()].map((entry) => entry.scenario.id))].sort();
+  }
+
   /** Narrow test seam for proving a courier submission wrote nothing. */
   debugDraftHandle(draftId: string): { db: VigilDb } {
     const draft = this.drafts.get(draftId);
