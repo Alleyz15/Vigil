@@ -447,6 +447,41 @@ two layers:
   updating in place is the failure. Both layers were confirmed non-vacuous by injecting a real
   mutation and reading the failure message, as with the never-summed and no-I/O guards.
 
+### 3g. Text that restates a decision must be DERIVED from the decision
+
+Three instances now, all the same instinct, so it is recorded once as a rule rather than three
+times as observations:
+
+| Surface | Derived from | The hardcoded version |
+|---|---|---|
+| Courier submission result | `VerificationResult` + `ledgerStatus` | "your submission needs approval" — still said after the credential check changed its mind |
+| Reroute rejected alternatives | the selector's own filter predicates | "no authorised reroute exists" — true, and useless |
+| Plan rejected alternatives | `considerTools`, over the closed enum | a UI re-deriving "why not that one?" — a second copy of the eligibility rules |
+
+**A correct message that does not tell the operator what to do next has not done its job.**
+*"No authorised reroute exists for this address"* is true of every excluded candidate and actionable
+for none of them. *"This parcel is outside the mandate's EPC scope"* names the blocker, so the
+operator knows whether to widen a mandate, activate a counter, or escalate instead. `covers`
+therefore became `refusal`, returning the predicate that failed rather than a boolean.
+
+And the drift argument is the same one that bans recomputing a verdict in the browser: a view that
+works out its own explanation is a **second implementation** of the rule it is explaining, and the
+two part company the first time the rule moves. Ask the decider why; never re-derive it downstream.
+
+#### The corollary: never fabricate a rationale nobody produced
+
+When the **model** selects the tools, the panel shows the deterministic set as a **labelled
+comparison** — never as the model's reasoning. The model is not asked to justify itself, and
+presenting the heuristic's reasons under its choice would invent a justification that does not
+exist.
+
+**That is the same class of error as a hallucinated citation (rule 1a), moved from the explanation
+node into the UI layer.** Prose assembled from a picture of something that did not happen reads as
+sourced precisely because it is well-formed. A future session adding *"why did the model pick
+this?"* to that panel will believe it is an improvement; it is the failure rule 1a exists to
+prevent, one layer further out. If the reason cannot be obtained from whoever actually decided,
+the honest rendering is to say who decided and show the alternative separately.
+
 ### 4. Missing evidence is not clean evidence
 
 Every rule returns **three** states, never a boolean:
@@ -546,6 +581,7 @@ re-deriving it each time — or worse, "simplifying" one of them back.
 | Gate explorer (rule 3e) | plot `not_evaluated` at the origin | an unmeasured axis becomes a measured zero |
 | Map overlays (rule 3e) | give every flag a location | evidence without coordinates becomes a spatial claim |
 | `RunView.ledgerStatus` | `sealed: boolean` | an honest double-tap and a forgery attempt become the same event |
+| `ToolConsideration` | `selected: boolean` alone | "eligible but displaced by the cap" collapses into "not relevant", hiding that a real option was left on the table |
 
 The last one is session 17B's. `sealed` collapses the ledger's `recorded` and `noop` into one
 value. That is exactly right for the operator's question — *is there an entry?* — and exactly

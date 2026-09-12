@@ -52,6 +52,38 @@ function capture(name, path) {
   }
 }
 
+/**
+ * The pending co-signature has to be CREATED before it can be captured.
+ *
+ * Session 17B reserved S1's delivery leg for the courier, so the operator's
+ * queue no longer contains a pending case at boot - which is the real flow, and
+ * which silently broke this script until it was run. A capture script that
+ * assumes a fixture exists is a fixture dependency nobody declared.
+ *
+ * Submitting is idempotent for our purposes: if the draft has already been
+ * submitted in this process, the endpoint records another attempt and the case
+ * is already in the queue either way. If it has already been co-signed, the
+ * lookup below fails loudly rather than capturing a frame that does not show
+ * what the filename claims.
+ */
+const draftsResponse = await fetch(`${BASE}/api/courier/drafts`);
+if (!draftsResponse.ok) {
+  throw new Error(`Courier drafts returned ${draftsResponse.status}.`);
+}
+const { items: drafts } = await draftsResponse.json();
+const s1Draft = drafts.find((draft) => draft.scenarioId === "S1");
+
+if (s1Draft && s1Draft.attempts.length === 0) {
+  const submitted = await fetch(`${BASE}/api/courier/drafts/${s1Draft.draftId}/submit`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ signed: true }),
+  });
+  if (!submitted.ok) {
+    throw new Error(`Courier submission returned ${submitted.status}.`);
+  }
+}
+
 const inboxResponse = await fetch(`${BASE}/api/operator/inbox`);
 if (!inboxResponse.ok) {
   throw new Error(`Operator inbox returned ${inboxResponse.status}.`);
@@ -61,7 +93,12 @@ const inbox = await inboxResponse.json();
 const pendingS1 = inbox.items.find(
   (item) => item.scenarioId === "S1" && item.state === "awaiting_cosignature",
 );
-if (!pendingS1) throw new Error("No S1 handoff awaiting co-signature was found.");
+if (!pendingS1) {
+  throw new Error(
+    "No S1 handoff awaiting co-signature was found. The courier draft may already have " +
+      "been co-signed in this server process; restart the dev server and retry.",
+  );
+}
 
 capture("operator-inbox-1920x1080.png", "/operator/inbox?scenario=S1");
 capture("all-handoffs-1920x1080.png", "/operator/handoffs");
@@ -69,4 +106,5 @@ capture(
   "handoff-s1-pending-1920x1080.png",
   `/operator/handoffs/${encodeURIComponent(pendingS1.eventId)}`,
 );
+capture("courier-submission-1920x1080.png", "/courier");
 capture("gate-evidence-1920x1080.png", "/demo/gate");
