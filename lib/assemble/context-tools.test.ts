@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { rmSync } from "node:fs";
 import { COURIER_ID, EPC, makeAgentEvent, runSigned, seedWorld } from "@/lib/agent/fixtures";
 import { collectEvidenceIds } from "@/lib/llm/explain";
