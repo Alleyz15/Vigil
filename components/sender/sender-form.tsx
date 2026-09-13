@@ -105,7 +105,12 @@ export function SenderForm({
 
   return (
     <div>
-      <h1 className="text-base font-semibold">Create a shipment</h1>
+      {/*
+        The page's subject. At text-base it sat below the identity strip in
+        weight, and the strip is background — who you are, not what you are here
+        to do. Same size as the operator inbox's heading.
+      */}
+      <h1 className="text-2xl font-semibold">Create a shipment</h1>
       <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">
         What you declare here is what the system later checks the courier against: the address
         their scan is measured from, the value that decides whether an operator must co-sign, and

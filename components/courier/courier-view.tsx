@@ -143,11 +143,18 @@ function OutcomePanel({ outcome }: { outcome: CourierOutcome }) {
   const Icon = tone.Icon;
 
   return (
-    <div className={cn("mx-4 mb-4 rounded-md px-3 py-3", tone.ring)}>
+    /*
+      THE RESULT IS THE MOST IMPORTANT THING ON THIS PAGE, and it used to be the
+      quietest: the tone classes name a border colour but nothing set a border
+      WIDTH, so the panel rendered as a 5% tint with no edge — an ordinary notice
+      under two white cards. It now has a heavy edge and a larger headline, which
+      is structure (rule 1k), so no new colour was needed to make it lead.
+    */
+    <div className={cn("mx-4 mb-4 rounded-md border-2 px-4 py-4", tone.ring)}>
       <div className="flex items-start gap-3">
-        <Icon aria-hidden="true" className={cn("mt-0.5 size-4 shrink-0", tone.text)} />
+        <Icon aria-hidden="true" className={cn("mt-1 size-5 shrink-0", tone.text)} />
         <div className="min-w-0">
-          <p className={cn("text-sm font-semibold", tone.text)}>{outcome.headline}</p>
+          <p className={cn("text-base font-semibold", tone.text)}>{outcome.headline}</p>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{outcome.detail}</p>
 
           <p className="mt-2 text-xs font-medium">
