@@ -395,6 +395,24 @@ ways, which is the claim "the seam changed nothing" as a measurement rather than
 > from BEFORE the change tells you the code is unchanged.** The first reads like the second, which
 > is what makes it worth writing down.
 
+#### A fourth: the instrument that measures legibility can itself be illegible to the question
+
+Session 22 found two defects in its own measuring code, both of which produced confident numbers:
+
+| Probe | What it did | What it reported |
+|---|---|---|
+| hero contrast | read the text colour's RGB and ignored its alpha | `text-background/75` measured as opaque: standfirst **9.62:1**; blended per pixel as the browser does, **6.23:1** |
+| card-focus candidate | injected CSS referring to `var(--color-muted-foreground)` | text rendered in the inherited colour, because under `@theme inline` Tailwind does not emit that variable: **16.65:1** for a treatment that measures **5.80:1** |
+
+And one near-miss the other way: four candidates came back with dark-card and gate-card readings
+**identical**, which looked like a sampling bug. It was physics — opacity over one page colour makes
+both cards the same pair of composites — and was confirmed from the rendered pixels before being
+trusted. **A reading that looks too uniform is a reason to check, not a reason to "fix".**
+
+The defence for both directions is the one this rule already names, extended to the instrument: a
+**control with a known answer** (the scrim removed must read lower; an injected 0.5 opacity must
+fail the focus check) and a look at the frame the numbers came from.
+
 ### 1g. A test suite verifies the invariants someone thought to write
 
 **Found by opening the page, not because anything reported it.**
@@ -489,6 +507,14 @@ defence is the one 1g already states, applied one step earlier: **before buildin
 about existing code, read the code — including when the statement arrives as an instruction.** A
 brief is reviewed intent; it is not an observation of the repository, and it goes stale exactly as
 fast as a comment does.
+
+**Session 22's brief had five more**, read against the code before any was built on: guard 8's
+`sender`/`shells`/`demo` coverage and the scrim probe were both already done in session 21; the
+800vh section already existed, so the work was a redesign, not a build; the brief placed the step
+section directly under the hero when it is the fifth section; and "reproduce Sui's physical sense of
+position" read like permission to ease a scroll-linked marker, which the project's own rule forbids.
+The last is the one worth carrying: **an adjective in a brief can quietly contradict a rule the same
+brief states two paragraphs later.**
 
 #### Seven lists a person had to remember to update
 
@@ -647,6 +673,19 @@ carried by hue at all.
 **The test for whether this applies:** if telling two things apart requires the viewer to recall
 which value means which, the signal is a legend rather than a distinction. Structure, weight and
 shape are read without a legend; hue past about three categories is not.
+
+#### Direction is an axis too — and a structure can run out of room to invert
+
+Session 21's gate inverted a light panel to dark. Session 22 made every step card dark ink, and the
+gate still had to be the one card that looks different. **Inverting it to dark would have made it
+one more dark card.** So it inverts the only way left: the one LIGHT card, with a heavy solid edge,
+among seven dark ones.
+
+> **An emphasis defined as "the inverse of the rest" changes direction when the rest changes.** Fix
+> the rest, then derive the emphasis from it — never carry the emphasis's old colour forward.
+
+Same rule, not a new one: the distinction rests on structure (a solid heavy edge; dashed edges for
+the two model nodes) and on direction (light among dark), not on adding a hue.
 
 ### 1a. Structured LLM output is accepted or rejected WHOLE, never filtered
 
@@ -1320,13 +1359,26 @@ needed two values it could not express, which is how the ambiguity surfaced:
 |---|---|---|
 | component spacing | `gap-3`, `p-8`, `mt-4` | the scale |
 | section rhythm | `py-20` between landing sections | consistency with the neighbouring sections |
-| layout dimension | the pipeline pinned for `8 × 100vh` | what it is derived from — here, the step count |
+| layout dimension | the pipeline pinned for `8 × 100vh`; the hero-to-page transition band `h-32` | what it is derived from — the step count; how long a colour transition lasts |
 
 Forcing section rhythm onto a component scale would make one section 32px apart from sections that
 are 80px apart, which is worse than an off-scale value. A layout dimension is not a spacing token at
 all. **When a value is off the scale, say which of the three kinds it is.** Values that predate
 this distinction and sit off the scale inside components (`mt-5`, `mt-7`, `mt-9`, `p-5`, `gap-5`,
 `space-y-5`, the figure's `mt-10`) are listed and deliberately untouched.
+
+### `--color-*` does not exist at runtime unless a utility used it
+
+`app/globals.css` maps tokens with `@theme inline`, so Tailwind inlines `var(--foreground)` into the
+utilities it generates and emits a `--color-foreground` custom property **only if something needed
+it**. Measured on `/`: `--color-muted` present, `--color-foreground` and `--color-muted-foreground`
+empty strings. An arbitrary value or injected stylesheet that names `var(--color-foreground)` is
+invalid at computed-value time and falls back to the inherited value — silently, and in the
+direction that looks almost right.
+
+**In hand-written CSS and arbitrary values, refer to the raw tokens** (`var(--foreground)`,
+`var(--muted-foreground)`). Tailwind's own utilities (`bg-foreground`, `text-background/70`) are
+unaffected.
 
 ### The degraded path is a surface, and it is the one nobody looks at
 
@@ -1423,8 +1475,8 @@ Frames go to `docs/screenshots/landing/`. It fails, rather than writing a mislab
 
 | Group | Asserted |
 |---|---|
-| hero | worst-case text contrast over the footage at five paused times (headline ≥ 7:1, the rest ≥ 4.5:1), read from pixels with the text hidden; a no-scrim control that must read lower; full-bleed width; no horizontal scroll with a real scrollbar |
-| pipeline | the rendered phase equals the phase in the filename |
+| hero | worst-case text contrast across the whole loop — 96 paused frames, then every ~1/30 s step around each block's worst, reporting how many distinct readings the refinement produced — in EITHER direction and with the text colour's alpha blended per pixel (headline ≥ 7:1, the rest ≥ 4.5:1); a no-scrim control at the worst frame; footage line visibility; hero and transition band full-bleed; no horizontal scroll with a real scrollbar |
+| pipeline | the rendered phase equals the phase in the filename; every out-of-focus card ≥ 4.5:1, glyph against its own composited surface |
 | reduced | no video, no pinned sequence, eight static steps, diagram labels ≥ 12px, no stat at `0.0` |
 | narrow | the static list below `lg`, labels ≥ 12px |
 
@@ -1508,6 +1560,82 @@ npm run db:migrate
 ---
 
 ## Session log
+
+### Session 22 — a dark hero, a colour boundary, and cards around a track (complete)
+
+698 tests passing, 7 skipped. `tsc --noEmit` clean, eslint clean, the production build clean.
+`lib/engine/`, `lib/pattern/` and `lib/gate/` at 100% statements, branches, functions and lines.
+**No detector threshold moved, no experiment was rerun, and no file under `lib/` changed except the
+comment in `lib/landing/hero-media.ts`.** `npm run qa:capture` wrote ten frames;
+`npm run qa:capture:landing` passes every group. One full `npm test` run reported a file failure
+(683 tests) that did not reproduce in three consecutive reruns; its detail was not captured, so it
+is recorded as unexplained rather than as nothing.
+
+#### The footage
+
+The new loop arrived named after its generation prompt — over 200 characters with spaces and full
+stops. Found by glob (exactly one match), renamed to `public/videos/hero-video.mp4`, committed. It
+is **242 KB**; `ffmpeg` is not installed and at a quarter of a megabyte there was nothing to gain.
+1366x768, 5.9 s, near-black with thin cool-white lines.
+
+#### The dark hero, measured at its worst frame
+
+Ground and scrim are `--foreground`, the deepest token the light theme has; text and both buttons
+invert together to `background`. The brand green was dropped from the filled button because
+L 0.36 sinks into slate. **No new token was added**: the frame shows no fog worth an `--ink`.
+
+| block | worst ratio | where |
+|---|---|---|
+| headline | **7.21:1** | a bright line crossing the right of the headline |
+| standfirst | **6.23:1** | 96-frame worst; five evenly spaced frames said 7.58:1 |
+| headline, scrim removed | 1.08:1 | the control |
+
+**The headline's margin is 0.21.** It passes, and it is thin; a brighter replacement loop would
+move it first. The footage stays visible — line visibility 1.3–2.1 on the right third, against 6.5
+raw — so the scrim did not buy legibility by erasing the video.
+
+`planHeroBackdrop`'s contract held in code and its premise did not. See `hero-media.ts`: swapping
+footage whose brightness runs the other way is a colour-layer redesign, however small the diff.
+
+#### The transition band is a colour boundary, not a section connector
+
+`h-32`, aria-hidden, `from-foreground to-background`, full-bleed. It sits after the hero and before
+the first light section **because that is where the colour changes**; which section follows is
+irrelevant to it. The argument's order was set in session 19 and did not move. (The plan offered
+the same placement for a weaker reason — keeping the order — and the reason was corrected: the
+order is not what places the band.)
+
+#### Cards around a track
+
+Eight cards alternate either side of a central dashed track; a square marker and a solid fill run
+down it. **Marker and fill are scroll-linked and linear** — `useTransform` on the progress, no
+spring, no easing — and only a card's focus change and the reveal use the curve. Deterministic
+nodes are ink with a hairline edge, model nodes ink with a dashed edge, the gate the one light card
+(rule 1k, direction). At the reveal the two model cards are taken out and every other card returns
+to full ink.
+
+**Out-of-focus opacity is 0.7, chosen from a measurement:**
+
+| treatment | least readable card |
+|---|---|
+| opacity 0.3 | 1.96:1 |
+| opacity 0.5 | 3.37:1 |
+| **opacity 0.7** | **6.42:1** |
+| outline + muted text | 5.80:1 |
+
+0.7 keeps the cards ink and every one readable ahead of the viewer. The capture fails below 4.5:1;
+verified by injecting 0.5, which failed naming phase 0.
+
+#### Defects in the instruments, and a near-miss
+
+The hero probe ignored alpha; a candidate stylesheet named a runtime variable that does not exist;
+and identical readings that looked like a bug were correct. Rule 1f, fourth failure mode.
+
+#### Still open after 22
+
+The submission artefacts. The `(console)` route group. `seedDraftIdentity`'s fold-back. The
+headline's 0.21 margin over the loop. `postJson`'s unretried reset. The footage's provenance — the
+file name is a generation prompt, which says how it was made but not under what terms.
 
 ### Session 21 — the hero footage, and the pipeline told by scrolling (complete)
 
