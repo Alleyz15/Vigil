@@ -413,6 +413,18 @@ The defence for both directions is the one this rule already names, extended to 
 **control with a known answer** (the scrim removed must read lower; an injected 0.5 opacity must
 fail the focus check) and a look at the frame the numbers came from.
 
+Session 23's seam probe went wrong three ways in one afternoon, each producing a confident failure:
+
+| Version | What it measured | Why it was wrong |
+|---|---|---|
+| 1 | 2px steps from 8px ABOVE the band | read the hero's ±1-level pixel noise, which in L* at the dark end is a large step — 0.239 |
+| 2 | the band's last 24px | measured the curve's intended shape: skewed low by design, it is still at 30–45% slope 24–32px from the edge — 0.365 |
+| 3 | the 8px span at each junction | the property the unit test pins; 0 and 0.041, matching the analytic 4.5% |
+
+And the rule check, injected, failed with **"Mach band at x=1100"**: a 1px rule is a dark row the
+slope check also sees, so it fired first and named the wrong cause. The rule check now runs before
+the slope check. **Fails for the reason you expect** includes the order checks run in.
+
 ### 1g. A test suite verifies the invariants someone thought to write
 
 **Found by opening the page, not because anything reported it.**
@@ -483,6 +495,23 @@ from a scenario already present, not from choosing a seed and trusting it.
 **So: a browser walk-through of a new surface is not decoration on top of a green suite. It is the
 only instrument that detects category 4.**
 
+#### A visual defect gets measured before anything moves, like a code defect gets read
+
+Three times now a visual defect arrived with a diagnosis attached, and the diagnosis was the
+thing to test:
+
+| Session | The defect | The first diagnosis | What measuring found |
+|---|---|---|---|
+| 19 | credential bar clipped at 1080 | the bar is too tall — trimmed twice | a back-link header outside `min-h-screen` added its height |
+| 20 | stale-record map grey, no tiles | the capture's time budget — raised | Leaflet `flyTo` never completes under virtual time |
+| 23 | hard edge where the dark hero meets the band | the two colours differ | **both rows read 16,24,31** — a Mach band from a slope jump |
+
+The first two were fixed wrongly before being read. **The third was not**, because the pixels were
+read first: identical values at the seam meant no colour could be adjusted to fix it, and the cure
+was the curve's shape. A plausible visual explanation is a hypothesis in the same sense as an
+assumption about code — **before changing a colour, a height or a timing, measure the one you think
+is wrong.**
+
 #### A brief is a premise too, and it gets read against the code like any other
 
 Rule 1g was written about code. Session 21 applied it to the brief that commissioned the work, and
@@ -516,6 +545,12 @@ position" read like permission to ease a scroll-linked marker, which the project
 The last is the one worth carrying: **an adjective in a brief can quietly contradict a rule the same
 brief states two paragraphs later.**
 
+**Session 23's brief had three**: the hero seam's two colours "do not match" (they were one value);
+"awaiting a courier signature" as an inbox group member (session 17B deliberately never queues those
+— nobody is waiting on an operator); and a three-group priority that would have placed both freezes
+below thirty-three pattern rows. The plan also carried one error of its own, stated as 34 rows where
+the queue held 33.
+
 #### Seven lists a person had to remember to update
 
 The same shape keeps recurring: a set of things is enumerated by hand in one place, the set grows
@@ -541,6 +576,11 @@ named entries — `landing` for guard 8, `ui` for guard 9. A new directory is gu
 exists; leaving it unguarded takes a written sentence. A stale exclusion fails the test, so a
 deleted directory cannot silently exempt whatever is later created under its name. Row 1 was fixed
 the same way in 17B (a coverage check over the enum); row 4 is fixed by the `(console)` route group.
+
+Session 23 applied the rule rather than finding a new instance: the inbox's short reason labels are a
+table keyed by rule id, and `lib/workbench/inbox.test.ts` enumerates `INCONSISTENCY_RULES`,
+`PATTERN_RULES` and the hard checks' ids read from `hard.ts`, failing with the missing id. Verified by
+deleting `I16`'s label: the failure named `I16`.
 
 **Enumerating found something on its first run.** Guard 9's pattern `\{\s*\w+\.value\s*\}` fired
 on `key={option.value}` in `sender-form.tsx` — an attribute, not rendered content. The pattern had
@@ -1400,6 +1440,38 @@ the degraded path as its own surface** — `npm run qa:capture:landing` does, an
 size, the figures (read from the accessibility tree, since NumberFlow publishes through
 `ElementInternals`), and the absence of a dev-overlay issue on every page it opens.
 
+### The inbox groups by what happened, then by who is waiting
+
+Four groups, each row in exactly one — the first it qualifies for:
+
+| # | Group | Membership, derived from |
+|---|---|---|
+| 1 | Refused by a hard check | an abort: engine hard check, ledger `EVENT_ID_REUSE`, or `CREDENTIAL_INVALID` |
+| 2 | Someone is waiting for you | `awaiting_cosignature` or `timed_out` |
+| 3 | Pattern anomaly | the gate's own `matrixCell` ending `/high-pattern` — never a threshold re-compared in the UI |
+| 4 | Everything else | the rest; collapsed by default |
+
+**Refused comes first, above waiting.** A priority built on *who is blocked* systematically
+under-ranks *what already went wrong with nobody blocked*: a replayed event id or an out-of-scope
+parcel blocks no one, and the three-group version of this design would have put both below
+thirty-three pattern rows. "Someone is waiting" means a person is at the door; a refusal means an
+attack or an impossible state has already happened.
+
+**The pattern group is aggregated per courier.** A pattern anomaly is a property of a courier's
+distribution, not of any one handoff; one row per handoff shows a statistic at the wrong grain.
+Expanding the aggregate is for checking, not the primary view.
+
+**Grouping, not filters.** A filter answers "show me only X" before a reviewer knows which X they
+want; grouping answers the first question — what is most urgent — without making anyone choose.
+
+**The two axes in a row are two framed bars**, single-event left and pattern right, each in its own
+0–100 frame — no shared baseline, no stacking, no centre. `n/e` is a dashed empty frame, never a
+zero-height bar. The row carries a short reason derived from ids; the sentence and the coverage line
+stay on the detail page.
+
+**Age has no warning colour, because there is no threshold to compare it with.** See Known
+Limitations on `timed_out`.
+
 ### Animation policy
 
 `motion` (Framer Motion) only. **No GSAP** — the landing page's scroll narrative is built on
@@ -1463,8 +1535,13 @@ Two traps in that runner, both hit in session 20:
   A capture step can force reduced motion, which the map camera now honours. **Raising the time
   budget was tried first and changed nothing** — the budget was never the cause.
 
-One fragility observed and left: `postJson` has no retry. Session 21's first run lost the sealed
-frame to an `ECONNRESET` on the approval POST, and a fresh server succeeded. A blind retry on a
+One fragility observed and left: `postJson` has no retry. The approval POST has reset with
+`ECONNRESET` on **three of five fresh-server runs** across sessions 21–23 (one of those three lost its
+error text to a truncated log); a further fresh run succeeded each time. The dev log shows **no line
+for the POST at all**, so the request never reached a handler. Two hypotheses were tested and
+**neither reproduced it**: a stale keep-alive socket (30 POSTs across idle times 3.8–5.1s, around
+the server's advertised `timeout=5`, all clean) and the exact capture-then-POST sequence (4/4 clean).
+The cause is unknown. A blind retry on a
 non-idempotent approval was deliberately not added — a reset after the server applied it would turn
 a transport hiccup into a confusing state error.
 
@@ -1479,6 +1556,7 @@ Frames go to `docs/screenshots/landing/`. It fails, rather than writing a mislab
 | pipeline | the rendered phase equals the phase in the filename; every out-of-focus card ≥ 4.5:1, glyph against its own composited surface |
 | reduced | no video, no pinned sequence, eight static steps, diagram labels ≥ 12px, no stat at `0.0` |
 | narrow | the static list below `lg`, labels ≥ 12px |
+| transition | the lightness step across the band's first and last 8px ≤ 20% of its steepest step (a linear ramp reads ~0.95 and fails); no rule on the section after the band, checked first |
 
 `docs/screenshots/session-17a/landing-1920x1080.png` is session 19's landing page, before the
 video and the pipeline section. No script regenerates it; the current evidence is the `landing/`
@@ -1560,6 +1638,55 @@ npm run db:migrate
 ---
 
 ## Session log
+
+### Session 23 — five named UI failures, each checked from a frame (complete)
+
+712 tests passing, 7 skipped. `tsc --noEmit` clean, eslint clean, the production build clean.
+`lib/engine/`, `lib/pattern/` and `lib/gate/` at 100% statements, branches, functions and lines.
+**No detector threshold moved; `lib/engine`, `lib/pattern`, `lib/gate`, `lib/credential` and
+`lib/generate` were not touched.** `npm run qa:capture` wrote ten frames on its fourth run (see the
+`postJson` note in Console conventions); `npm run qa:capture:landing` passes every group, including
+the new transition group.
+
+#### The inbox
+
+| | before | after |
+|---|---|---|
+| rows rendered | 37 | 5 (2 refused, 2 waiting, 1 courier aggregate of 33) |
+| fully above the fold at 1920x1080 | 10 | 5 — every handoff represented |
+| first three rows | S5 timed out, built awaiting co-sign, S3 | S3 replayed id, S4 out of scope, S5 timed out |
+
+The three most urgent rows can be picked from the group headings without reading a reason. Frames:
+`docs/screenshots/session-23/inbox-before-1920x1080.png` and `inbox-after-1920x1080.png`, the same
+workbench state. Grouping, aggregation, derived short reasons, framed axis bars: see *The inbox
+groups by what happened* in Console conventions.
+
+#### The seam
+
+Measured first: hero bottom row and band top row both **16,24,31**. No colour to change. The edge was
+a Mach band — a flat hero meeting a linear ramp at full slope — and the grey banner was that ramp's
+constant middle. Now 256px (`h-64`, a layout dimension), `smootherstep(t^1.6)`, 32 oklab stops from the
+raw tokens, and no rule on the section after the band. Smoothstep was tried first and measured 23% of
+its steepest slope 8px above the page — a fainter second band — against smootherstep's 4.5%. Frames:
+`transition-before` and `transition-after` under `session-23/`.
+
+#### Smaller
+
+- **S4's `0614141.100003.7`** was correct data through a fallback that dressed an EPC as a waybill. The
+  scan names another courier's parcel; its real waybill `WB-2026-300007` is now found in the world and
+  the row says *Not on this shipment*. An EPC with no waybill anywhere would render as `EPC …`.
+- **`/courier`'s outcome panel** named border colours and never set a border width — a 5% tint. It now
+  has a 2px edge and a larger headline.
+- **`/sender`'s heading** was `text-base` under a solid identity strip; now `text-2xl`. The strip itself
+  is shared by four surfaces and was left as it is, so it still carries more weight than background
+  information should.
+- **`timed_out`** is labelled as seeded wherever it renders. Known Limitations.
+
+#### Still open after 23
+
+The submission artefacts. The `(console)` route group. `seedDraftIdentity`'s fold-back. A real
+liveness threshold. The headline's 0.21 contrast margin. `postJson`'s unexplained resets. The
+footage's provenance. The sender identity strip's weight.
 
 ### Session 22 — a dark hero, a colour boundary, and cards around a track (complete)
 
@@ -3464,6 +3591,16 @@ it landed at the point where the console layout had just been verified at 1920x1
 The cost of being wrong is a broken demo capture; the cost of waiting is one stale array and a
 harmless payload field. Recorded here rather than only in the session log, because the trap is
 permanent and the session note is not.
+
+**`timed_out` is a seeded state, not a measured one — and the interface now says so.** S5's
+handoff is assigned `timed_out` by scenario id in `buildScenarioEntries`. No liveness timer exists
+anywhere in the codebase, so no response window was ever measured, and the row's own reason still
+reads "above the co-signature threshold". Until session 23 the badge said "Timed out" and the detail
+page said "Response window expired" — a statement to a judge about something the system does not
+do. `HandoffSummary.stateProvenance` now carries `seeded`, the badge renders
+**"Seeded state · no liveness timer"** wherever it appears, and the detail page no longer claims a
+window expired. The inbox's age column has no warning colour for the same reason: there is no
+threshold to warn against. A real liveness threshold is separate work.
 
 **Identity is simulated; the signatures are real.** The courier, recipient and operator entry
 routes use hardcoded demo identities rather than authentication. Recipient links are scoped
