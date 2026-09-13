@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import type { HandoffSummary } from "@/lib/workbench";
 import { AxisPair } from "./axis-pair";
 import { HandoffStateBadge } from "./status-badge";
 import { ProvenanceLabel } from "./provenance-label";
+import { ParcelCell } from "./parcel-cell";
 
 type Summary = {
   automaticallyAccepted: number;
@@ -49,7 +49,7 @@ export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summ
               <th>Time / parcel</th>
               <th>Handoff</th>
               <th>State</th>
-              <th>Risk axes</th>
+              <th>Risk axes · never summed</th>
               <th>Why</th>
               <th>Source</th>
             </tr>
@@ -59,15 +59,15 @@ export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summ
               <tr key={item.eventId}>
                 <td>
                   <div className="font-mono text-xs tabular-nums text-muted-foreground">{formatDate(item.eventTime)}</div>
-                  <Link href={`/operator/handoffs/${item.eventId}`} className="mt-1 block font-mono text-xs font-semibold hover:underline">
-                    {item.parcel.waybillNo}
-                  </Link>
+                  <div className="mt-1">
+                    <ParcelCell item={item} />
+                  </div>
                 </td>
                 <td>
                   <div className="text-sm font-medium capitalize">{item.bizStep}</div>
                   <div className="mt-1 text-xs text-muted-foreground">{item.courier.displayName} · {item.scenarioId}</div>
                 </td>
-                <td><HandoffStateBadge state={item.state} /></td>
+                <td><HandoffStateBadge state={item.state} provenance={item.stateProvenance} /></td>
                 <td><AxisPair inconsistency={item.inconsistency} pattern={item.pattern} /></td>
                 <td className="max-w-sm">
                   {item.state === "accepted" ? (

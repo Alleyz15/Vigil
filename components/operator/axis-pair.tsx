@@ -3,6 +3,7 @@
 import NumberFlow from "@number-flow/react";
 import { CircleDashed, Gauge } from "lucide-react";
 import type { AxisValue } from "@/lib/workbench";
+import { cn } from "@/lib/utils";
 
 /**
  * The two axes, in two sizes.
@@ -27,21 +28,7 @@ function Axis({ label, value, variant }: { label: string; value: AxisValue; vari
   const score = value.evaluable ? value.score : null;
 
   if (variant === "compact") {
-    return (
-      <div className="min-w-20">
-        <div className="text-xs font-semibold uppercase text-muted-foreground">{label}</div>
-        {score !== null ? (
-          <div className="mt-0.5 font-mono text-base font-semibold tabular-nums">{score}</div>
-        ) : (
-          <div
-            className="mt-0.5 text-xs font-medium text-muted-foreground"
-            title={value.reason ?? undefined}
-          >
-            Not evaluated
-          </div>
-        )}
-      </div>
-    );
+    return <AxisBar label={label} value={value} />;
   }
 
   return (
@@ -77,6 +64,53 @@ function Axis({ label, value, variant }: { label: string; value: AxisValue; vari
 
 type Variant = "compact" | "feature";
 
+/**
+ * One axis in a queue row: a thin bar in ITS OWN frame, with the number beside it.
+ *
+ * THE SHAPE HAS TO CARRY THE ANSWER. Two numerals side by side read like a
+ * timestamp; a reviewer scanning thirty rows should see "tall on the left" or
+ * "tall on the right" before reading anything. Position carries which axis —
+ * single-event always left, pattern always right — and height carries how high.
+ *
+ * WHAT THE BARS MUST NOT SAY. Each bar sits in its own framed track, and that
+ * frame is its own 0–100 scale. No shared axis line, no stacking, no bar growing
+ * from a common centre: any of those makes two independent axes look like parts
+ * of one quantity, which is the reading rule 2 exists to prevent. The code is
+ * guarded against summing them; the picture must not imply it either.
+ *
+ * NOT EVALUATED IS NOT ZERO. A score of 0 is a solid frame with nothing in it; an
+ * axis that could not be evaluated is a DASHED frame with nothing in it — a
+ * visibly different object, as the gate explorer's gutter bands are (rule 3e).
+ */
+function AxisBar({ label, value }: { label: string; value: AxisValue }) {
+  const score = value.evaluable ? value.score : null;
+  const name = label === "Pattern" ? "Pattern" : "Single";
+  const spoken =
+    score === null ? `${label}: not evaluated${value.reason ? ` (${value.reason})` : ""}` : `${label}: ${score} of 100`;
+
+  return (
+    <div className="flex items-end gap-2" aria-label={spoken} title={spoken} role="img">
+      <span className="w-12 text-xs font-medium text-muted-foreground">{name}</span>
+      <span
+        aria-hidden="true"
+        data-axis-track={score === null ? "not-evaluated" : "evaluated"}
+        className={cn(
+          "relative block h-6 w-1.5 shrink-0 overflow-hidden rounded-sm border",
+          score === null ? "border-dashed border-foreground/50" : "border-foreground/25",
+        )}
+      >
+        {score !== null && (
+          <span
+            className="absolute inset-x-0 bottom-0 bg-foreground"
+            style={{ height: `${Math.min(100, Math.max(0, score))}%` }}
+          />
+        )}
+      </span>
+      <span className="w-8 font-mono text-sm font-semibold tabular-nums">{score === null ? "n/e" : score}</span>
+    </div>
+  );
+}
+
 export function AxisPair({
   inconsistency,
   pattern,
@@ -94,6 +128,8 @@ export function AxisPair({
 }) {
   if (variant === "compact") {
     return (
+      // Two framed tracks with a gap between them; see AxisBar for why they
+      // never share a baseline.
       <div className="flex gap-4">
         <Axis label="Single-event" value={inconsistency} variant="compact" />
         <Axis label="Pattern" value={pattern} variant="compact" />

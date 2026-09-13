@@ -65,7 +65,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-semibold">{detail.summary.parcel.waybillNo}</h1>
-              <HandoffStateBadge state={detail.summary.state} />
+              <HandoffStateBadge state={detail.summary.state} provenance={detail.summary.stateProvenance} />
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               {detail.summary.courier.displayName} · {detail.summary.bizStep} · seeded synthetic shipment {detail.summary.scenarioId}

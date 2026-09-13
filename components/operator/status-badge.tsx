@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import type { HandoffState } from "@/lib/workbench";
 import { cn } from "@/lib/utils";
+import { ProvenanceLabel } from "./provenance-label";
 
 const LABELS: Record<HandoffState, string> = {
   accepted: "Automatically accepted",
@@ -14,8 +15,19 @@ const LABELS: Record<HandoffState, string> = {
   resolved_escalated: "Escalated",
 };
 
-export function HandoffStateBadge({ state }: { state: HandoffState }) {
-  return (
+/**
+ * The state, and — when the demo assigned it rather than the workbench working
+ * it out — a label saying so, carried by the badge itself so every place that
+ * shows the state shows the caveat (rule 1j).
+ */
+export function HandoffStateBadge({
+  state,
+  provenance = "computed",
+}: {
+  state: HandoffState;
+  provenance?: "computed" | "seeded";
+}) {
+  const badge = (
     <Badge
       variant="outline"
       className={cn(
@@ -28,5 +40,12 @@ export function HandoffStateBadge({ state }: { state: HandoffState }) {
     >
       {LABELS[state]}
     </Badge>
+  );
+  if (provenance === "computed") return badge;
+  return (
+    <span className="inline-flex flex-col items-start gap-1">
+      {badge}
+      <ProvenanceLabel>Seeded state · no liveness timer</ProvenanceLabel>
+    </span>
   );
 }

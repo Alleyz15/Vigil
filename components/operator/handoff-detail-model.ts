@@ -4,7 +4,11 @@ import type { HandoffState } from "@/lib/workbench";
 
 export type DetailTone = "accepted" | "pending" | "alert" | "resolved";
 
-export function detailStatusMessage(input: { state: HandoffState; sealed: boolean }): {
+export function detailStatusMessage(input: {
+  state: HandoffState;
+  sealed: boolean;
+  stateProvenance?: "computed" | "seeded";
+}): {
   title: string;
   detail: string;
   tone: DetailTone;
@@ -17,11 +21,20 @@ export function detailStatusMessage(input: { state: HandoffState; sealed: boolea
     };
   }
   if (!input.sealed && input.state === "timed_out") {
-    return {
-      title: "Response window expired",
-      detail: "Nothing was sealed. The handoff still needs an operator disposition.",
-      tone: "alert",
-    };
+    // "Response window expired" asserts a window was measured. When the demo
+    // seeded this state, none was — so the sentence says what is true instead.
+    return input.stateProvenance === "seeded"
+      ? {
+          title: "Timed out — seeded for the demo",
+          detail:
+            "Nothing was sealed. This state was assigned when the demo was built; no liveness timer measured a response window. The handoff still needs an operator disposition.",
+          tone: "alert",
+        }
+      : {
+          title: "Response window expired",
+          detail: "Nothing was sealed. The handoff still needs an operator disposition.",
+          tone: "alert",
+        };
   }
   if (input.state === "accepted") {
     return {

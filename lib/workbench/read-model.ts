@@ -6,6 +6,7 @@ import type { AgentContext } from "@/lib/agent/context";
 import type { BuiltEvent, GeneratedScenario, GeneratedWorld } from "@/lib/generate";
 import type { ShipmentMapModel } from "./map-model";
 import type { CaseState, OperatorActionName } from "./types";
+import { abortKindOf, inboxGroupOf, shortReasonFor, type AbortKind, type InboxGroupId } from "./inbox";
 
 export type HandoffState = CaseState | "accepted";
 
@@ -21,13 +22,38 @@ export type HandoffSummary = {
   caseId: string | null;
   scenarioId: string;
   legIndex: number;
-  parcel: { epc: string; waybillNo: string };
+  parcel: {
+    epc: string;
+    /**
+     * A waybill when one is on file ANYWHERE in the world, else the EPC's
+     * serial — and `idKind` says which, so a view never presents an EPC as if it
+     * were a waybill. S4 scans another courier's parcel: the waybill exists, it
+     * is just not on this shipment.
+     */
+    waybillNo: string;
+    idKind: "waybill" | "epc";
+    onThisShipment: boolean;
+  };
   courier: { courierId: string; displayName: string };
   bizStep: string;
   eventTime: string;
   state: HandoffState;
   priority: number;
   reason: string;
+  /** A few words for a list, derived from what decided. The sentence stays in `reason`. */
+  shortReason: string;
+  /** The gate's own matrix cell. Grouping reads this rather than re-comparing a threshold. */
+  matrixCell: string | null;
+  abort: AbortKind;
+  inboxGroup: InboxGroupId;
+  /**
+   * Whether `state` was COMPUTED by the workbench or SEEDED for the demo.
+   *
+   * S5's `timed_out` is assigned by scenario id. No liveness timer exists, so a
+   * "timed out" badge with nothing behind it tells a viewer the system measured
+   * a response window it never measured. The badge carries this and says so.
+   */
+  stateProvenance: "computed" | "seeded";
   ageMinutes: number;
   decision: string | null;
   sealed: boolean;
@@ -138,6 +164,8 @@ export type WorkbenchEntry = {
   priority: number;
   reason: string;
   createdAt: string;
+  /** Set when the demo assigned `state` rather than the workbench deriving it. */
+  stateSource?: "seeded";
 };
 
 function suffix(value: string | undefined | null): string {
@@ -196,8 +224,11 @@ export function summaryFrom(entry: WorkbenchEntry, nowIso: string): HandoffSumma
   const ctx = entry.current;
   const event = ctx.event ?? entry.built.event;
   const epc = epcsOf(event)[0] ?? "unknown";
-  const parcel = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
+  const onShipment = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
+  const inWorld = onShipment ?? entry.world.parcels.find((candidate) => candidate.epc === epc);
   const state: HandoffState = entry.state ?? "accepted";
+  const abort = abortKindOf(ctx);
+  const matrixCell = ctx.gateResult?.matrixCell ?? null;
   const axes = axisValues(ctx);
   const explanationSource = ctx.explanation
     ? ctx.explanationFromFallback
@@ -210,7 +241,12 @@ export function summaryFrom(entry: WorkbenchEntry, nowIso: string): HandoffSumma
     caseId: entry.caseId,
     scenarioId: entry.scenario.id,
     legIndex: entry.built.legIndex,
-    parcel: { epc, waybillNo: parcel?.waybillNo ?? epc.split(":").at(-1) ?? epc },
+    parcel: {
+      epc,
+      waybillNo: inWorld?.waybillNo ?? epc.split(":").at(-1) ?? epc,
+      idKind: inWorld ? "waybill" : "epc",
+      onThisShipment: Boolean(onShipment),
+    },
     courier: {
       courierId: entry.scenario.courier.courierId,
       displayName: entry.scenario.courier.displayName,
@@ -220,6 +256,11 @@ export function summaryFrom(entry: WorkbenchEntry, nowIso: string): HandoffSumma
     state,
     priority: entry.priority,
     reason: entry.reason,
+    shortReason: shortReasonFor(ctx),
+    matrixCell,
+    abort,
+    inboxGroup: inboxGroupOf({ abort, state, matrixCell }),
+    stateProvenance: entry.stateSource === "seeded" ? "seeded" : "computed",
     ageMinutes: Math.max(0, Math.round((Date.parse(nowIso) - Date.parse(entry.createdAt)) / 60_000)),
     decision: ctx.decision ?? null,
     sealed: ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop",

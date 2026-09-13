@@ -335,6 +335,8 @@ async function buildScenarioEntries(
       priority: priorityFor(state, ctx.decision),
       reason: reasonFor(ctx),
       createdAt,
+      // S5's timed_out is chosen by scenario id above, not by any timer.
+      ...(state === "timed_out" ? { stateSource: "seeded" as const } : {}),
       harness,
       actions: [],
     };
