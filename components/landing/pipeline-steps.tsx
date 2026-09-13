@@ -6,8 +6,9 @@ import {
   useMotionValueEvent,
   useReducedMotion,
   useScroll,
+  useTransform,
+  type MotionValue,
   type Transition,
-  type Variants,
 } from "motion/react";
 import { Lock } from "lucide-react";
 import {
@@ -25,9 +26,9 @@ import { ArchitectureDiagram } from "./architecture-diagram";
  *
  * A pattern taken from sui.io's step section, rebuilt rather than copied: their
  * site is Webflow and there is no source to read, so the structure — a tall
- * outer container, a sticky full-height frame, a numbered list on the left and
- * a graphic that fills on the right — is inferred from their markup. It is the
- * same FORM, not a claim of the same implementation.
+ * outer container, a sticky full-height frame, cards either side of a central
+ * track with a marker that travels down it — is inferred from their markup. It
+ * is the same FORM, not a claim of the same implementation.
  *
  * The content suits the form better than theirs does. The order is real (these
  * nodes run in this sequence on every handoff), and it has a turn in the middle:
@@ -38,17 +39,18 @@ import { ArchitectureDiagram } from "./architecture-diagram";
 /**
  * TWO KINDS OF MOTION, AND THEIR RULES ARE OPPOSITE.
  *
- * Scroll position → which step is current: LINEAR, no easing at all. It follows
- * the viewer's wheel, and easing there reads as "I scrolled and it lagged",
- * which is stutter rather than polish.
+ * Continuous and scroll-linked — which step is current, and where the marker
+ * sits on the track: LINEAR, no easing, no spring. Both follow the viewer's
+ * wheel, and any smoothing between the wheel and the position reads as "I
+ * scrolled and it lagged". Lenis already smooths the scroll itself; adding a
+ * second smoothing on top would be lag, not physics.
  *
- * A step change → elements entering, the rail filling, the panel inverting:
- * this curve. The lag belongs here, after the state has changed, never between
- * the wheel and the state.
+ * Discrete, triggered by a step change — a card coming into focus, the reveal
+ * arriving: this curve. The lag belongs after the state has changed, never
+ * between the wheel and the state.
  */
 const EASE = [0.16, 1, 0.3, 1] as const;
 const STATE_CHANGE: Transition = { duration: 0.6, ease: EASE };
-const STAGGER = 0.06;
 
 /**
  * Colour changes, which motion cannot interpolate through CSS variables: the
@@ -57,14 +59,29 @@ const STAGGER = 0.06;
  * A CLASS, NOT AN INLINE STYLE CHOSEN BY useReducedMotion. That hook reads the
  * preference on the client's first render and returns null on the server, so a
  * style branched on it rendered differently on each side and React reported a
- * hydration mismatch — only for reduced-motion viewers, the one audience this
- * section is hidden from, which is why no motion-allowed frame showed it.
- * `motion-safe:` lets the browser decide, with identical markup everywhere.
- * Tailwind needs the literal, so the numbers are repeated: keep them equal to
- * EASE and STATE_CHANGE.
+ * hydration mismatch — only for reduced-motion viewers. `motion-safe:` lets the
+ * browser decide, with identical markup everywhere. Tailwind needs the literal,
+ * so the numbers are repeated: keep them equal to EASE and STATE_CHANGE.
  */
 const COLOUR_CHANGE =
   "motion-safe:transition-[color,background-color,border-color,opacity] motion-safe:duration-[600ms] motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)]";
+
+/**
+ * How far an out-of-focus card steps back. SET FROM A MEASUREMENT, not taste.
+ *
+ * Opacity on a dark card over a light page pulls text and surface toward the
+ * same page colour, so legibility falls fast. Least readable card, glyph core
+ * against its own surface, at 1920x1080:
+ *
+ *   0.3  1.96:1    0.5  3.37:1    0.7  6.42:1
+ *   outline + muted text (surface fades, text does not)  5.80:1
+ *
+ * 0.7 keeps every card readable ahead of the viewer, above 4.5:1, and keeps
+ * the cards ink rather than turning seven of eight into outlines. Focus is
+ * still carried by full ink and full size on the one current card.
+ * `npm run qa:capture:landing` fails if an out-of-focus card drops below 4.5:1.
+ */
+const OUT_OF_FOCUS = { opacity: 0.7, scale: 0.96 } as const;
 
 /**
  * Half-steps, so the last step can hand over to the reveal without a ninth
@@ -102,6 +119,8 @@ export function PipelineSteps() {
 function ScrollSequence() {
   const container = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState(0);
+  const reduced = useReducedMotion();
+  const transition = reduced ? { duration: 0 } : STATE_CHANGE;
 
   const { scrollYProgress } = useScroll({
     target: container,
@@ -128,218 +147,145 @@ function ScrollSequence() {
       */
       style={{ height: `${PIPELINE.length * 100}vh` }}
     >
-      <div className="sticky top-0 flex h-screen items-center">
-        <div className="grid w-full grid-cols-[minmax(0,5fr)_minmax(0,7fr)] items-center gap-8">
-          <StepList current={step} />
-          <Stage step={step} revealed={revealed} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StepList({ current }: { current: number }) {
-  const reduced = useReducedMotion();
-
-  return (
-    <ol>
-      {PIPELINE.map((item, index) => {
-        const active = index === current;
-        return (
-          <li
-            key={item.node}
-            className={cn(
-              "relative grid grid-cols-[32px_minmax(0,1fr)] gap-3 py-2 pl-4",
-              COLOUR_CHANGE,
-              active ? "text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {active && (
-              <motion.span
-                layoutId="pipeline-current"
-                aria-hidden="true"
-                className="absolute inset-y-2 left-0 w-1 rounded-full bg-foreground"
-                transition={reduced ? { duration: 0 } : STATE_CHANGE}
-              />
-            )}
-            <span className="pt-px font-mono text-sm tabular-nums">{index + 1}</span>
-            <span className="min-w-0">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className={cn("font-mono text-base", active && "font-semibold")}>{item.node}</span>
-                <RoleTag role={item.role} compact />
-              </span>
-              <span className="mt-1 block text-sm leading-5">{item.line}</span>
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/**
- * The graphic. Fills as the pipeline advances, inverts at the gate, and at the
- * end takes the model nodes out while the gate stays exactly where it was.
- */
-function Stage({ step, revealed }: { step: number; revealed: boolean }) {
-  const reduced = useReducedMotion();
-  const transition = reduced ? { duration: 0 } : STATE_CHANGE;
-  const inverted = PIPELINE[step]?.role === "decides" && !revealed;
-
-  return (
-    <div
-      className={cn(
-        "relative aspect-[4/3] overflow-hidden rounded-lg bg-muted/50",
-        COLOUR_CHANGE,
-        inverted ? "text-background" : "text-foreground",
-      )}
-    >
-      {/*
-        THE INVERSION IS THE TURN. Six steps gather and compare; this one
-        decides. The whole panel changes state rather than one node changing
-        colour, so the viewer registers that something different just happened
-        without having to find where.
-      */}
-      <motion.div
-        aria-hidden="true"
-        className="absolute inset-0 bg-foreground"
-        initial={false}
-        animate={{ opacity: inverted ? 1 : 0 }}
-        transition={transition}
-      />
-
-      <div className="relative flex h-full flex-col p-8">
-        <Rail step={step} revealed={revealed} inverted={inverted} />
-
+      <div className="sticky top-0 flex h-screen flex-col justify-center">
         {/*
-          A fixed-height slot anchored at the top, so "3 / 8" sits in the same
-          place on every step. Bottom-anchored, the block's top edge moved with
-          the length of each line — 31px between plan and gate.
+          Cards alternate either side of the track, each spanning two of nine
+          half-rows, so a left card and the right card after it overlap by half
+          and eight cards fit one viewport without shrinking the type.
         */}
+        <ol className="relative grid grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)] grid-rows-[repeat(9,auto)] gap-x-6 gap-y-2">
+          <Track progress={scrollYProgress} />
+          {PIPELINE.map((item, index) => (
+            <PipelineCard
+              key={item.node}
+              item={item}
+              index={index}
+              state={cardState(item, index, step, revealed)}
+              transition={transition}
+              style={{ gridColumn: index % 2 === 0 ? 1 : 3, gridRow: `${index + 1} / span 2` }}
+            />
+          ))}
+        </ol>
+
         <motion.div
-          key={revealed ? "reveal" : step}
-          className="mt-auto h-3/5"
-          initial="hidden"
-          animate="shown"
-          variants={{ shown: { transition: { staggerChildren: reduced ? 0 : STAGGER } } }}
+          className="mt-8 text-center"
+          initial={false}
+          animate={{ opacity: revealed ? 1 : 0, y: revealed ? 0 : 16 }}
+          transition={transition}
+          aria-hidden={!revealed}
         >
-          {revealed ? <Reveal transition={transition} /> : <StepCopy item={PIPELINE[step]} index={step} transition={transition} />}
+          <p className="text-2xl font-semibold leading-8 tracking-tight">{PIPELINE_REVEAL.claim}</p>
+          <p className="mt-2 font-mono text-xs text-muted-foreground">
+            Asserted by {PIPELINE_REVEAL.source} — a test that runs, not a promise
+          </p>
         </motion.div>
       </div>
     </div>
   );
 }
 
-function StepCopy({
-  item,
-  index,
-  transition,
-}: {
-  item: PipelineStep;
-  index: number;
-  transition: Transition;
-}) {
-  const enter = entering(transition);
-  return (
-    <>
-      <motion.p variants={enter} className="font-mono text-sm tabular-nums opacity-70">
-        {index + 1} / {PIPELINE.length}
-      </motion.p>
-      <motion.h3 variants={enter} className="mt-3 font-mono text-4xl font-semibold tracking-tight">
-        {item.node}
-      </motion.h3>
-      <motion.p variants={enter} className="mt-4 max-w-md text-lg leading-7">
-        {item.line}
-      </motion.p>
-      <motion.div variants={enter} className="mt-6">
-        <RoleTag role={item.role} />
-      </motion.div>
-    </>
-  );
+type CardState = "focus" | "out-of-focus" | "removed";
+
+/**
+ * At the reveal nothing is "current": the model nodes are taken out and every
+ * other node — the gate above all — stays exactly as it was. That picture IS
+ * the claim underneath it.
+ */
+function cardState(item: PipelineStep, index: number, step: number, revealed: boolean): CardState {
+  if (revealed) return item.role === "model" ? "removed" : "focus";
+  return index === step ? "focus" : "out-of-focus";
 }
 
-function Reveal({ transition }: { transition: Transition }) {
-  const enter = entering(transition);
+/**
+ * The central track: a dashed line, a solid fill down to the marker, and the
+ * marker itself. Position is the scroll progress, directly — `useTransform` on
+ * the MotionValue, so it is written in the same frame the progress changes and
+ * never passes through React state or an easing curve.
+ */
+function Track({ progress }: { progress: MotionValue<number> }) {
+  const top = useTransform(progress, (value) => `${value * 100}%`);
   return (
-    <>
-      <motion.p variants={enter} className="max-w-md text-2xl font-semibold leading-8 tracking-tight">
-        {PIPELINE_REVEAL.claim}
-      </motion.p>
-      <motion.p variants={enter} className="mt-4 font-mono text-xs text-muted-foreground">
-        Asserted by {PIPELINE_REVEAL.source} — a test that runs, not a promise
-      </motion.p>
-    </>
+    <li aria-hidden="true" className="relative" style={{ gridColumn: 2, gridRow: "1 / -1" }}>
+      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 border-l-2 border-dashed border-foreground/25" />
+      <motion.div
+        className="absolute inset-x-0 top-0 mx-auto w-0.5 origin-top bg-foreground"
+        style={{ height: top }}
+      />
+      <motion.div
+        data-track-marker
+        className="absolute left-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-foreground"
+        style={{ top }}
+      />
+    </li>
   );
 }
 
 /**
- * Eight nodes on a track. Shape carries role (rule 1k): a model node is a
- * dashed ring, the deciding node is a square, everything else is a circle.
- * Hue carries nothing, so the distinction survives video compression and a
- * viewer who does not see colour.
+ * One node. STRUCTURE carries role (rule 1k), and so does DIRECTION:
+ *
+ *   deterministic  dark ink card, hairline light edge
+ *   model          dark ink card, DASHED edge
+ *   gate           the one LIGHT card, heavy solid edge
+ *
+ * With every other card dark, the gate's inversion can only go toward light —
+ * inverting it to dark as well would make it one more dark card, and the one
+ * place a verdict is made would stop being the one thing that looks different.
  */
-function Rail({ step, revealed, inverted }: { step: number; revealed: boolean; inverted: boolean }) {
-  const reduced = useReducedMotion();
-  const transition = reduced ? { duration: 0 } : STATE_CHANGE;
-  const last = PIPELINE.length - 1;
+function PipelineCard({
+  item,
+  index,
+  state,
+  transition,
+  style,
+}: {
+  item: PipelineStep;
+  index: number;
+  state: CardState;
+  transition: Transition;
+  style?: React.CSSProperties;
+}) {
+  const target =
+    state === "focus"
+      ? { opacity: 1, scale: 1 }
+      : state === "removed"
+        ? { opacity: 0.15, scale: 0.92 }
+        : OUT_OF_FOCUS;
 
   return (
-    <div>
-      <div className="relative flex items-center justify-between">
-        <div aria-hidden="true" className="absolute inset-x-3 top-1/2 h-px -translate-y-1/2 bg-current opacity-20" />
-        <motion.div
-          aria-hidden="true"
-          className="absolute inset-x-3 top-1/2 h-0.5 origin-left -translate-y-1/2 bg-current"
-          initial={false}
-          animate={{ scaleX: step / last }}
-          transition={transition}
-        />
-        {PIPELINE.map((item, index) => {
-          const reached = index <= step;
-          // At the reveal the model is taken out; the gate does not move.
-          const removed = revealed && item.role === "model";
-          return (
-            <motion.span
-              key={item.node}
-              aria-hidden="true"
-              className={cn(
-                "relative size-6 border-2 border-current",
-                item.role === "decides" ? "rounded-sm" : "rounded-full",
-                item.role === "model" && "border-dashed",
-                // A model node is never filled: it contributes, it does not hold
-                // state. An unfilled node is painted in the PANEL's colour so the
-                // track does not show through — bg-muted was a light disc on the
-                // inverted gate panel, and the dashed model rings read as filled
-                // on exactly the frame that most needs them to read as model.
-                reached && item.role !== "model"
-                  ? "bg-current"
-                  : inverted
-                    ? "bg-foreground"
-                    : "bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-background))]",
-                COLOUR_CHANGE,
-              )}
-              initial={false}
-              animate={{
-                scale: index === step && !revealed ? 1.25 : removed ? 0.75 : 1,
-                opacity: removed ? 0.2 : 1,
-              }}
-              transition={transition}
-            />
-          );
-        })}
-      </div>
-      <div className="mt-3 flex justify-between font-mono text-xs tabular-nums opacity-70">
-        {PIPELINE.map((item, index) => (
-          <span key={item.node} className="w-6 text-center">
-            {index + 1}
-          </span>
-        ))}
-      </div>
-    </div>
+    <motion.li
+      data-card-state={state}
+      data-role={item.role}
+      className={cn("self-center rounded-lg p-4", COLOUR_CHANGE, CARD_SKIN[item.role])}
+      style={style}
+      initial={false}
+      animate={target}
+      transition={transition}
+    >
+      <CardBody item={item} index={index} />
+    </motion.li>
   );
 }
 
-function RoleTag({ role, compact = false }: { role: PipelineRole; compact?: boolean }) {
+const CARD_SKIN: Record<PipelineRole, string> = {
+  deterministic: "border border-background/15 bg-foreground text-background",
+  model: "border-2 border-dashed border-background/60 bg-foreground text-background",
+  decides: "border-2 border-foreground bg-background text-foreground",
+};
+
+function CardBody({ item, index }: { item: PipelineStep; index: number }) {
+  return (
+    <>
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-sm tabular-nums opacity-80">{index + 1}</span>
+        <span className="font-mono text-base font-semibold">{item.node}</span>
+        <RoleTag role={item.role} />
+      </span>
+      <span className="mt-1 block text-sm leading-5">{item.line}</span>
+    </>
+  );
+}
+
+function RoleTag({ role }: { role: PipelineRole }) {
   if (role === "model") {
     return (
       <span className="inline-flex items-center rounded-md border border-dashed border-current px-2 py-1 text-xs font-medium">
@@ -349,38 +295,22 @@ function RoleTag({ role, compact = false }: { role: PipelineRole; compact?: bool
   }
   if (role === "decides") {
     return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium",
-          compact ? "border border-current" : "bg-background text-foreground",
-        )}
-      >
+      <span className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 text-xs font-medium">
         <Lock aria-hidden="true" className="size-3" />
         The verdict is made here
       </span>
     );
   }
-  return compact ? null : (
-    <span className="inline-flex items-center rounded-md border border-current px-2 py-1 text-xs opacity-70">
-      Deterministic
-    </span>
-  );
+  return null;
 }
 
 function StaticSequence() {
   return (
     <div className="mt-8">
-      <ol className="space-y-4">
+      <ol className="grid gap-3">
         {PIPELINE.map((item, index) => (
-          <li key={item.node} className="grid grid-cols-[32px_minmax(0,1fr)] gap-3">
-            <span className="pt-px font-mono text-sm tabular-nums text-muted-foreground">{index + 1}</span>
-            <span className="min-w-0">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-base font-semibold">{item.node}</span>
-                <RoleTag role={item.role} compact />
-              </span>
-              <span className="mt-1 block text-sm leading-6 text-muted-foreground">{item.line}</span>
-            </span>
+          <li key={item.node} className={cn("rounded-lg p-4", CARD_SKIN[item.role])}>
+            <CardBody item={item} index={index} />
           </li>
         ))}
       </ol>
@@ -393,11 +323,4 @@ function StaticSequence() {
       <ArchitectureDiagram />
     </div>
   );
-}
-
-function entering(transition: Transition): Variants {
-  return {
-    hidden: { opacity: 0, y: 16 },
-    shown: { opacity: 1, y: 0, transition },
-  };
 }

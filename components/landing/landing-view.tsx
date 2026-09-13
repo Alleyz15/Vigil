@@ -28,6 +28,7 @@ export function LandingView() {
   return (
     <main className="mx-auto max-w-5xl px-6 pb-24">
       <Hero />
+      <TransitionBand />
 
       {SECTIONS.map((section) => (
         <Section
@@ -45,10 +46,18 @@ export function LandingView() {
 
 function Hero() {
   return (
-    <header className="relative isolate flex min-h-[82vh] flex-col justify-center py-20">
+    /*
+      A DARK HERO ON A LIGHT PAGE. The colour inversion is scoped to this
+      element: text, secondary text and both buttons flip here together, using
+      the page's own tokens the other way round (background on foreground)
+      rather than the unused `.dark` palette — which is shadcn's default, never
+      designed for this project, and would bring a neutral grey that is not our
+      slate.
+    */
+    <header className="relative isolate flex min-h-[82vh] flex-col justify-center py-20 text-background">
       <HeroBackdrop />
 
-      <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+      <p className="font-mono text-xs uppercase tracking-[0.2em] text-background/70">
         Vigil · agentic handoff trust verifier
       </p>
 
@@ -62,12 +71,12 @@ function Hero() {
         {HERO.title}
       </h1>
 
-      <p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground">{HERO.standfirst}</p>
+      <p className="mt-7 max-w-xl text-base leading-7 text-background/75">{HERO.standfirst}</p>
 
       <ol className="mt-6 max-w-xl space-y-2">
         {HERO.questions.map((question, index) => (
           <li key={question} className="flex gap-3 text-base leading-7">
-            <span className="mt-px font-mono text-sm text-muted-foreground">{index + 1}</span>
+            <span className="mt-px font-mono text-sm text-background/70">{index + 1}</span>
             <span className="font-medium">{question}</span>
           </li>
         ))}
@@ -82,14 +91,19 @@ function Hero() {
       <div className="mt-9 flex w-fit flex-wrap">
         <Link
           href="/operator/inbox"
-          className="inline-flex h-12 items-center gap-2 rounded-l-md bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          /*
+            Filled with the light token, not --primary: the brand green is
+            L 0.36 and sinks into a slate ground. Inverted, the default action
+            is still the one filled button in the hero.
+          */
+          className="inline-flex h-12 items-center gap-2 rounded-l-md bg-background px-6 text-sm font-medium text-foreground transition-opacity hover:opacity-90"
         >
           Open the console
           <ArrowRight aria-hidden="true" className="size-4" />
         </Link>
         <Link
           href="/demo/cosign"
-          className="-ml-px inline-flex h-12 items-center rounded-r-md border border-foreground/20 px-6 text-sm font-medium transition-colors hover:bg-muted"
+          className="-ml-px inline-flex h-12 items-center rounded-r-md border border-background/30 px-6 text-sm font-medium transition-colors hover:bg-background/10"
         >
           See the co-signature
         </Link>
@@ -133,8 +147,12 @@ function HeroBackdrop() {
       className="pointer-events-none absolute inset-y-0 left-1/2 -z-10 w-full -translate-x-1/2 overflow-hidden"
       style={bleed ? { width: bleed } : undefined}
     >
-      {/* 1. The static ground. A finished treatment, not a placeholder. */}
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_78%_15%,var(--color-muted)_0%,transparent_60%)]" />
+      {/*
+        1. The ground: the deepest token the light theme has. It is what a
+        reduced-motion viewer sees, since there is no poster, so it must be a
+        finished dark hero on its own.
+      */}
+      <div className="absolute inset-0 bg-foreground" />
 
       {/* 2. The media, when there is any. */}
       {plan.kind === "video" && (
@@ -157,30 +175,52 @@ function HeroBackdrop() {
       )}
 
       {/*
-        3. The scrim, ALWAYS, and in TWO layers. It sat over this headline
-        before any footage existed, so the day the video landed was a
-        measurement rather than a redesign: see lib/landing/hero-media.ts for
-        the worst-case figures over the real loop.
+        3. The scrim, ALWAYS, and in TWO layers — now DARK, because the footage
+        is. Sessions 20 and 21 measured a white scrim over light footage; that
+        result says nothing about light text over dark footage, where the risk
+        is inverted: not a dark region under dark text, but a thin bright line
+        crossing a light glyph. See lib/landing/hero-media.ts.
 
-        TWO LAYERS BECAUSE ONE WAS NOT ENOUGH, and a probe found that rather
-        than a review. Painting a real screenshot into the media slot showed the
-        image still plainly readable on the right at a single horizontal
-        gradient — and at this type size the headline runs most of the way
-        across, so its right-hand half sat over visible imagery. A lighter video
-        would have survived that; a darker one would not.
-
-        The flat wash knocks any media back to texture everywhere. The gradient
-        then adds opacity on the left, where the text actually lives. A
-        background video here is meant to be felt, not watched.
+        The flat wash tints the footage toward the ground; the gradient adds
+        opacity on the left, where the text lives. Both strengths are set from
+        the worst measured frame, not chosen.
       */}
-      <div className="absolute inset-0 bg-background/88" />
-      <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-transparent" />
+      <div className="absolute inset-0 bg-foreground/40" />
+      <div className="absolute inset-0 bg-gradient-to-r from-foreground via-foreground/70 to-transparent" />
       {/*
-        The foot of the hero. Full-bleed footage ends in a hard horizontal line
-        that runs wider than the section rule beneath it; fading the last
-        quarter lets the hero dissolve into the page instead of stopping.
+        The foot of the hero fades into the ground colour, so the footage ends
+        in the same colour the transition band starts from rather than in a hard
+        line against it.
       */}
-      <div className="absolute inset-x-0 bottom-0 h-1/4 bg-gradient-to-t from-background to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-1/4 bg-gradient-to-t from-foreground to-transparent" />
+    </div>
+  );
+}
+
+/**
+ * THE BOUNDARY BETWEEN THE DARK HERO AND THE LIGHT PAGE. Nothing else.
+ *
+ * It is a COLOUR boundary, not a section connector: its job is to take the eye
+ * from the hero's ground to the page's, so it sits after the hero and before
+ * whichever light section comes first. Which section that is has nothing to do
+ * with it — the argument's order (problem, consistency, the gate, approval,
+ * where the AI sits) was set in session 19 and does not move for a gradient.
+ *
+ * `h-32` is a MACRO LAYOUT DIMENSION, in the same class as the pipeline's
+ * 8 × 100vh: how long a transition lasts on the page. It is not a spacing token
+ * and the 4/8/12/16/24/32 component scale does not govern it.
+ *
+ * Decorative: aria-hidden, no text, nothing to focus. Full-bleed by the same
+ * clientWidth rule as the hero backdrop, so its edges line up with the hero's.
+ */
+function TransitionBand() {
+  const bleed = useDocumentWidth();
+  return (
+    <div aria-hidden="true" data-transition-band className="relative h-32">
+      <div
+        className="absolute inset-y-0 left-1/2 w-full -translate-x-1/2 bg-gradient-to-b from-foreground to-background"
+        style={bleed ? { width: bleed } : undefined}
+      />
     </div>
   );
 }

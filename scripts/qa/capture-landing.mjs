@@ -40,8 +40,16 @@ const BASE = process.env.VIGIL_BASE_URL ?? "http://localhost:3000";
 
 const HEADLINE_MIN = 7;
 const BODY_MIN = 4.5;
-/** Paused positions through the loop, as fractions of its duration. 0.5833 is the darkest sampled frame. */
-const VIDEO_TIMES = [0, 0.2917, 0.5, 0.5833, 0.75];
+/**
+ * How many paused frames the hero probe reads across one loop.
+ *
+ * NOT five evenly spaced frames. With light text over dark footage the failure
+ * is a thin bright line crossing a glyph, which lasts a fraction of a second;
+ * evenly spaced frames can step straight over it. The probe reads the whole
+ * loop densely and reports the WORST frame per text block — the one where a
+ * line sits closest to, or across, the text. The worst case is the standard.
+ */
+const HERO_SAMPLES = 96;
 
 const chromePath = [
   process.env.CHROME_PATH,
@@ -191,6 +199,43 @@ async function assertNoDevIssues(page, where) {
 ${issue}`);
 }
 
+/**
+ * Out-of-focus cards, glyph core against the card's own surface, from pixels.
+ *
+ * Opacity is applied to the whole card, so neither the text colour nor the
+ * surface colour is in any stylesheet: both are composites over the page. The
+ * surface is read from a strip inside the bottom padding; the text is the pixel
+ * with the most contrast against it inside each line box. Null when no card is
+ * out of focus (the reveal, where the model cards are REMOVED — deliberately
+ * unreadable, and not what this measures).
+ */
+async function outOfFocusContrast(page, shot) {
+  return page.evaluate(`(async () => {
+    const cards = [...document.querySelectorAll('[data-pipeline-phase] [data-card-state="out-of-focus"]')];
+    if (cards.length === 0) return null;
+    const img = new Image(); img.src = "data:image/png;base64,${shot.toString("base64")}"; await img.decode();
+    const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+    const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const lin = x => { x /= 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+    const lum = (r, gg, b) => 0.2126 * lin(r) + 0.7152 * lin(gg) + 0.0722 * lin(b);
+    const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    const px = (x, y, w, h) => { const d = g.getImageData(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h))).data; const out = []; for (let p = 0; p < d.length; p += 4) out.push(lum(d[p], d[p + 1], d[p + 2])); return out; };
+    let least = Infinity;
+    for (const card of cards) {
+      const r = card.getBoundingClientRect();
+      const surface = px(r.x + 6, r.y + r.height - 8, r.width - 12, 3).sort((a, b) => a - b);
+      const bg = surface[Math.floor(surface.length / 2)];
+      for (const el of card.querySelectorAll("span.font-semibold, span.block")) {
+        const range = document.createRange(); range.selectNodeContents(el);
+        let best = 1;
+        for (const q of range.getClientRects()) for (const v of px(q.x, q.y, q.width, q.height)) best = Math.max(best, ratio(v, bg));
+        least = Math.min(least, best);
+      }
+    }
+    return Math.round(least * 100) / 100;
+  })()`);
+}
+
 /** Mermaid draws its own SVG text, scaled with the SVG; the type floor has to be read from the render. */
 async function renderedDiagramLabelPx(page) {
   return page.evaluate(`(() => {
@@ -203,17 +248,18 @@ async function renderedDiagramLabelPx(page) {
 }
 
 /**
- * Worst-case contrast behind each text block, READ FROM PIXELS.
+ * Worst-case contrast behind each text block, READ FROM PIXELS, in either
+ * direction.
  *
- * The same frame is captured twice: as a viewer sees it, and with the hero's
- * text hidden (visibility, so layout does not move). The second frame is the
- * exact background under each line box; its darkest pixel against the text's
- * own colour is the worst case. Deriving this from the scrim's opacity was
- * tried in the plan and got the standfirst wrong by a third — the theme's
- * muted colour and the gradient's coverage both differed from the guess.
+ * The text is hidden (visibility, so layout does not move) and the frame under
+ * it is captured. For every pixel inside each line box the WCAG ratio against
+ * the text's own colour is computed and the minimum kept. That covers dark text
+ * over a dark patch (sessions 20–21) and light text over a bright line (session
+ * 22) with one rule, rather than a darkest-pixel shortcut that silently assumes
+ * which way round the page is.
  */
-async function measureContrast(page) {
-  const targets = await page.evaluate(`(() => {
+async function heroTargets(page) {
+  return page.evaluate(`(() => {
     const header = document.querySelector("main > header");
     const boxes = (el, name) => {
       const range = document.createRange();
@@ -226,22 +272,33 @@ async function measureContrast(page) {
       boxes(header.querySelector("h1 + p"), "standfirst"),
       boxes(header.querySelector("p"), "eyebrow"),
       ...[...header.querySelectorAll("ol li span.font-medium")].map((el, i) => boxes(el, "question " + (i + 1))),
+      ...[...header.querySelectorAll("ol li span.font-mono")].map((el, i) => boxes(el, "number " + (i + 1))),
     ];
   })()`);
+}
 
+async function setStyle(page, id, css) {
   await page.evaluate(`(() => {
-    const style = document.createElement("style");
-    style.id = "qa-hide-text";
-    style.textContent = "main > header > :not([aria-hidden]) { visibility: hidden !important; }";
-    document.head.appendChild(style);
+    document.getElementById(${JSON.stringify(id)})?.remove();
+    if (${JSON.stringify(css)}) {
+      const style = document.createElement("style");
+      style.id = ${JSON.stringify(id)};
+      style.textContent = ${JSON.stringify(css)};
+      document.head.appendChild(style);
+    }
   })()`);
-  await sleep(150);
-  const background = await page.screenshot();
-  await page.evaluate(`document.getElementById("qa-hide-text").remove()`);
+}
 
+const HIDE_TEXT = "main > header > :not([aria-hidden]) { visibility: hidden !important; }";
+// The ground is the first child; the scrim layers are the divs after it.
+const NO_SCRIM = "main > header > [aria-hidden] > div:not(:first-child) { display: none !important; }";
+
+/** Per-target minimum ratio, plus how visible the footage still is on the right. */
+async function readHeroFrame(page, targets) {
+  const shot = await page.screenshot();
   return page.evaluate(`(async () => {
     const image = new Image();
-    image.src = "data:image/png;base64,${background.toString("base64")}";
+    image.src = "data:image/png;base64,${shot.toString("base64")}";
     await image.decode();
     const canvas = document.createElement("canvas");
     canvas.width = image.width; canvas.height = image.height;
@@ -249,22 +306,46 @@ async function measureContrast(page) {
     context.drawImage(image, 0, 0);
     const linear = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
     const luminance = (r, g, b) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
-    const cssLuminance = css => {
+    // The text colour WITH its alpha. text-background/75 is not the colour
+    // background at 75% brightness; it is background composited over whatever
+    // is behind each glyph. Reading only RGB measured translucent text as if it
+    // were opaque and overstated it — the first dark-hero run reported the
+    // standfirst above the headline. Blended per pixel, as the browser does.
+    const cssColour = css => {
       const k = document.createElement("canvas").getContext("2d");
       k.fillStyle = css; k.fillRect(0, 0, 1, 1);
       const d = k.getImageData(0, 0, 1, 1).data;
-      return luminance(d[0], d[1], d[2]);
+      return { r: d[0], g: d[1], b: d[2], a: d[3] / 255 };
     };
     const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-    return ${JSON.stringify(targets)}.map(target => {
-      const text = cssLuminance(target.color);
-      let darkest = 1;
+    const blocks = ${JSON.stringify(targets)}.map(target => {
+      const text = cssColour(target.color);
+      let worst = Infinity;
       for (const r of target.rects) {
         const d = context.getImageData(Math.round(r.x), Math.round(r.y), Math.max(1, Math.round(r.w)), Math.max(1, Math.round(r.h))).data;
-        for (let p = 0; p < d.length; p += 4) darkest = Math.min(darkest, luminance(d[p], d[p + 1], d[p + 2]));
+        for (let p = 0; p < d.length; p += 4) {
+          const bg = luminance(d[p], d[p + 1], d[p + 2]);
+          const fg = luminance(
+            text.a * text.r + (1 - text.a) * d[p],
+            text.a * text.g + (1 - text.a) * d[p + 1],
+            text.a * text.b + (1 - text.a) * d[p + 2],
+          );
+          worst = Math.min(worst, ratio(fg, bg));
+        }
       }
-      return { name: target.name, ratio: Math.round(ratio(text, darkest) * 100) / 100 };
+      return [target.name, Math.round(worst * 100) / 100];
     });
+    // Footage visibility: the brightest pixel against the typical one, in the
+    // right third of the hero where no text sits. A number near 1 means the
+    // lines have disappeared into the ground.
+    const header = document.querySelector("main > header").getBoundingClientRect();
+    const x0 = Math.round(canvas.width * 2 / 3), y0 = Math.max(0, Math.round(header.top));
+    const d = context.getImageData(x0, y0, canvas.width - x0, Math.round(header.height)).data;
+    const lums = [];
+    for (let p = 0; p < d.length; p += 16) lums.push(luminance(d[p], d[p + 1], d[p + 2]));
+    lums.sort((a, b) => a - b);
+    const peak = lums[Math.floor(lums.length * 0.999)], typical = lums[Math.floor(lums.length * 0.5)];
+    return { blocks: Object.fromEntries(blocks), lineVisibility: Math.round(ratio(peak, typical) * 100) / 100 };
   })()`);
 }
 
@@ -277,7 +358,7 @@ async function pauseVideoAt(page, fraction) {
       video.currentTime = video.duration * ${fraction};
     });
   })()`);
-  await sleep(300);
+  await sleep(120);
 }
 
 // ---------------------------------------------------------------------------
@@ -285,42 +366,86 @@ console.log("hero: footage, contrast, bleed");
 if (run("hero")) {
   const page = await openPage();
   await page.waitFor(`(() => { const v = document.querySelector("main > header video"); return !!v && v.readyState >= 2; })()`, "the hero video to load");
+  const targets = await heroTargets(page);
 
-  const table = [];
-  for (const fraction of VIDEO_TIMES) {
+  await setStyle(page, "qa-hide-text", HIDE_TEXT);
+  const worst = {}; // name -> { ratio, fraction }
+  const frames = [];
+  for (let i = 0; i < HERO_SAMPLES; i += 1) {
+    const fraction = i / HERO_SAMPLES;
     await pauseVideoAt(page, fraction);
-    const measured = await measureContrast(page);
-    table.push({ t: fraction, ...Object.fromEntries(measured.map((m) => [m.name, m.ratio])) });
-    for (const { name, ratio } of measured) {
-      const floor = name === "headline" ? HEADLINE_MIN : BODY_MIN;
-      if (ratio < floor) fail(`hero ${name} is ${ratio}:1 over the footage at t=${fraction}, below ${floor}:1. Strengthen the scrim; do not lighten the text.`);
+    const reading = await readHeroFrame(page, targets);
+    frames.push({ fraction, ...reading });
+    for (const [name, ratio] of Object.entries(reading.blocks)) {
+      if (!worst[name] || ratio < worst[name].ratio) worst[name] = { ratio, fraction };
     }
-    if (fraction === 0.5833) save("landing-hero-1920x1080.png", await page.screenshot());
   }
-  console.table(table);
 
-  // The control. If removing the scrim does not lower the reading, the probe is
-  // measuring something other than the scrim and every number above is inert.
-  await page.evaluate(`(() => {
-    const style = document.createElement("style");
-    style.id = "qa-no-scrim";
-    style.textContent = "main > header > [aria-hidden] > div:not(:first-child) { display: none !important; }";
-    document.head.appendChild(style);
-  })()`);
+  // REFINE. The coarse pass is 1/96 of the loop apart, longer than a frame, so
+  // a worse frame can sit between two samples. Around each block's worst
+  // sample, read every step of roughly one video frame (1/30 s) out to the
+  // neighbouring samples, and keep whichever is lower.
+  const duration = await page.evaluate(`document.querySelector("main > header video").duration`);
+  const frameStep = 1 / 30 / duration;
+  const refined = { reads: 0, distinct: new Set() };
+  for (const name of Object.keys(worst)) {
+    const centre = worst[name].fraction;
+    for (let f = centre - 1 / HERO_SAMPLES; f <= centre + 1 / HERO_SAMPLES; f += frameStep) {
+      const fraction = (f + 1) % 1;
+      await pauseVideoAt(page, fraction);
+      const reading = await readHeroFrame(page, targets);
+      refined.reads += 1;
+      refined.distinct.add(reading.blocks[name]);
+      for (const [block, ratio] of Object.entries(reading.blocks)) {
+        if (ratio < worst[block].ratio) worst[block] = { ratio, fraction };
+      }
+    }
+  }
+  // A refinement that reads one decoded frame over and over refines nothing.
+  console.log(`  refinement: ${refined.reads} frame-step reads, ${refined.distinct.size} distinct readings`);
+  if (refined.distinct.size < Object.keys(worst).length + 2) {
+    fail("the refinement pass produced almost no distinct readings; seeking is not landing on different frames");
+  }
+
+  console.table(Object.fromEntries(Object.entries(worst).map(([name, w]) => [name, { worst: w.ratio, atFraction: Math.round(w.fraction * 1000) / 1000 }])));
+  const everyFifth = frames.filter((_, i) => i % Math.round(HERO_SAMPLES / 5) === 0);
+  for (const name of ["headline", "standfirst"]) {
+    const sparse = Math.min(...everyFifth.map((f) => f.blocks[name]));
+    console.log(`  ${name}: worst of ${HERO_SAMPLES} frames ${worst[name].ratio}:1; worst of 5 evenly spaced ${sparse}:1`);
+  }
+  const visibility = frames.map((f) => f.lineVisibility);
+  console.log(`  footage line visibility on the right third: ${Math.min(...visibility)}–${Math.max(...visibility)} (1.00 = invisible)`);
+
+  for (const [name, { ratio, fraction }] of Object.entries(worst)) {
+    const floor = name === "headline" ? HEADLINE_MIN : BODY_MIN;
+    if (ratio < floor) fail(`hero ${name} is ${ratio}:1 at loop fraction ${fraction}, below ${floor}:1. Strengthen the scrim; do not dim the text.`);
+  }
+
+  // The control, at the headline's worst frame: removing the scrim must lower
+  // the reading, or the probe is measuring something other than the scrim.
+  await pauseVideoAt(page, worst.headline.fraction);
+  await setStyle(page, "qa-no-scrim", NO_SCRIM);
+  const control = await readHeroFrame(page, targets);
+  await setStyle(page, "qa-no-scrim", "");
+  console.log(`  control at the worst frame: headline ${control.blocks.headline}:1 without the scrim, ${worst.headline.ratio}:1 with it; line visibility ${control.lineVisibility} raw`);
+  if (control.blocks.headline >= worst.headline.ratio) fail("Removing the scrim did not lower the measured contrast; the probe is inert.");
+
+  await setStyle(page, "qa-hide-text", "");
   await sleep(150);
-  const control = await measureContrast(page);
-  await page.evaluate(`document.getElementById("qa-no-scrim").remove()`);
-  const controlHeadline = control.find((m) => m.name === "headline").ratio;
-  const withScrim = table.find((row) => row.t === 0.5833).headline;
-  console.log(`  control: headline ${controlHeadline}:1 with the scrim removed, ${withScrim}:1 with it`);
-  if (controlHeadline >= withScrim) fail("Removing the scrim did not lower the measured contrast; the probe is inert.");
+  save("landing-hero-1920x1080.png", await page.screenshot());
+  await pauseVideoAt(page, worst.standfirst.fraction);
+  save("landing-hero-standfirst-worst-1920x1080.png", await page.screenshot());
 
   const bleed = await page.evaluate(`(() => {
     const layer = document.querySelector("main > header > [aria-hidden]").getBoundingClientRect();
-    return { left: layer.left, width: layer.width, client: document.documentElement.clientWidth };
+    const band = document.querySelector("[data-transition-band] > div").getBoundingClientRect();
+    return { left: layer.left, width: layer.width, bandLeft: band.left, bandWidth: band.width, client: document.documentElement.clientWidth };
   })()`);
   if (Math.abs(bleed.left) > 1 || Math.abs(bleed.width - bleed.client) > 1) {
     fail(`hero backdrop is not full-bleed: left ${bleed.left}, width ${bleed.width}, document ${bleed.client}`);
+  }
+  if (Math.abs(bleed.bandLeft) > 1 || Math.abs(bleed.bandWidth - bleed.client) > 1) {
+    fail(`transition band is not full-bleed: left ${bleed.bandLeft}, width ${bleed.bandWidth}`);
   }
   await assertNoDevIssues(page, "hero");
   await page.close();
@@ -359,7 +484,13 @@ if (run("pipeline")) {
     await page.evaluate(`window.scrollTo({ top: ${y}, behavior: "instant" })`);
     await page.waitFor(`document.querySelector("[data-pipeline-phase]").dataset.pipelinePhase === "${phase}"`, `phase ${phase}`);
     await sleep(1100); // the 0.6s state change plus its stagger, settled
-    save(name, await page.screenshot());
+    const shot = await page.screenshot();
+    const unfocused = await outOfFocusContrast(page, shot);
+    if (unfocused !== null) {
+      console.log(`  phase ${phase}: least readable out-of-focus card ${unfocused}:1`);
+      if (unfocused < BODY_MIN) fail(`an out-of-focus card reads ${unfocused}:1 at phase ${phase}, below ${BODY_MIN}:1`);
+    }
+    save(name, shot);
   }
 
   /**
