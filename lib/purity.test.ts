@@ -70,6 +70,47 @@ function stripComments(source: string): string {
 const read = (tree: string, file: string) =>
   stripComments(readFileSync(join(LIB, tree, file), "utf8"));
 
+const COMPONENTS = join(LIB, "..", "components");
+
+/**
+ * EVERY DIRECTORY UNDER components/, MINUS A STATED EXCLUSION LIST.
+ *
+ * The UI guards used to name the trees they covered. Session 20 added
+ * `components/sender` and neither guard 8 nor guard 9 was told, so the newest
+ * surface was the one surface each check did not read — and nothing failed,
+ * because a guard that is not pointed at a directory has no opinion about it.
+ *
+ * An inclusion list is a rule a person has to remember on the day they add a
+ * directory, which is exactly the day they are thinking about something else.
+ * An exclusion list inverts the default: a new directory is guarded the moment
+ * it exists, and leaving it unguarded takes a written reason.
+ */
+function componentTrees(excluded: Readonly<Record<string, string>>): string[] {
+  for (const name of Object.keys(excluded)) {
+    expect(
+      existsSync(join(COMPONENTS, name)),
+      `components/${name} is excluded from a guard but no longer exists. Remove the stale exclusion, or it will silently exempt whatever is created under that name next.`,
+    ).toBe(true);
+  }
+  return readdirSync(COMPONENTS, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !(entry.name in excluded))
+    .map((entry) => entry.name);
+}
+
+/** Recursive: a guard that reads only the top level is escaped by one `mkdir`. */
+function sourceFilesUnder(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...sourceFilesUnder(full));
+    else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+const relativeToRoot = (full: string) =>
+  full.slice(join(LIB, "..").length + 1).split(sep).join("/");
+
 describe.each(Object.entries(PURE_TREES))("lib/%s is pure", (tree, modules) => {
   it.each(modules)("%s reaches nothing outside its arguments", (moduleName) => {
     const source = read(tree, moduleName);
@@ -592,25 +633,36 @@ describe("the two axes are never combined into one number", () => {
    * The landing page may import `lenis` and `mermaid`. The console may not.
    */
   it("keeps landing-page libraries out of the console", () => {
-    const CONSOLE_TREES = ["components/console", "components/operator", "components/courier", "components/recipient"];
-    const BANNED = [/from\s+["']lenis["']/, /from\s+["']mermaid["']/];
+    // Everything that is not the narrative surface. A new directory is banned
+    // from lenis and mermaid by default; see componentTrees for why.
+    const trees = componentTrees({
+      landing: "the narrative surface — the one place both libraries belong",
+    });
+    // Dynamic `import("lenis")` counts too: it is how the landing page loads it.
+    const BANNED = [
+      /from\s+["']lenis["']/,
+      /from\s+["']mermaid["']/,
+      /import\(\s*["']lenis["']\s*\)/,
+      /import\(\s*["']mermaid["']\s*\)/,
+    ];
 
-    for (const tree of CONSOLE_TREES) {
-      const dir = join(LIB, "..", ...tree.split("/"));
-      if (!existsSync(dir)) continue;
-
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (!entry.isFile() || !/\.tsx?$/.test(entry.name)) continue;
-        const source = stripComments(readFileSync(join(dir, entry.name), "utf8"));
+    let scanned = 0;
+    for (const tree of trees) {
+      for (const file of sourceFilesUnder(join(COMPONENTS, tree))) {
+        const source = stripComments(readFileSync(file, "utf8"));
+        scanned += 1;
 
         for (const pattern of BANNED) {
           expect(
             pattern.test(source),
-            `${tree}/${entry.name} imports a landing-page library. Inertial scroll and diagram rendering belong to the narrative surface; in the console they add latency to work an operator repeats dozens of times a shift. See CLAUDE.md, Console conventions.`,
+            `${relativeToRoot(file)} imports a landing-page library. Inertial scroll and diagram rendering belong to the narrative surface; in the console they add latency to work an operator repeats dozens of times a shift. See CLAUDE.md, Console conventions.`,
           ).toBe(false);
         }
       }
     }
+
+    expect(trees).toEqual(expect.arrayContaining(["operator", "sender", "shells", "demo"]));
+    expect(scanned).toBeGreaterThan(10);
   });
 
   /**
@@ -630,19 +682,21 @@ describe("the two axes are never combined into one number", () => {
    * introduced quietly.
    */
   it("renders every evidence value through the one formatter", () => {
-    const VIEW_TREES = [
-      "components/console",
-      "components/operator",
-      "components/courier",
-      "components/recipient",
-      "components/demo",
-      "components/shells",
-    ];
+    // Enumerated, not listed. The named list missed `sender`, `evidence` and
+    // `ledger` — three of the ten view trees — without any test noticing.
+    const VIEW_TREES = componentTrees({
+      ui: "shadcn/Radix primitives; they render props, never an Evidence value",
+    });
 
     // `value` is the field name on Evidence. Each of these puts an unknown
     // straight into the DOM.
     const BANNED = [
-      { pattern: /\{\s*\w+\.value\s*\}/, why: "interpolates an evidence value directly into JSX" },
+      // `(?<!=)`: a CHILD, not an attribute. `key={option.value}` passes a
+      // string to React and renders nothing; `>{flag.value}<` puts it on screen.
+      // The unqualified pattern could not tell them apart and went unnoticed
+      // only because no listed tree happened to contain the attribute form —
+      // enumeration reached `components/sender` and it fired on line one.
+      { pattern: /(?<!=)\{\s*\w+\.value\s*\}/, why: "interpolates an evidence value directly into JSX" },
       { pattern: /String\(\s*\w+\.value\s*\)/, why: "calls String() on an evidence value" },
       { pattern: /JSON\.stringify\(\s*\w+\.value\s*\)/, why: "calls JSON.stringify() on an evidence value" },
       { pattern: /\$\{\s*\w+\.value\s*\}/, why: "puts an evidence value in a template literal" },
@@ -650,18 +704,14 @@ describe("the two axes are never combined into one number", () => {
 
     let scanned = 0;
     for (const tree of VIEW_TREES) {
-      const dir = join(LIB, "..", ...tree.split("/"));
-      if (!existsSync(dir)) continue;
-
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (!entry.isFile() || !/\.tsx?$/.test(entry.name)) continue;
-        const source = stripComments(readFileSync(join(dir, entry.name), "utf8"));
+      for (const file of sourceFilesUnder(join(COMPONENTS, tree))) {
+        const source = stripComments(readFileSync(file, "utf8"));
         scanned += 1;
 
         for (const { pattern, why } of BANNED) {
           expect(
             pattern.test(source),
-            `${tree}/${entry.name} ${why}. A structured reading renders as "[object Object]" that way, and the row then claims to show what contradicted what while showing nothing. Use formatEvidenceValue from lib/display/evidence.`,
+            `${relativeToRoot(file)} ${why}. A structured reading renders as "[object Object]" that way, and the row then claims to show what contradicted what while showing nothing. Use formatEvidenceValue from lib/display/evidence.`,
           ).toBe(false);
         }
       }
@@ -670,6 +720,13 @@ describe("the two axes are never combined into one number", () => {
     // The scan must actually have read files; an empty sweep passes every
     // assertion above without checking anything.
     expect(scanned).toBeGreaterThan(10);
+  });
+
+  it("tells a rendered evidence value from an attribute that merely reads one", () => {
+    const CHILD = /(?<!=)\{\s*\w+\.value\s*\}/;
+    expect(CHILD.test(`<span>{item.value}</span>`)).toBe(true);
+    expect(CHILD.test(`<li>\n  { flag.value }\n</li>`)).toBe(true);
+    expect(CHILD.test(`<button key={option.value} />`)).toBe(false);
   });
 
   it("catches a violation when one is introduced", () => {
