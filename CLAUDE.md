@@ -465,6 +465,65 @@ from a scenario already present, not from choosing a seed and trusting it.
 **So: a browser walk-through of a new surface is not decoration on top of a green suite. It is the
 only instrument that detects category 4.**
 
+#### A brief is a premise too, and it gets read against the code like any other
+
+Rule 1g was written about code. Session 21 applied it to the brief that commissioned the work, and
+six of its statements did not match the repository:
+
+| # | The brief said | The code said |
+|---|---|---|
+| 1 | the video is at `/videos/hero-video.mp4` | it was at `public/hero-video.mp4`, then `public/Video/` |
+| 2 | the 12px floor is guard 8 | it is a separate, unnumbered test that polices `text-[Npx]` only |
+| 3 | guard 8 covers `console/` and `operator/` | four trees, not `sender`, `shells` or `demo` — and top level only |
+| 4 | mermaid is session 19's reduced-motion fallback | it rendered for everyone; its own fallback was a line of text |
+| 5 | step 6 is "weather, corroboration only" | since session 18 it runs whichever of four tools `plan` selected |
+| 6 | "delete nodes 3 and 8 and the verdict is byte-identical" | the parity tests run `llm: undefined`; the nodes still run, and no test deletes them |
+
+**Number 6 was the one that mattered**, because it was a sentence for the landing page — the first
+thing a judge reads — describing a behaviour nothing verifies. It became *"Take the model out of
+nodes 3 and 8, and the sealed verdict is byte-identical"*, cited to `lib/agent/machine.test.ts`, and
+`lib/landing/content.test.ts` asserts the cited file exists and runs `runWith(undefined)`.
+
+The brief's author recorded that this was not the first mismatch between a brief and the code. The
+defence is the one 1g already states, applied one step earlier: **before building on a statement
+about existing code, read the code — including when the statement arrives as an instruction.** A
+brief is reviewed intent; it is not an observation of the repository, and it goes stale exactly as
+fast as a comment does.
+
+#### Seven lists a person had to remember to update
+
+The same shape keeps recurring: a set of things is enumerated by hand in one place, the set grows
+somewhere else, and nothing connects the two. Nothing throws; the new member is simply not covered.
+
+| # | Session | The hand-maintained list | What was missing |
+|---|---|---|---|
+| 1 | 17B | the operator-action test's cases | four of five `OperatorActionName` members |
+| 2 | 17B | `seedDraftIdentity`, a mirror of generator seeding | nothing yet — drift is unenforced (Known Limitations) |
+| 3 | 18 | the tools the plan node can select | three of four had no implementation |
+| 4 | 19–20 | `STANDALONE` pathnames in `AppShell` | every new surface needs an edit (Known Limitations) |
+| 5 | 20 | guard 8's `CONSOLE_TREES` | `components/sender`, added without updating it |
+| 6 | 20 | guard 9's `VIEW_TREES` | `sender`, `evidence`, `ledger` — found in session 21 by enumerating |
+| 7 | 20 | guard 8 again, one level down | subdirectories: the walk read the top level only |
+
+(The brief counted guard 8 as the seventh; the table above is the set that can be sourced from
+this file and the code. Rows 5 and 7 are the same list failing on two axes.)
+
+**The rule for this shape: when a set can be enumerated from the filesystem or a type, enumerate it
+and write down the EXCLUSIONS, with a reason each.** Guards 8 and 9 now call `componentTrees()` in
+`lib/purity.test.ts`, which reads every directory under `components/` recursively and excludes only
+named entries — `landing` for guard 8, `ui` for guard 9. A new directory is guarded the moment it
+exists; leaving it unguarded takes a written sentence. A stale exclusion fails the test, so a
+deleted directory cannot silently exempt whatever is later created under its name. Row 1 was fixed
+the same way in 17B (a coverage check over the enum); row 4 is fixed by the `(console)` route group.
+
+**Enumerating found something on its first run.** Guard 9's pattern `\{\s*\w+\.value\s*\}` fired
+on `key={option.value}` in `sender-form.tsx` — an attribute, not rendered content. The pattern had
+never met the attribute form because no listed tree contained one. It now excludes `={`, with a
+test holding both cases. A guard that has only ever read the files it was pointed at has only ever
+been tested on them. Each of `operator`, `sender`, `shells`, `demo`, a nested directory with a
+dynamic `import("mermaid")`, and guard 9 in `sender` was verified by injection, each failure naming
+the injected file.
+
 ### 1h. Two values compared, one of them a time? Ask which clock each came from.
 
 **THIS IS A STANDING CHECK, NOT A SQL RULE.** It began as one and has since fired three times in
@@ -1251,9 +1310,48 @@ rendering on a work queue add latency to work that is repeated, for a viewer who
 **The three anti-references still bind both.** The narrative may be persuasive; it may not become
 an analytics dashboard, a scenario browser, or a surveillance pitch.
 
+### Three kinds of size, and only one of them is the spacing scale
+
+**The 4 / 8 / 12 / 16 / 24 / 32 scale governs space INSIDE a component** — gaps, padding, the
+distance between a label and its value. Session 21 stated that as a constraint and immediately
+needed two values it could not express, which is how the ambiguity surfaced:
+
+| Kind | Example | Governed by |
+|---|---|---|
+| component spacing | `gap-3`, `p-8`, `mt-4` | the scale |
+| section rhythm | `py-20` between landing sections | consistency with the neighbouring sections |
+| layout dimension | the pipeline pinned for `8 × 100vh` | what it is derived from — here, the step count |
+
+Forcing section rhythm onto a component scale would make one section 32px apart from sections that
+are 80px apart, which is worse than an off-scale value. A layout dimension is not a spacing token at
+all. **When a value is off the scale, say which of the three kinds it is.** Values that predate
+this distinction and sit off the scale inside components (`mt-5`, `mt-7`, `mt-9`, `p-5`, `gap-5`,
+`space-y-5`, the figure's `mt-10`) are listed and deliberately untouched.
+
+### The degraded path is a surface, and it is the one nobody looks at
+
+Session 21's first reduced-motion capture of the landing page found **three defects in one frame**,
+none visible on the motion-allowed frames that had been reviewed first:
+
+- **`0.0%` where E4a measured 33.3%.** The stat counted up only once scrolled into view; a
+  reduced-motion viewer was shown a wrong number until they scrolled.
+- **Mermaid labels at 9.2px.** Eight nodes left to right scaled into the column at 0.61x. The same
+  diagram had been on the page since session 19; it became the reduced-motion and narrow-screen
+  path this session, and nobody had measured its rendered size. Now top to bottom, 15px.
+- **A hydration mismatch**, from `useReducedMotion()` choosing an inline style: it reads the
+  preference on the client's first render and returns null on the server, so only reduced-motion
+  viewers got different markup. Transitions are now `motion-safe:` classes.
+
+This is rule 1i from another side. The motion version is the reference every review compares
+against; the fallback is defined relative to it and inherits nobody's attention. **Capture and read
+the degraded path as its own surface** — `npm run qa:capture:landing` does, and asserts the label
+size, the figures (read from the accessibility tree, since NumberFlow publishes through
+`ElementInternals`), and the absence of a dev-overlay issue on every page it opens.
+
 ### Animation policy
 
-`motion` (Framer Motion) only. **No GSAP** — there is no scroll-driven narrative here and two
+`motion` (Framer Motion) only. **No GSAP** — the landing page's scroll narrative is built on
+`motion` too (session 21), and two
 animation libraries is pure overhead.
 
 **Where motion is used:** timeline leg entrance and play-through, layout transitions when a leg
@@ -1312,6 +1410,27 @@ Two traps in that runner, both hit in session 20:
   completed, so the stale-record map rendered overlays at the final zoom over grey, with no tiles.
   A capture step can force reduced motion, which the map camera now honours. **Raising the time
   budget was tried first and changed nothing** — the budget was never the cause.
+
+One fragility observed and left: `postJson` has no retry. Session 21's first run lost the sealed
+frame to an `ECONNRESET` on the approval POST, and a fresh server succeeded. A blind retry on a
+non-idempotent approval was deliberately not added — a reset after the server applied it would turn
+a transport hiccup into a confusing state error.
+
+`npm run qa:capture:landing` is the landing page's equivalent, driven over the DevTools protocol at
+a true 1920x1080 viewport — see `scripts/qa/capture-landing.mjs` for why neither `--screenshot` with a
+fragment nor a tall window works. It reads state and writes none, so it runs against any process.
+Frames go to `docs/screenshots/landing/`. It fails, rather than writing a mislabelled frame, on:
+
+| Group | Asserted |
+|---|---|
+| hero | worst-case text contrast over the footage at five paused times (headline ≥ 7:1, the rest ≥ 4.5:1), read from pixels with the text hidden; a no-scrim control that must read lower; full-bleed width; no horizontal scroll with a real scrollbar |
+| pipeline | the rendered phase equals the phase in the filename |
+| reduced | no video, no pinned sequence, eight static steps, diagram labels ≥ 12px, no stat at `0.0` |
+| narrow | the static list below `lg`, labels ≥ 12px |
+
+`docs/screenshots/session-17a/landing-1920x1080.png` is session 19's landing page, before the
+video and the pipeline section. No script regenerates it; the current evidence is the `landing/`
+set.
 
 ### The verdict is never recomputed in the browser
 
@@ -1389,6 +1508,79 @@ npm run db:migrate
 ---
 
 ## Session log
+
+### Session 21 — the hero footage, and the pipeline told by scrolling (complete)
+
+698 tests passing, 7 skipped. `tsc --noEmit` clean, eslint clean, the production build clean.
+`lib/engine/`, `lib/pattern/` and `lib/gate/` at 100% statements, branches, functions and lines.
+**No detector threshold moved, no experiment was rerun, and nothing under `lib/` outside `landing`
+and the purity test changed.** `npm run qa:capture` produced ten frames from a fresh process;
+`npm run qa:capture:landing` passes every group.
+
+#### The hero footage
+
+The slot worked as reserved: one string, `/videos/hero-video.mp4`, and the pure planner already
+withheld the loop from reduced-motion viewers. A test now checks the path against `public/` segment
+by segment with exact case, because Windows serves a mis-cased path and a Linux host does not; the
+file had in fact been moved to `public/Video/` before the session began.
+
+**Measured, not derived.** The plan predicted the standfirst at about 3.6:1 from the scrim's opacity.
+The measurement is **5.65:1 worst case** across five paused frames — the theme's muted colour is
+darker than the value assumed, and the gradient covers the column. Headline **≥ 13.67:1**. With the
+scrim removed the headline reads **1.12:1**, which is what makes the other numbers mean something.
+The scrim was not strengthened, because nothing failed. At 88% the footage is texture, not picture;
+that is the stated intent, and the frame shows it is still visibly moving conveyor.
+
+**The probe had a boundary, and the problem was on the other side of it.** Session 20 verified
+legibility by painting a screenshot into the slot. Legibility is a property of the pixels behind a
+glyph, so it could not see that the slot was a **976px box inside a 1920 frame** with a hard edge at
+x=472 and x=1448. Fixed inside `HeroBackdrop` only: sized to `documentElement.clientWidth` (not
+`100vw`, which includes a classic scrollbar), plus a fade on the bottom quarter so full-bleed footage
+does not end in a hard line wider than the section rule. Rule 1j's shape: a probe verifies the
+property it was built for, and the next problem starts where that property stops.
+
+The footage carries a four-point sparkle mark in its bottom-right corner, the kind an AI video
+generator adds. Its provenance and licence are not recorded here; confirm them before submission.
+
+#### The pipeline section
+
+Sui's step pattern — tall container, sticky frame, numbered list, filling graphic — inferred from
+their markup and rebuilt, not copied. Eight nodes from `nodes-list.ts`, asserted verbatim and in
+order. Structure carries role (rule 1k): model nodes are dashed rings, the gate is a square, and
+at step 7 the whole panel inverts. At the end the model nodes fade while the gate stays.
+
+**Two kinds of motion with opposite rules.** Progress to phase is a floor — linear, no easing. What a
+phase change triggers uses `[0.16, 1, 0.3, 1]` over 0.6s with a 0.06s stagger. Reduced motion is not
+a faster version; below `lg` or under reduced motion the section is a static list, the reveal and
+the diagram, switched by CSS so server and client markup match.
+
+**Lenis on motion's frame loop — and the reason given for it did not reproduce.** The brief required
+a shared loop to prevent jitter between two rAF loops. Measured in headless Chrome, six runs and 90
+step boundaries each: Lenis on its own loop trailed by 1 frame with 1 outlier; on motion's loop by 2
+frames with 3 outliers (3, 4, and 10 just after a recompile). Neither shows systematic jitter, and
+the shared loop did not reduce the variation. It is kept because it was specified, and the comment
+at the call site says exactly that. The frame-order check in the capture script was demoted to a
+printed measurement: its injection did not produce the failure it was written for (rule 1f).
+
+#### Defects found, and how
+
+| # | Defect | Found by |
+|---|---|---|
+| 1 | hero footage boxed at 976px with hard edges | reading a frame; the contrast probe could not see it |
+| 2 | guard 9's pattern firing on `key={x.value}` | enumerating trees reached `sender` |
+| 3 | rail nodes filled with `bg-muted`, so dashed model rings read as filled on the inverted gate panel | reading the gate frame |
+| 4 | stage copy bottom-anchored, moving 31px between steps | comparing two frames |
+| 5 | `0.0%` for a reduced-motion viewer | the first reduced-motion frame |
+| 6 | diagram labels at 9.2px | the same frame, then measured |
+| 7 | hydration mismatch only under reduced motion | the dev overlay's badge in the same frame |
+| 8 | "one line" test whose regex passed two-sentence lines | reading my own assertion against the copy (rule 1f) |
+
+Numbers 5–7 are the reason for *The degraded path is a surface* in Console conventions.
+
+#### Still open after 21
+
+The submission artefacts. The `(console)` route group. `seedDraftIdentity`'s fold-back. The
+footage's provenance. `postJson`'s unretried reset in `qa:capture`.
 
 ### Session 20 — the sender, the scenario builder, and a false positive that explains itself (complete)
 
