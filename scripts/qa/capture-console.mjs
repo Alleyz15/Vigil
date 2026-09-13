@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { postJson } from "./post-json.mjs";
 
 const ROOT = process.cwd();
 const OUT = join(ROOT, "docs", "screenshots", "session-17a");
@@ -154,14 +155,6 @@ async function getJson(url, attempts = 3) {
   return null;
 }
 
-async function postJson(url, body) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body ?? {}),
-  });
-  return { status: response.status, ok: response.ok, body: await response.json().catch(() => null) };
-}
 
 /**
  * A STATEFUL SEQUENCE: act, check, capture, in order, sharing context.
@@ -197,11 +190,22 @@ async function runSequence(name, steps) {
       // it returns the handoff — so a successful approval read as a refusal
       // and the sealed frame was silently never taken. Endpoints do not share
       // one envelope; the runner must not pretend they do.
-      const { status, ok, body } = await postJson(`${BASE}${step.path(context)}`, step.body?.(context));
+      const { status, ok, body, retried } = await postJson(`${BASE}${step.path(context)}`, step.body?.(context));
       if (!ok || body?.ok === false) {
-        throw new Error(
-          `${where} was refused (HTTP ${status}): ${body?.reason ?? body?.error ?? "no reason given"}`,
-        );
+        const reason = body?.reason ?? body?.error ?? "no reason given";
+        // A refusal after a reset is ambiguous: the lost first attempt may have
+        // been applied, making this the server refusing a duplicate. Guessing
+        // either way would be wrong. If the next step reads the state back, let
+        // it decide; otherwise stop and say exactly that.
+        if (retried && steps[index + 1]?.kind === "expect") {
+          console.warn(`  ${where}: refused after a retry (HTTP ${status}: ${reason}); the next step will check the state`);
+        } else {
+          throw new Error(
+            retried
+              ? `${where} was refused after a connection reset and retry (HTTP ${status}): ${reason}. The first attempt may have been applied; restart the server and rerun.`
+              : `${where} was refused (HTTP ${status}): ${reason}`,
+          );
+        }
       }
       Object.assign(context, step.keep?.(body) ?? {});
     } else if (step.kind === "expect") {
