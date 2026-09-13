@@ -462,6 +462,77 @@ if (run("hero")) {
 }
 
 // ---------------------------------------------------------------------------
+console.log("transition: the hero-to-page seam");
+if (run("transition")) {
+  /**
+   * THE SEAM, READ FROM PIXELS. Session 23 found the session-22 band's "hard
+   * edge" was not a colour mismatch — hero and band met at the same 16,24,31 —
+   * but a MACH BAND: a flat hero meeting a ramp at full slope. So what is
+   * measured is SLOPE AT THE JUNCTIONS: the lightness step across the band's
+   * first 8px and its last 8px, against the steepest 8px step anywhere in it —
+   * the same property `transition.test.ts` pins on the curve itself (< 5% eight
+   * pixels in from each edge).
+   *
+   * A 24px window was tried second and failed at 0.365 on the bottom. That was
+   * the check, not the band: this curve is skewed low by design, so 24–32px from
+   * the bottom its slope is still 30–45% of the steepest and only reaches zero
+   * AT the edge. A Mach band is a slope jump where two regions meet; measuring
+   * further in measures the curve's intended shape, not a seam.
+   *
+   * Inside the band, over 8px, on purpose. The first version read 2px steps from
+   * 8px ABOVE the band and failed at 0.239 — on the hero's own ±1-level pixel
+   * noise, which at the dark end is a large L* step. A raw per-row dump showed the
+   * band's first 36px flat to the digit; the probe was reading the neighbour. A linear ramp scores 1.0 at
+   * its ends; the eased band must score low at both. And the section after the
+   * band must carry no rule that would cut the transition as it completes.
+   */
+  const page = await openPage();
+  await page.evaluate(`(async () => { const v = document.querySelector("main > header video"); if (v) { v.pause(); await new Promise(r => { v.addEventListener("seeked", r, { once: true }); v.currentTime = 1; }); } })()`);
+  const geometry = await page.evaluate(`(() => {
+    const band = document.querySelector("[data-transition-band]").getBoundingClientRect();
+    const next = document.querySelector("[data-transition-band] + section");
+    return { top: band.top + scrollY, height: band.height, nextRule: next ? getComputedStyle(next).borderTopWidth : null };
+  })()`);
+  await page.evaluate(`window.scrollTo({ top: ${Math.max(0, Math.round(geometry.top - 300))}, behavior: "instant" })`);
+  await sleep(600);
+  const shot = await page.screenshot();
+  save("landing-transition-1920x1080.png", shot);
+
+  const measured = await page.evaluate(`(async () => {
+    const img = new Image(); img.src = "data:image/png;base64,${shot.toString("base64")}"; await img.decode();
+    const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+    const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const band = document.querySelector("[data-transition-band]").getBoundingClientRect();
+    const lin = x => { x /= 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; };
+    // Perceptual lightness (CIE L*), so a step means the same thing dark or light.
+    const lstar = (r, gg, b) => { const y = 0.2126 * lin(r) + 0.7152 * lin(gg) + 0.0722 * lin(b); return y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y; };
+    const columns = [300, 1100, 1800];
+    const top = Math.round(band.top), bottom = Math.round(band.bottom);
+    const series = columns.map(x => { const out = []; for (let y = top; y <= bottom; y += 8) { const d = g.getImageData(x, y, 1, 1).data; out.push([y, lstar(d[0], d[1], d[2])]); } return out; });
+    const steps = s => s.slice(1).map((p, i) => [p[0], Math.abs(p[1] - s[i][1])]);
+    const within = (st, lo, hi) => Math.max(0, ...st.filter(([y]) => y >= lo && y <= hi).map(([, v]) => v));
+    return columns.map((x, i) => {
+      const st = steps(series[i]);
+      const steepest = within(st, top, bottom);
+      return { x, steepest: +steepest.toFixed(2),
+        topEnd: +(within(st, top + 8, top + 8) / steepest).toFixed(3),
+        bottomEnd: +(within(st, bottom, bottom) / steepest).toFixed(3) };
+    });
+  })()`);
+  console.table(measured);
+  console.log(`  rule on the section after the band: ${geometry.nextRule}`);
+  // Checked BEFORE the slope: a rule is a dark 1px line in the band's last row,
+  // which the slope check would also catch — but name the wrong cause.
+  if (geometry.nextRule !== "0px") fail(`the section after the band carries a ${geometry.nextRule} rule that cuts the transition`);
+  for (const column of measured) {
+    if (column.topEnd > 0.2 || column.bottomEnd > 0.2) {
+      fail(`transition seam at x=${column.x}: slope at the ends is ${column.topEnd} (top) / ${column.bottomEnd} (bottom) of the steepest step — a Mach band`);
+    }
+  }
+  await page.close();
+}
+
+// ---------------------------------------------------------------------------
 console.log("pipeline: pinned steps");
 const PHASE_FRAMES = [
   { phase: 0, name: "landing-step-1-parse-1920x1080.png" },

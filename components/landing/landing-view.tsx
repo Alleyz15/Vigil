@@ -6,6 +6,7 @@ import NumberFlow from "@number-flow/react";
 import { ArrowRight, Monitor, Smartphone } from "lucide-react";
 import { HERO, LIMITS, SECTIONS, type Stat } from "@/lib/landing/content";
 import { HERO_MEDIA, planHeroBackdrop } from "@/lib/landing/hero-media";
+import { transitionGradient } from "@/lib/landing/transition";
 import { cn } from "@/lib/utils";
 import { cancelFrame, frame, type FrameData } from "motion/react";
 import { PipelineSteps } from "./pipeline-steps";
@@ -30,10 +31,13 @@ export function LandingView() {
       <Hero />
       <TransitionBand />
 
-      {SECTIONS.map((section) => (
+      {SECTIONS.map((section, index) => (
         <Section
           key={section.id}
           section={section}
+          // The band has just finished the transition; a rule here would cut
+          // it at the moment it completes. Every later section keeps its rule.
+          ruled={index > 0}
           lead={section.id === "ai" ? <PipelineSteps /> : undefined}
         />
       ))}
@@ -206,20 +210,25 @@ function HeroBackdrop() {
  * with it — the argument's order (problem, consistency, the gate, approval,
  * where the AI sits) was set in session 19 and does not move for a gradient.
  *
- * `h-32` is a MACRO LAYOUT DIMENSION, in the same class as the pipeline's
- * 8 × 100vh: how long a transition lasts on the page. It is not a spacing token
- * and the 4/8/12/16/24/32 component scale does not govern it.
+ * `h-64` (256px) is a MACRO LAYOUT DIMENSION, in the same class as the
+ * pipeline's 8 × 100vh: how long a transition lasts on the page. It is not a
+ * spacing token and the 4/8/12/16/24/32 component scale does not govern it. It
+ * replaced session 22's `h-32`, whose 128px linear ramp showed a seam and a grey
+ * band — see `lib/landing/transition.ts` for what was measured and why the fix
+ * is the curve rather than the colours.
  *
  * Decorative: aria-hidden, no text, nothing to focus. Full-bleed by the same
  * clientWidth rule as the hero backdrop, so its edges line up with the hero's.
  */
+const TRANSITION_GRADIENT = transitionGradient();
+
 function TransitionBand() {
   const bleed = useDocumentWidth();
   return (
-    <div aria-hidden="true" data-transition-band className="relative h-32">
+    <div aria-hidden="true" data-transition-band className="relative h-64">
       <div
-        className="absolute inset-y-0 left-1/2 w-full -translate-x-1/2 bg-gradient-to-b from-foreground to-background"
-        style={bleed ? { width: bleed } : undefined}
+        className="absolute inset-y-0 left-1/2 w-full -translate-x-1/2"
+        style={{ backgroundImage: TRANSITION_GRADIENT, ...(bleed ? { width: bleed } : {}) }}
       />
     </div>
   );
@@ -260,13 +269,15 @@ function usePrefersReducedMotion(): boolean {
 function Section({
   section,
   lead,
+  ruled = true,
 }: {
   section: (typeof SECTIONS)[number];
+  ruled?: boolean;
   /** Rendered straight under the title, before the body: the thing the prose then comments on. */
   lead?: React.ReactNode;
 }) {
   return (
-    <section id={section.id} className="scroll-mt-16 border-t py-20">
+    <section id={section.id} className={cn("scroll-mt-16 py-20", ruled && "border-t")}>
       <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
         {section.eyebrow}
       </p>
