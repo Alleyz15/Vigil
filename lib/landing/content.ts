@@ -95,7 +95,6 @@ export const SECTIONS: Section[] = [
     eyebrow: "Where the AI sits",
     title: "The model chooses what to look up. It never decides.",
     body: [
-      "A language model appears in exactly two places: selecting up to two evidence tools from a closed list, and writing the explanation after the verdict is already sealed. Remove it entirely and the verdicts are byte-identical — that is not a promise, it is a test that runs on every commit.",
       "We measured what happens when a model does decide. Asked to judge an obvious GPS spoof, three model families disagreed: two flagged it, one accepted it five times out of five and offered no reasoning at all. Which model you ask changes the answer.",
     ],
     stats: [
@@ -120,6 +119,55 @@ export const SECTIONS: Section[] = [
     link: { href: "/verify", label: "Verify the ledger in your browser" },
   },
 ];
+
+/**
+ * The eight nodes, one short line each, for the scroll-step section.
+ *
+ * The node names are `lib/agent/nodes-list.ts` verbatim and in its order —
+ * asserted in content.test.ts, so this list cannot drift from the pipeline it
+ * narrates. A viewer is scrolling, not reading: one short line, taken in at a glance.
+ *
+ * `role` decides structure, not colour (rule 1k): a model node is outlined and
+ * dashed, the deciding node is solid and inverted, every other node is plain.
+ */
+export type PipelineRole = "deterministic" | "model" | "decides";
+
+export type PipelineStep = {
+  node: string;
+  line: string;
+  role: PipelineRole;
+};
+
+export const PIPELINE: PipelineStep[] = [
+  { node: "parse", role: "deterministic", line: "An EPCIS event, validated across all five dimensions." },
+  { node: "lookup", role: "deterministic", line: "The parcel, the courier and the mandate, read from the registry." },
+  { node: "plan", role: "model", line: "Picks zero to two tools from a closed zod enum of four." },
+  { node: "verify", role: "deterministic", line: "The deterministic engine. The single-event axis." },
+  { node: "fetch_history", role: "deterministic", line: "The deterministic engine. The pattern axis." },
+  {
+    node: "external_context",
+    role: "deterministic",
+    line: "Runs the tools plan selected. Corroboration only; it never reaches the gate.",
+  },
+  { node: "gate", role: "decides", line: "The verdict is made here, and sealed." },
+  { node: "explain", role: "model", line: "Writes prose citing only evidence this run collected." },
+];
+
+/** What a model node is, said once where it is drawn. */
+export const MODEL_NODE_LABEL = "The only place a model can touch";
+
+/**
+ * The closing claim, WORDED TO MATCH WHAT THE TEST PROVES.
+ *
+ * The parity tests run with `llm: undefined`: nodes 3 and 8 still execute, on
+ * the deterministic heuristic and the structured fallback. No test deletes the
+ * nodes. "Delete nodes 3 and 8" was the first draft of this sentence and it
+ * described a behaviour nothing verifies — on the page a judge reads first.
+ */
+export const PIPELINE_REVEAL = {
+  claim: "Take the model out of nodes 3 and 8, and the sealed verdict is byte-identical.",
+  source: "lib/agent/machine.test.ts",
+};
 
 export const LIMITS = [
   "A rooted device operated by someone colluding with the recipient is out of reach. That is a boundary of the idea, and it is measured rather than hidden.",

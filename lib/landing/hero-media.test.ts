@@ -1,14 +1,45 @@
 import { describe, expect, it } from "vitest";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { HERO_MEDIA, planHeroBackdrop, type HeroMedia } from "./hero-media";
 
 const withVideo: HeroMedia = { src: "/hero/loop.mp4", poster: "/hero/poster.jpg" };
 
 describe("the hero backdrop is reserved before the media exists", () => {
   it("paints nothing but the static layer while there is no source", () => {
-    expect(planHeroBackdrop(HERO_MEDIA, { reducedMotion: false })).toEqual({
+    expect(planHeroBackdrop({ src: null, poster: null }, { reducedMotion: false })).toEqual({
       kind: "none",
       reason: "no_source",
     });
+  });
+
+  /**
+   * The shipped slot, now filled. It has no still frame, so a viewer who asked
+   * for reduced motion gets the static layer — never the loop.
+   */
+  it("plays the shipped footage, and withholds it from a reduced-motion viewer", () => {
+    expect(planHeroBackdrop(HERO_MEDIA, { reducedMotion: false }).kind).toBe("video");
+    expect(planHeroBackdrop(HERO_MEDIA, { reducedMotion: true })).toEqual({
+      kind: "none",
+      reason: "reduced_motion_no_poster",
+    });
+  });
+
+  /**
+   * An asset nothing can reach is the file version of unverified configuration
+   * (rule 1d): a path that looks right in source and 404s on the day. Checked
+   * against `public/` with exact case, because a case-insensitive disk would
+   * serve a mis-cased path locally and a Linux host would not.
+   */
+  it("points at a file that exists in public/, spelled exactly", () => {
+    const segments = HERO_MEDIA.src!.replace(/^\//, "").split("/");
+    let dir = join(process.cwd(), "public");
+    for (const segment of segments) {
+      expect(readdirSync(dir), `public path segment "${segment}" is missing or mis-cased`).toContain(
+        segment,
+      );
+      dir = join(dir, segment);
+    }
   });
 
   /**
@@ -57,9 +88,5 @@ describe("the hero backdrop is reserved before the media exists", () => {
     expect(planHeroBackdrop({ src: null, poster: "/hero/poster.jpg" }, { reducedMotion: false })).toEqual(
       { kind: "none", reason: "no_source" },
     );
-  });
-
-  it("ships with the slot empty", () => {
-    expect(HERO_MEDIA).toEqual({ src: null, poster: null });
   });
 });

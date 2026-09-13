@@ -23,7 +23,8 @@
     "experiment:e5:providers": "node --env-file-if-exists=.env --import tsx scripts/experiments/e5-cross-provider-enforcement.ts",
     "llm:validate": "node --env-file-if-exists=.env --import tsx scripts/experiments/provider-live-validation.ts",
     "weather:cache:s6": "node --env-file-if-exists=.env --import tsx scripts/cache-s6-weather.ts",
-    "qa:capture": "node scripts/qa/capture-console.mjs"
+    "qa:capture": "node scripts/qa/capture-console.mjs",
+    "qa:capture:landing": "node scripts/qa/capture-landing.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

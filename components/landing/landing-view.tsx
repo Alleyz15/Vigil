@@ -7,7 +7,8 @@ import { ArrowRight, Monitor, Smartphone } from "lucide-react";
 import { HERO, LIMITS, SECTIONS, type Stat } from "@/lib/landing/content";
 import { HERO_MEDIA, planHeroBackdrop } from "@/lib/landing/hero-media";
 import { cn } from "@/lib/utils";
-import { ArchitectureDiagram } from "./architecture-diagram";
+import { cancelFrame, frame, type FrameData } from "motion/react";
+import { PipelineSteps } from "./pipeline-steps";
 
 /**
  * The narrative surface. One judge, once, for ninety seconds.
@@ -29,9 +30,11 @@ export function LandingView() {
       <Hero />
 
       {SECTIONS.map((section) => (
-        <Section key={section.id} section={section}>
-          {section.id === "ai" ? <ArchitectureDiagram /> : null}
-        </Section>
+        <Section
+          key={section.id}
+          section={section}
+          lead={section.id === "ai" ? <PipelineSteps /> : undefined}
+        />
       ))}
 
       <Limits />
@@ -110,9 +113,26 @@ function Hero() {
 function HeroBackdrop() {
   const reducedMotion = usePrefersReducedMotion();
   const plan = planHeroBackdrop(HERO_MEDIA, { reducedMotion });
+  const bleed = useDocumentWidth();
 
   return (
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+    /*
+      FULL-BLEED, and sized from inside this component. The hero sits in the
+      page's max-w-5xl column, so `inset-0` made the footage a 976px box with a
+      hard vertical edge at each side of a 1920 frame. The session-20 probe
+      could not see that: it measured legibility, and a box edge does not
+      change the contrast behind a single glyph.
+
+      Sized to `clientWidth` rather than `100vw`, because 100vw includes a
+      classic scrollbar and would push the page into horizontal scroll. Before
+      hydration the width is the column (`null` → 100%), which is the old,
+      correct-if-boxed layout rather than an overflowing one.
+    */
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-y-0 left-1/2 -z-10 w-full -translate-x-1/2 overflow-hidden"
+      style={bleed ? { width: bleed } : undefined}
+    >
       {/* 1. The static ground. A finished treatment, not a placeholder. */}
       <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_78%_15%,var(--color-muted)_0%,transparent_60%)]" />
 
@@ -137,11 +157,10 @@ function HeroBackdrop() {
       )}
 
       {/*
-        3. The scrim, ALWAYS, and in TWO layers. White over white today, so it
-        is invisible and changes nothing — that is the guarantee: it has sat
-        over this headline since before any footage existed, so the contrast
-        behind the text is already known rather than re-litigated on the day a
-        video lands.
+        3. The scrim, ALWAYS, and in TWO layers. It sat over this headline
+        before any footage existed, so the day the video landed was a
+        measurement rather than a redesign: see lib/landing/hero-media.ts for
+        the worst-case figures over the real loop.
 
         TWO LAYERS BECAUSE ONE WAS NOT ENOUGH, and a probe found that rather
         than a review. Painting a real screenshot into the media slot showed the
@@ -156,7 +175,26 @@ function HeroBackdrop() {
       */}
       <div className="absolute inset-0 bg-background/88" />
       <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-transparent" />
+      {/*
+        The foot of the hero. Full-bleed footage ends in a hard horizontal line
+        that runs wider than the section rule beneath it; fading the last
+        quarter lets the hero dissolve into the page instead of stopping.
+      */}
+      <div className="absolute inset-x-0 bottom-0 h-1/4 bg-gradient-to-t from-background to-transparent" />
     </div>
+  );
+}
+
+/** The document's width without its scrollbar, kept current. Null on the server. */
+function useDocumentWidth(): number | null {
+  return useSyncExternalStore(
+    (onChange) => {
+      const observer = new ResizeObserver(onChange);
+      observer.observe(document.documentElement);
+      return () => observer.disconnect();
+    },
+    () => document.documentElement.clientWidth,
+    () => null,
   );
 }
 
@@ -181,10 +219,11 @@ function usePrefersReducedMotion(): boolean {
 
 function Section({
   section,
-  children,
+  lead,
 }: {
   section: (typeof SECTIONS)[number];
-  children?: React.ReactNode;
+  /** Rendered straight under the title, before the body: the thing the prose then comments on. */
+  lead?: React.ReactNode;
 }) {
   return (
     <section id={section.id} className="scroll-mt-16 border-t py-20">
@@ -195,6 +234,8 @@ function Section({
       <h2 className="mt-4 max-w-3xl text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
         {section.title}
       </h2>
+
+      {lead}
 
       <div className="mt-6 max-w-2xl space-y-5">
         {section.body.map((paragraph) => (
@@ -209,8 +250,6 @@ function Section({
           {section.pull}
         </blockquote>
       )}
-
-      {children}
 
       {section.stats && (
         <dl
@@ -250,6 +289,10 @@ function Section({
  */
 function StatCard({ stat }: { stat: Stat }) {
   const [ref, seen] = useOnScreen<HTMLDivElement>();
+  // The count-up is animation; the figure is content. A viewer who asked for
+  // less motion gets the figure at once, not a zero until it scrolls into view
+  // — a capture of that path showed "0.0%" where the measurement is 33.3%.
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     <div ref={ref} className="rounded-lg bg-muted/50 p-5">
@@ -257,7 +300,7 @@ function StatCard({ stat }: { stat: Stat }) {
       <dd>
         <span className="text-3xl font-semibold tabular-nums">
           <NumberFlow
-            value={seen ? stat.value : 0}
+            value={seen || reducedMotion ? stat.value : 0}
             format={{
               minimumFractionDigits: stat.decimals ?? 0,
               maximumFractionDigits: stat.decimals ?? 0,
@@ -360,6 +403,27 @@ function Door({
 /**
  * Inertial scrolling, and only here.
  *
+ * ONE ANIMATION LOOP, NOT TWO. Lenis is driven from motion's frame loop
+ * (`autoRaf: false`, `frame.update`) rather than its own requestAnimationFrame,
+ * so the scroll write and the `useScroll` read happen in one scheduler with one
+ * order, whatever order the two libraries happened to register in.
+ *
+ * WHAT WAS MEASURED, because the reason this was asked for did not reproduce.
+ * The expected failure of two loops was jitter: a phase lagging the wheel by a
+ * varying number of frames. Session 21 measured both arrangements in headless
+ * Chrome at 1920x1080, six runs each, 90 step boundaries each:
+ *
+ *   Lenis on its own rAF      1 frame behind; 1 boundary of 90 at 2
+ *   Lenis on motion's loop    2 frames behind; 3 of 90 at 3, 4 and 10 (the 10
+ *                             seconds after a recompile)
+ *
+ * Neither shows systematic jitter, and the shared loop did not reduce what
+ * variation there was. Browsers run rAF callbacks in registration order, so two
+ * loops that register once keep a stable order anyway. The base lags are not
+ * directly comparable — the sampler is itself a rAF callback. This arrangement
+ * is kept because it was specified, NOT because a jitter was observed and
+ * removed; revisit it with a real browser and a real wheel if it is questioned.
+ *
  * Disabled outright for a reduced-motion preference rather than shortened:
  * smoothed scrolling is the effect that setting most directly asks to be rid
  * of, and there is no degraded version of it worth shipping.
@@ -369,22 +433,19 @@ function useSmoothScroll() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     let lenis: { raf: (time: number) => void; destroy: () => void } | undefined;
-    let frame = 0;
     let cancelled = false;
+    const tick = ({ timestamp }: FrameData) => lenis?.raf(timestamp);
 
     void import("lenis").then(({ default: Lenis }) => {
       if (cancelled) return;
-      lenis = new Lenis({ duration: 0.9 });
-      const loop = (time: number) => {
-        lenis?.raf(time);
-        frame = requestAnimationFrame(loop);
-      };
-      frame = requestAnimationFrame(loop);
+      lenis = new Lenis({ duration: 0.9, autoRaf: false });
+      // keepAlive: runs every frame until cancelled, in motion's update step.
+      frame.update(tick, true);
     });
 
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
+      cancelFrame(tick);
       lenis?.destroy();
     };
   }, []);

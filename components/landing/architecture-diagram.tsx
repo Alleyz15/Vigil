@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /**
  * Where the model sits, drawn rather than described.
@@ -14,8 +14,14 @@ import { useEffect, useRef, useState } from "react";
  * order, the model touches two of them, and neither is the one that decides.
  */
 
+/*
+  TOP TO BOTTOM, because this is now the static path — reduced motion and every
+  screen narrower than lg. Left to right, eight nodes are 1512 units wide: at
+  1920 that scaled into a 928px column at 0.61x, so 15px labels rendered near
+  9px, and on a phone they would be unreadable. Vertical, the width is one node.
+*/
 const GRAPH = `
-flowchart LR
+flowchart TB
   parse[parse] --> lookup[lookup]
   lookup --> plan[plan]
   plan --> verify[verify]
@@ -30,11 +36,31 @@ flowchart LR
   class gate decide;
 `;
 
+/**
+ * When this diagram is on screen: the static path of the pipeline section,
+ * which is reduced motion OR a viewport below Tailwind's `lg` (64rem). Kept in
+ * step with the `lg:motion-safe:hidden` switch in pipeline-steps.tsx.
+ */
+const STATIC_PATH = "(prefers-reduced-motion: reduce), (max-width: 63.99rem)";
+
 export function ArchitectureDiagram() {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  const shown = useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(STATIC_PATH);
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(STATIC_PATH).matches,
+    () => false,
+  );
 
   useEffect(() => {
+    // Hidden by CSS for a wide, motion-allowed screen. Mermaid is the largest
+    // thing this page can load; loading it to render into display:none would
+    // charge every viewer for the one who asked for less motion.
+    if (!shown) return;
     let cancelled = false;
 
     void import("mermaid")
@@ -68,7 +94,7 @@ export function ArchitectureDiagram() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shown]);
 
   return (
     <figure className="mt-10 rounded-lg bg-muted/50 p-6">

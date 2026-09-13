@@ -9,10 +9,10 @@
  * That last part is why the scrim ships now rather than with the video. A
  * legibility layer added at the same time as the media is a layer nobody has
  * tested against the media; a legibility layer that has been sitting over the
- * headline for weeks is one whose contrast is already known. Today it grades
- * white-over-white and is invisible, which is exactly the point — it is already
- * doing its job, and putting footage underneath changes nothing about the text
- * on top of it.
+ * headline for weeks is one whose contrast is already known. Session 21 put the
+ * footage in and MEASURED that claim rather than trusting it: worst case 13.67:1
+ * on the headline and 5.65:1 on the standfirst across five paused frames, and
+ * 1.12:1 with the scrim removed (`npm run qa:capture:landing`).
  *
  * `HeroBackdrop` owns the stacking order internally, so the video CANNOT end up
  * above the scrim: there is no JSX for a caller to get wrong. See rule 1j — the
@@ -20,7 +20,7 @@
  */
 
 export type HeroMedia = {
-  /** e.g. "/hero/loop.mp4". Null until the footage exists. */
+  /** A path under public/, spelled with exact case. Null means no footage. */
   src: string | null;
   /**
    * e.g. "/hero/poster.jpg". Used as the video's own poster AND as the static
@@ -31,7 +31,7 @@ export type HeroMedia = {
 
 /** The one thing a future session edits. Nothing else. */
 export const HERO_MEDIA: HeroMedia = {
-  src: null,
+  src: "/videos/hero-video.mp4",
   poster: null,
 };
 
