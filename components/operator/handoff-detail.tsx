@@ -359,6 +359,21 @@ function AddressCorrectionNotice({ detail }: { detail: HandoffDetail }) {
         neither the courier nor the recipient caused.
       </p>
 
+      {/*
+        WHY A HUMAN IS BEING ASKED, derived from the gate rather than asserted.
+        Nobody built a path that sends stale-record deliveries to an operator:
+        the mandate's co-signature rules did it. The sentence only appears when
+        the gate actually required a signature, and quotes the gate's reason.
+      */}
+      {detail.credential?.cosignRequired && detail.gate.cosignReasons.length > 0 && (
+        <p className="mt-2 max-w-prose text-xs leading-5 text-sky-900/90 dark:text-sky-200/90">
+          <span className="font-medium">That is why you are being asked to sign.</span>{" "}
+          {detail.gate.cosignReasons[0]} Nobody designed this path for corrected addresses — the
+          courier&apos;s mandate already requires a human signature whenever the machine cannot
+          resolve a contradiction on its own, the same rule that covers a courier with no history.
+        </p>
+      )}
+
       <p className="mt-2 max-w-prose text-xs leading-5 text-sky-900/70 dark:text-sky-200/70">
         Nothing told the engine a correction had happened; it compared a scan position against a
         stored coordinate and found them apart. This panel is assembled from the correction record

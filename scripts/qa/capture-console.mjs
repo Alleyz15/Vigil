@@ -21,7 +21,22 @@ if (!chromePath) throw new Error("Chrome not found. Set CHROME_PATH to its execu
 
 mkdirSync(OUT, { recursive: true });
 
-function capture(name, path) {
+/**
+ * `reducedMotion` forces the viewer's reduced-motion preference.
+ *
+ * Headless virtual time does not finish a JavaScript-driven camera animation.
+ * The stale-record frame came back as a grey rectangle with a route line on it:
+ * Leaflet's `flyTo` never completed, so overlays sat at the final zoom and no
+ * tiles were ever requested for it. Raising the time budget was tried first and
+ * did NOTHING — the budget was never the cause, and changing it before reading
+ * the map code was fixing the wrong thing.
+ *
+ * The map's camera now honours reduced motion (it previously did not — a real
+ * accessibility defect this surfaced), so forcing the preference makes the
+ * camera jump instead of fly, and the frame is the settled state a still should
+ * show anyway.
+ */
+function capture(name, path, options = {}) {
   const profile = mkdtempSync(join(tmpdir(), "vigil-capture-"));
   const target = join(OUT, name);
   try {
@@ -36,6 +51,7 @@ function capture(name, path) {
         "--force-device-scale-factor=1",
         "--run-all-compositor-stages-before-draw",
         "--virtual-time-budget=5000",
+        ...(options.reducedMotion ? ["--force-prefers-reduced-motion"] : []),
         `--user-data-dir=${profile}`,
         `--screenshot=${target}`,
         `${BASE}${path}`,
@@ -110,36 +126,19 @@ capture("courier-submission-1920x1080.png", "/courier");
 capture("gate-evidence-1920x1080.png", "/demo/gate");
 
 /**
- * The split screen, at the beat that carries the argument.
- *
- * The submission above put this handoff into `awaiting_cosignature`, so the
- * frame lands on "courier signature valid, and still not a credential" without
- * the script arranging anything of its own. Captured AFTER the operator frames
- * and BEFORE any co-signature, because co-signing moves it to the sealed phase
- * and there is deliberately no way back in a process (no reset endpoint).
- */
-capture("cosign-split-1920x1080.png", "/demo/cosign");
-
-/**
  * The sender, so all four role surfaces exist as evidence at one size.
  *
- * Captured on a FRESH form rather than after a submission: the declaration is
- * the thing this surface is for, and a viewer comparing the four frames should
- * see a merchant at a desk, not a result page.
+ * Captured on a FRESH form, before the stale-record sequence below dispatches
+ * anything: the declaration is what this surface is for, and a viewer comparing
+ * the four frames should see a merchant at a desk, not a result page.
  */
 capture("sender-1920x1080.png", "/sender");
 
 /**
- * The recipient surface, so all three roles exist as evidence at one size.
- *
- * The token is resolved from the workbench at capture time, exactly like the
- * pending event id above. Hardcoding one would bind this script to a seed.
- */
-/**
  * The dev server intermittently resets a connection when several large JSON
  * responses are requested back to back, right after Chrome has been driving
  * it. That is a transient transport failure, not a missing fixture, and it
- * must not throw away six frames that are already on disk.
+ * must not throw away frames that are already on disk.
  */
 async function getJson(url, attempts = 3) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -155,22 +154,81 @@ async function getJson(url, attempts = 3) {
   return null;
 }
 
-const handoffsPayload = await getJson(`${BASE}/api/operator/handoffs`);
-if (!handoffsPayload) {
-  throw new Error("Operator handoffs could not be read.");
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  return { status: response.status, ok: response.ok, body: await response.json().catch(() => null) };
 }
-const { items: handoffs } = handoffsPayload;
 
-// Bounded and fault-tolerant on purpose: each detail response is a large
-// object and the dev server resets the connection under a rapid sequential
-// scan of all of them. A transient reset must not fail a capture run that has
-// already written six good frames.
+/**
+ * A STATEFUL SEQUENCE: act, check, capture, in order, sharing context.
+ *
+ * A single URL can only capture a state that already exists. The two most
+ * important frames in this project do not exist at boot: a stale-record flag
+ * needs a shipment dispatched, corrected and delivered; a sealed co-signature
+ * needs a courier submission and an operator approval. Capturing them by hand
+ * made the committed evidence depend on a manual run nobody could reproduce.
+ *
+ * Three kinds of step:
+ *
+ *   post     call a real endpoint (the same ones the surfaces call) and keep
+ *            what the response returns for later steps
+ *   expect   read the state back and FAIL LOUDLY if it is not what the next
+ *            frame's filename will claim
+ *   capture  take the frame
+ *
+ * The `expect` step is the point. This script has already been one step away
+ * from writing a frame that did not show what its name said (session 17B's
+ * reserved S1 leg). A capture that silently records the wrong state is worse
+ * than no capture, because it is committed as evidence.
+ */
+async function runSequence(name, steps) {
+  const context = {};
+  for (const [index, step] of steps.entries()) {
+    const where = `${name}, step ${index + 1} (${step.kind}: ${step.describe})`;
+
+    if (step.kind === "post") {
+      // SUCCESS IS THE HTTP STATUS, plus an explicit `ok: false` where an
+      // endpoint reports a refusal in-band. The first version of this runner
+      // required `ok: true`, which the operator actions endpoint never sends —
+      // it returns the handoff — so a successful approval read as a refusal
+      // and the sealed frame was silently never taken. Endpoints do not share
+      // one envelope; the runner must not pretend they do.
+      const { status, ok, body } = await postJson(`${BASE}${step.path(context)}`, step.body?.(context));
+      if (!ok || body?.ok === false) {
+        throw new Error(
+          `${where} was refused (HTTP ${status}): ${body?.reason ?? body?.error ?? "no reason given"}`,
+        );
+      }
+      Object.assign(context, step.keep?.(body) ?? {});
+    } else if (step.kind === "expect") {
+      const data = await getJson(`${BASE}${step.path(context)}`);
+      const problem = data ? step.check(data, context) : "the state could not be read";
+      if (problem) throw new Error(`${where}: ${problem}`);
+    } else if (step.kind === "capture") {
+      capture(step.frame, step.path(context), { reducedMotion: step.reducedMotion });
+    }
+  }
+  return context;
+}
+
+/**
+ * The recipient surface.
+ *
+ * The token is resolved from the workbench at capture time; hardcoding one
+ * would bind this script to a seed. Bounded and fault-tolerant, because each
+ * detail response is large and a transient reset must not fail the run.
+ */
+const handoffsPayload = await getJson(`${BASE}/api/operator/handoffs`);
+if (!handoffsPayload) throw new Error("Operator handoffs could not be read.");
+
 let recipientToken = null;
-for (const handoff of handoffs.slice(0, 12)) {
+for (const handoff of handoffsPayload.items.slice(0, 12)) {
   try {
-    const body = await getJson(
-      `${BASE}/api/operator/handoffs/${encodeURIComponent(handoff.eventId)}`,
-    );
+    const body = await getJson(`${BASE}/api/operator/handoffs/${encodeURIComponent(handoff.eventId)}`);
     if (body?.recipientConfirmation) {
       recipientToken = body.recipientConfirmation.tokenId;
       break;
@@ -179,12 +237,114 @@ for (const handoff of handoffs.slice(0, 12)) {
     // Try the next handoff rather than abandoning the run.
   }
 }
-
 if (!recipientToken) {
   throw new Error(
     "No recipient confirmation token was found on any handoff. The recipient frame would " +
       "otherwise be captured from a page that cannot show what its filename claims.",
   );
 }
-
 capture("recipient-confirm-1920x1080.png", `/confirm/${encodeURIComponent(recipientToken)}`);
+
+/**
+ * THE STALE RECORD: the limitation that demonstrates as a strength.
+ *
+ * Dispatch, correct the address mid-route, let the courier deliver to the
+ * corrected address, then check the operator's view shows exactly what the
+ * frame will claim: I10 alone, no manufactured I1/I7, and the correction named
+ * as the cause. Nothing here tells the engine a correction happened; the
+ * script drives the sender's product actions and reads back what the gate did.
+ */
+await runSequence("stale-record", [
+  {
+    kind: "post",
+    describe: "sender dispatches Jalan Ampang to Shah Alam Seksyen 13",
+    path: () => "/api/sender/shipments",
+    body: () => ({
+      originIndex: 0,
+      destinationIndex: 20,
+      declaredValueSen: 12_000,
+      recipientChannel: "+60118880042",
+      fault: "none",
+    }),
+    keep: (result) => ({ runId: result.runId }),
+  },
+  {
+    kind: "post",
+    describe: "sender corrects the address while the parcel is in transit",
+    path: (ctx) => `/api/sender/shipments/${ctx.runId}/correct`,
+    body: () => ({ addressIndex: 3 }),
+  },
+  {
+    kind: "post",
+    describe: "courier delivers to the corrected address",
+    path: (ctx) => `/api/sender/shipments/${ctx.runId}/deliver`,
+    keep: (result) => ({ eventId: result.eventId }),
+  },
+  {
+    kind: "expect",
+    describe: "the flag is I10 alone and the cause is named",
+    path: (ctx) => `/api/operator/handoffs/${encodeURIComponent(ctx.eventId)}`,
+    check: (detail) => {
+      const ids = detail.flags.map((flag) => flag.id);
+      if (!ids.includes("I10") && !ids.includes("I11")) return `expected I10/I11, got [${ids}]`;
+      if (ids.includes("I1") || ids.includes("I7")) {
+        return `a cross-signal contradiction was manufactured: [${ids}]`;
+      }
+      if (!detail.addressCorrection) return "the operator view does not name the correction";
+      return null;
+    },
+  },
+  {
+    kind: "capture",
+    describe: "the operator's view of an honest delivery flagged for a stale record",
+    frame: "stale-record-1920x1080.png",
+    path: (ctx) => `/operator/handoffs/${encodeURIComponent(ctx.eventId)}`,
+    // The map is the second half of this frame's argument; see `capture`.
+    reducedMotion: true,
+  },
+]);
+
+/**
+ * THE CO-SIGNATURE, both beats. LAST, because it is destructive.
+ *
+ * Approving S1 seals it and there is deliberately no way back in a process, so
+ * every frame above that depends on S1 being pending has already been taken.
+ */
+await runSequence("cosign", [
+  {
+    kind: "expect",
+    describe: "S1 is awaiting a co-signature",
+    path: () => `/api/operator/handoffs/${encodeURIComponent(pendingS1.eventId)}`,
+    check: (detail) =>
+      detail.summary.state === "awaiting_cosignature"
+        ? null
+        : `S1 is ${detail.summary.state}; restart the dev server to replay the co-signature`,
+  },
+  {
+    kind: "capture",
+    describe: "courier signature valid and still not a credential",
+    frame: "cosign-split-1920x1080.png",
+    path: () => "/demo/cosign",
+  },
+  {
+    kind: "post",
+    describe: "operator approves and co-signs",
+    path: () => `/api/operator/handoffs/${encodeURIComponent(pendingS1.eventId)}/actions`,
+    body: () => ({ action: "approve" }),
+  },
+  {
+    kind: "expect",
+    describe: "the credential verifies and the ledger holds an entry",
+    path: () => `/api/operator/handoffs/${encodeURIComponent(pendingS1.eventId)}`,
+    check: (detail) =>
+      detail.credential?.valid && detail.ledger.sequence !== null
+        ? null
+        : "approval did not produce a verifying credential and a sealed entry",
+  },
+  {
+    kind: "capture",
+    describe: "both halves present, sealed",
+    frame: "cosign-sealed-1920x1080.png",
+    path: () => "/demo/cosign",
+  },
+]);

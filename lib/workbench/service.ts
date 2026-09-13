@@ -681,6 +681,25 @@ export class OperatorWorkbench {
     const built = buildRequestedScenario(request, { world, startMs: START_MS });
     if (!built.ok) return { ok: false, reason: built.reason };
 
+    /**
+     * THE SAME REQUEST TWICE IS THE SAME SHIPMENT, not a second one.
+     *
+     * Run ids are derived from the request, so an identical request re-derives
+     * identical event ids — and the workbench keys entries by event id, so a
+     * second run would silently overwrite the first, taking any operator action
+     * recorded against it along with it. Rule 1g's defect 4 again, reached by
+     * repetition instead of by seeding. Refuse, and say how to get a fresh one.
+     */
+    const existing = built.scenario.timeline.find((leg) => this.entries.has(leg.event.eventID));
+    if (existing) {
+      return {
+        ok: false,
+        reason:
+          `This exact shipment (${built.runId}) has already been dispatched in this process. ` +
+          "Change any declaration to create a different one, or restart the server to replay it.",
+      };
+    }
+
     const { entries } = await buildScenarioEntries(
       { scenario: built.scenario, world },
       {

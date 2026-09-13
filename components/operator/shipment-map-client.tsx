@@ -44,6 +44,18 @@ function Viewport({
 }) {
   const map = useMap();
   const initialized = useRef(false);
+  /**
+   * The CAMERA respects reduced motion, not only the marker.
+   *
+   * The moving marker below already checked this; the camera moves did not, so
+   * a viewer who asked their OS for less motion still got a swooping `flyTo`
+   * across the city every time a leg changed. Found while chasing a capture
+   * defect — headless Chrome's virtual time never completes that animation, so
+   * the committed stale-record frame showed overlays at the final zoom with no
+   * tiles underneath — which is a reminder that a motion bug can hide inside
+   * what looks like a tooling bug.
+   */
+  const reducedMotion = useReducedMotion();
   const active = model.route.find((leg) => leg.legIndex === activeLegIndex)?.point;
   const activeLatitude = active?.latitude;
   const activeLongitude = active?.longitude;
@@ -59,13 +71,14 @@ function Viewport({
       ? model.overlays.flatMap((feature) => (feature.point ? [latLng(feature.point)] : []))
       : [];
     if (evidencePoints.length > 1) {
-      map.fitBounds(evidencePoints, { padding: [54, 54], animate: true, duration: 0.35 });
+      map.fitBounds(evidencePoints, { padding: [54, 54], animate: !reducedMotion, duration: 0.35 });
       return;
     }
     if (activeLatitude !== undefined && activeLongitude !== undefined) {
-      map.flyTo([activeLatitude, activeLongitude], 15, { duration: 0.35 });
+      if (reducedMotion) map.setView([activeLatitude, activeLongitude], 15, { animate: false });
+      else map.flyTo([activeLatitude, activeLongitude], 15, { duration: 0.35 });
     }
-  }, [activeLatitude, activeLongitude, activeLegIndex, map, model.overlays, model.route, revealOverlays]);
+  }, [activeLatitude, activeLongitude, activeLegIndex, map, model.overlays, model.route, revealOverlays, reducedMotion]);
 
   return null;
 }

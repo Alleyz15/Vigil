@@ -108,6 +108,26 @@ describe("a built shipment reaches the operator's surfaces", () => {
     expect(detail.flags.map((f) => f.id)).toContain("H2");
   });
 
+  /**
+   * Identical request, identical event ids. A second run would overwrite the
+   * first in a map keyed by event id — silently, with any operator action on
+   * it — so it is refused, and the queue is untouched.
+   */
+  it("refuses to dispatch the same shipment twice rather than overwriting it", async () => {
+    const workbench = await getWorkbench();
+    const request = { ...BASE, fault: "none" as const, seed: "wb-twice" };
+
+    const first = await workbench.runBuilt(request);
+    expect(first.ok).toBe(true);
+    const before = workbench.listHandoffs().items.length;
+
+    const second = await workbench.runBuilt(request);
+    expect(second.ok).toBe(false);
+    if (second.ok) return;
+    expect(second.reason).toMatch(/already been dispatched/);
+    expect(workbench.listHandoffs().items.length).toBe(before);
+  });
+
   it("refuses a fault the route cannot express, without touching the queue", async () => {
     const workbench = await getWorkbench();
     const before = workbench.listHandoffs().items.length;
