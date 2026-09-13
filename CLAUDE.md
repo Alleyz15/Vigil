@@ -425,6 +425,18 @@ And the rule check, injected, failed with **"Mach band at x=1100"**: a 1px rule 
 slope check also sees, so it fired first and named the wrong cause. The rule check now runs before
 the slope check. **Fails for the reason you expect** includes the order checks run in.
 
+**The sentence this rule rests on now has three instances, each a different way the reason goes
+wrong:**
+
+| # | Session | What happened | Which way the reason failed |
+|---|---|---|---|
+| 1 | 17B | a mutation wrote `accept` over rows already `accept`, and the test passed | no failure where one was owed — the probe was inert |
+| 2 | 21 | a frame-order check whose injection (Lenis on its own loop) produced no failure | the check could not see the case it was written for, so it was demoted to a measurement |
+| 3 | 23 | the seam check failed twice on the wrong property, and once named the wrong cause | a failure, for a reason other than the one it reported |
+
+Instance 3 is the one the other two do not cover: **a check that fails can still be wrong about why.**
+Read the message against the injection, every time.
+
 ### 1g. A test suite verifies the invariants someone thought to write
 
 **Found by opening the page, not because anything reported it.**
@@ -511,6 +523,22 @@ read first: identical values at the seam meant no colour could be adjusted to fi
 was the curve's shape. A plausible visual explanation is a hypothesis in the same sense as an
 assumption about code — **before changing a colour, a height or a timing, measure the one you think
 is wrong.**
+
+#### An approved plan is reasoned, not verified
+
+Session 23's plan was approved with two judgements in it that measurement then overturned — one from
+the brief, one from the plan:
+
+| Approved | Measured |
+|---|---|
+| the hero and band colours do not match | one value, 16,24,31; the edge was a slope jump |
+| `smoothstep(t^1.6)` for the band | 23% of its steepest slope 8px above the page, a second light edge; `smootherstep` 4.5% |
+
+Neither approval was careless. Both were reasoning about what a pixel would do, and reasoning is what
+an approval is made of. **A measurement is the only thing that makes a design decision evidence**, so
+an approved plan still gets measured on the way in, and a result that contradicts the approval is
+reported and acted on rather than implemented as signed. Approval decides what to try; the frame
+decides whether it worked.
 
 #### A brief is a premise too, and it gets read against the code like any other
 
@@ -1535,9 +1563,10 @@ Two traps in that runner, both hit in session 20:
   A capture step can force reduced motion, which the map camera now honours. **Raising the time
   budget was tried first and changed nothing** — the budget was never the cause.
 
-One fragility observed and left: `postJson` has no retry. The approval POST has reset with
-`ECONNRESET` on **three of five fresh-server runs** across sessions 21–23 (one of those three lost its
-error text to a truncated log); a further fresh run succeeded each time. The dev log shows **no line
+One fragility observed, and since session 23 contained rather than left: the approval POST resets with
+`ECONNRESET` on **four of six fresh-server runs** across sessions 21–23 (one lost its error text to a
+truncated log). `scripts/qa/post-json.mjs` now retries **once, on a transport failure only** — never on
+an HTTP refusal — and the sixth run needed it and completed. See Known Limitations. The dev log shows **no line
 for the POST at all**, so the request never reached a handler. Two hypotheses were tested and
 **neither reproduced it**: a stale keep-alive socket (30 POSTs across idle times 3.8–5.1s, around
 the server's advertised `timeout=5`, all clean) and the exact capture-then-POST sequence (4/4 clean).
@@ -1682,11 +1711,23 @@ its steepest slope 8px above the page — a fainter second band — against smoo
   information should.
 - **`timed_out`** is labelled as seeded wherever it renders. Known Limitations.
 
+#### After the review
+
+`qa:capture` gained a single transport-only retry (`scripts/qa/post-json.mjs`), checked against a local
+server that resets once (retried, succeeded), always (gave up after two) and refuses with 400 (no
+retry, one request). The next fresh run reset on the approval POST and completed on the retry. The
+`ECONNRESET` fault moved to Known Limitations, and the two approved-then-measured judgements are
+recorded under rule 1g.
+
+**The UI round is closed.** One item is deferred to its own session: the identity strip is shared by
+four surfaces and is the heaviest element on `/sender`, outweighing the page's subject. It is "who am
+I", not the page — all four surfaces move together when it is taken back to background weight.
+
 #### Still open after 23
 
 The submission artefacts. The `(console)` route group. `seedDraftIdentity`'s fold-back. A real
-liveness threshold. The headline's 0.21 contrast margin. `postJson`'s unexplained resets. The
-footage's provenance. The sender identity strip's weight.
+liveness threshold. The headline's 0.21 contrast margin. The unexplained approval resets. The
+footage's provenance. The identity strip across all four surfaces.
 
 ### Session 22 — a dark hero, a colour boundary, and cards around a track (complete)
 
@@ -3591,6 +3632,23 @@ it landed at the point where the console layout had just been verified at 1920x1
 The cost of being wrong is a broken demo capture; the cost of waiting is one stale array and a
 harmless payload field. Recorded here rather than only in the session log, because the trap is
 permanent and the session note is not.
+
+**The approval POST in `qa:capture` resets intermittently, and nobody knows why.** Four of six
+fresh-server runs across sessions 21–23 lost the operator-approval request to `ECONNRESET`. The dev log
+has **no line for that request at all**, so it never reached a handler. Two hypotheses were tested and
+neither reproduced it: a stale keep-alive socket (30 POSTs at idle times around the server's advertised
+`timeout=5`, all clean) and the exact capture-then-POST sequence (4/4 clean).
+
+**Why this is a Known Limitation and not only a log entry:** if it happens on the day the demo is
+recorded, the co-signature beat — the sealed frame — stops the run, and there is no time to diagnose
+it then. So `qa:capture` retries once on a transport failure, gives up after two, and **a retry is not
+a fix.** The field run that needed it is also a small piece of evidence about the fault: the retried
+approval SUCCEEDED rather than being refused as already approved, which means the first attempt was
+never applied — consistent with the missing log line. A refusal after a reset would be ambiguous
+instead, and the runner treats it that way: it continues only if the next step reads the state back,
+and otherwise stops and says the first attempt may have been applied.
+
+Recording live, rather than through the script, would meet the same fault with no retry at all.
 
 **`timed_out` is a seeded state, not a measured one — and the interface now says so.** S5's
 handoff is assigned `timed_out` by scenario id in `buildScenarioEntries`. No liveness timer exists
