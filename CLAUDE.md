@@ -168,6 +168,44 @@ fix that. The tally is kept because the pattern is only visible together.
 it is exactly why the rule has to be followed when they do — a habit only formed on easy cases is
 not a habit.
 
+### 2c. When the world changes one signal, every signal that moves with it must move too
+
+**The anti-circularity principle applied to a change that is not a fault.**
+
+Session 20's address correction moves the courier to a new address. The obvious implementation
+overrides the scan's GPS position and nothing else — and that would have been wrong in a way no
+test was written to notice. A courier genuinely standing at the new address observes the new
+address's serving cell and the new building's access point. Moving only the position leaves the
+scan reporting a GPS fix at one address and a tower at another, which is **exactly the
+contradiction I1 exists to find.**
+
+So the honest delivery would have come back flagged as a spoof. The very distinction the case
+exists to draw — *a stale record, not a false delivery* — would have been destroyed by the
+generator manufacturing a contradiction the world does not contain.
+
+> **When a world-model change moves one signal, every signal that would move with it in reality
+> must move too. Otherwise the generator commits a fault nobody committed, and the detector is
+> credited with finding it.**
+
+That is rule 2a from the other side. 2a stops the generator shaping behaviour to trip a detector;
+this stops it producing an artefact of an incomplete edit that a detector then correctly reports.
+Both leave a detection rate describing the generator rather than the world.
+
+**Measured, which is what proves it worked:**
+
+| | position | cell | WiFi | flags |
+|---|---|---|---|---|
+| correction applied to all three | new address | new address | new address | **`[I10]` only** |
+| position moved alone (injected) | new address | old address | old address | the correction test fails |
+
+`I1` and `I7` absent on the real run. The injected half is the rule-1f check: a correction that
+does not move the courier fails exactly the one test aimed at it.
+
+**The check to run** whenever a scenario, the builder or the noise model moves the courier: list
+every signal in the scan that is a function of *where the handset physically is* — position,
+serving cell, WiFi, and for some legs the photo and accelerometer — and confirm the edit moves all
+of them or states why one legitimately stays.
+
 ### 3. Approval is constitutive, not decorative
 
 Operator approval is **not** `approved = true` in a table. A high-risk handoff requires a
@@ -231,6 +269,22 @@ This converts a stated blind spot into designed behaviour. **It is a pitch line:
 answer to "what about a brand-new courier you have no baseline for?" is not a shrug about cold
 start — it is that the system knows it cannot judge, says so in the record, and requires a
 human to put their name on it.
+
+#### Arrived at from a second direction, without anyone building the path
+
+Session 20's corrected delivery lands at `awaiting_cosignature`, and **nobody designed that**.
+`I10` scores 40, the courier's mandate carries `requiresCosignIf: inconsistency_score_at_least 30`,
+and the gate did what the mandate says.
+
+So an honest delivery flagged for a stale record is put in front of a human to sign for — by the
+same mechanism, and for the same underlying reason, as cold start. There the machine has no
+history to judge from; here it has a contradiction it cannot resolve on its own, because it
+cannot tell "the record is wrong" from "the scan is wrong" without a third source. **In both
+cases, when the machine cannot be certain, a human signature becomes constitutive.**
+
+That it fell out of existing rules rather than being built for the case is the strongest form of
+the claim. A path designed for a demo proves the demo; a path that emerges from a mandate written
+sessions earlier proves the design. Say it that way on the page and in the write-up.
 
 ### 1c. No production module may contain a function that asks a model for a verdict
 
@@ -694,6 +748,24 @@ sourced precisely because it is well-formed. A future session adding *"why did t
 this?"* to that panel will believe it is an improvement; it is the failure rule 1a exists to
 prevent, one layer further out. If the reason cannot be obtained from whoever actually decided,
 the honest rendering is to say who decided and show the alternative separately.
+
+#### A second corollary: an explanation must not be writable after the fact
+
+`/sender` refuses an address correction once the parcel has been delivered. The reason is the
+sharpest statement this project has of what separates an EXPLANATION from an INPUT.
+
+The operator's *"a stale record, not a false delivery"* panel is assembled from the correction
+record. If a correction could be recorded after delivery, then any `I10` flag — including one
+from a courier who genuinely delivered to the wrong building — could be given a benign cause
+retroactively, by anyone with the sender surface open. **The surface would be manufacturing a
+cause for a flag that had a different one.**
+
+> **An explanation is only an explanation if it could not have been written to fit the verdict.**
+
+Same family as refusing to present the heuristic's reasons as the model's rationale: in both, a
+well-formed account that did not come from the thing it describes reads as sourced precisely
+because it is well-formed. The guard is temporal here rather than attributional — the correction
+must predate the scan it explains — but the error it prevents is the same.
 
 ### 3h. The party that DECLARES and the party that CONFIRMS must never be one party
 
@@ -1218,10 +1290,28 @@ pace, the recording default, and live presentation. Long timelines still compres
 handoffs remain watchable. Speed changes timing only; the pure playback reducer still owns what
 each tick means.
 
-`npm run qa:capture` renders the four current operator-console evidence frames in local Chrome at
-an explicit **1920x1080** viewport and writes them under `docs/screenshots/session-17a/`. The
-pending S1 detail URL is resolved from the workbench API at capture time; the script does not
-hardcode an event id or fabricate a display fixture.
+`npm run qa:capture` renders **ten** evidence frames in local Chrome at an explicit **1920x1080**
+viewport and writes them under `docs/screenshots/session-17a/`. Every id, token and URL is resolved
+from the workbench API at capture time; the script hardcodes no event id and fabricates no display
+fixture. **It needs a fresh dev-server process** — it drives real state forward and there is
+deliberately no reset — and says so rather than capturing a stale state if run twice.
+
+Two frames cannot exist at boot, so the script has a **stateful sequence runner**
+(`runSequence`): `post` a real endpoint, `expect` the state the next frame's filename will claim
+(failing loudly if it does not hold), then `capture`. The stale-record sequence dispatches,
+corrects, delivers and checks for `I10` alone before capturing; the co-sign sequence captures both
+beats and runs **last**, because approving S1 is irreversible in a process.
+
+Two traps in that runner, both hit in session 20:
+
+- **Endpoints do not share a response envelope.** The sender routes reply `{ ok, ... }`; the
+  operator actions route replies with the handoff itself. The first runner required `ok: true`, so a
+  successful approval read as a refusal and the sealed frame was silently never taken. Success is
+  the HTTP status, plus an explicit `ok: false` where a route reports refusal in-band.
+- **Headless virtual time does not finish a JavaScript camera animation.** Leaflet's `flyTo` never
+  completed, so the stale-record map rendered overlays at the final zoom over grey, with no tiles.
+  A capture step can force reduced motion, which the map camera now honours. **Raising the time
+  budget was tried first and changed nothing** — the budget was never the cause.
 
 ### The verdict is never recomputed in the browser
 
@@ -1300,9 +1390,72 @@ npm run db:migrate
 
 ## Session log
 
-### Session 20 — the hero video slot, reserved before the video exists (in progress)
+### Session 20 — the sender, the scenario builder, and a false positive that explains itself (complete)
 
-665 tests passing, 7 skipped. `tsc --noEmit` clean, eslint clean, the production build clean.
+692 tests passing, 7 skipped. `tsc --noEmit` clean, eslint clean, the production build clean.
+`lib/engine/`, `lib/pattern/` and `lib/gate/` remain at 100% statements, branches, functions and
+lines. **No detector threshold moved and no experiment was rerun.** `npm run qa:capture` produces
+ten frames from a fresh process, including the two that need a stateful sequence.
+
+**The session in one paragraph.** A fourth party, the sender, whose declarations had always been
+engine inputs but had no author. A scenario builder inside it that runs any cached route through
+the real `runAgent` with no second code path. And the case that turns a stated Known Limitation
+into a demonstration: an honest delivery to a corrected address, flagged because the registry is
+stale, explained on the operator's screen — and put in front of a human to sign for by a mandate
+rule nobody wrote for it.
+
+#### What this session contributed to the rules
+
+| Rule | What it records |
+|---|---|
+| 2c | when the world changes one signal, every signal that moves with it must move too |
+| 3a | the constitutive signature, reached from a second direction without anyone building the path |
+| 3e | the inverse case: an empty-looking result that is the most severe outcome |
+| 3g | a second corollary: an explanation must not be writable after the fact |
+| 3h, 3i | the declarer and the confirmer must never be one party; neither holds a key |
+| 1f | a third failure mode: a test that proves determinism reads like a stability guard |
+| 1k | a distinguishing signal that separates three things may not separate four |
+| 2b | the tally: three times a figure was not fitted to the project's own detectors |
+
+#### The detail the demonstration rests on
+
+Moving the courier to the corrected address meant moving **position, serving cell and WiFi
+together**. Moving the position alone would have fired I1 on a contradiction nobody committed and
+turned an honest delivery into an apparent spoof. Measured: **`[I10]` only**, `I1` and `I7` absent;
+a correction that does not move the courier fails the one test aimed at it. Rule 2c.
+
+#### Five defects found this session, and how each was found
+
+| # | Defect | Found by |
+|---|---|---|
+| 1 | map camera ignored reduced motion — a swooping `flyTo` for viewers who asked for less motion | chasing a grey capture frame, not a report |
+| 2 | capture runner read a successful approval as a refusal | a missing file in the frame listing |
+| 3 | the same shipment dispatched twice would overwrite itself in the entry map | writing the sequence that would have done it |
+| 4 | `BuiltEvent` assumed to carry a leg spec it does not have | `tsc`, after I guessed its shape instead of reading it |
+| 5 | `patternResult` read instead of `patternOutcome`, printing `pattern=?` | refusing to accept `?` as an answer |
+
+**Number 1 is the instructive one, and I got it wrong first.** The frame's map had no tiles, I
+assumed a time budget, raised it, recaptured — and nothing changed. That is session 19's clipped
+credential bar again: fixing the thing that is not the problem before reading the thing that is.
+Reading the map code showed the built delivery takes a `flyTo` path the seeded S1 never takes, and
+testing that one hypothesis in isolation confirmed it. **A motion bug had been hiding inside what
+looked like a tooling bug**, and the accessibility fix is what made the capture honest.
+
+#### Design decisions worth not re-litigating
+
+- **The correction does not rewrite the delivery point on record.** That gap is the stale record.
+- **Nothing tells the engine a correction happened.** The panel explains the verdict afterwards.
+- **A correction after delivery is refused.** An explanation writable after the fact is not one.
+- **The same request dispatched twice is refused**, not overwritten — identical request, identical
+  event ids, and a map keyed by event id.
+- **Sender-created shipments stop at out-for-delivery.** The delivery scan is a separate act by a
+  different party, and that gap is what makes a mid-route correction possible at all.
+
+#### Still open after 20
+
+The submission artefacts — write-up, recorded demo, a RESULTS.md refresh. The `(console)` route
+group, whose pathname list now has five entries. `seedDraftIdentity`'s fold-back. The hero video,
+if it ever exists, is two strings in `lib/landing/hero-media.ts`.
 
 **The slot is reserved so that adding footage is a file drop, not a refactor.** The only edit a
 future session should need is two strings in `lib/landing/hero-media.ts`:
@@ -2961,8 +3114,10 @@ managed KMS. `lib/credential/keys.ts` is the only file that touches the environm
 swap is contained — but it has not been made.
 
 **A pathname list decides which pages get which shell, and nothing enforces it.**
-`AppShell` renders bare for a hardcoded `STANDALONE = ["/courier", "/confirm"]` and renders the
-operator console for everything else. Two consequences, one cosmetic and one structural.
+`AppShell` renders bare for a hardcoded `STANDALONE` list — five entries after session 20:
+`/courier`, `/confirm`, `/sender`, `/demo/cosign` and `/` — and renders the operator console for
+everything else. Each session that added a surface also had to remember that array, which is the
+argument for the route group made by its own growth. Two consequences, one cosmetic and one structural.
 
 The cosmetic one: because the root layout passes the operator identity into `AppShell` and the
 choice is made at runtime from `usePathname()`, **the operator's key fingerprint is serialised into
