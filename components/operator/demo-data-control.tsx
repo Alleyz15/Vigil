@@ -30,32 +30,36 @@ export function DemoDataControl() {
   const current = searchParams.get("scenario") ?? "all";
 
   return (
-    <div className="flex items-center gap-2">
-      <FlaskConical aria-hidden="true" className="size-4 text-muted-foreground" />
-      <span className="text-xs text-muted-foreground">Loads seeded synthetic shipment</span>
-      <Select
-        value={current}
-        onValueChange={(next) => {
-          if (!next) return;
-          const params = new URLSearchParams(searchParams.toString());
-          if (next === "all") params.delete("scenario");
-          else params.set("scenario", next);
-          const query = params.toString();
-          router.push(query ? `${pathname}?${query}` : pathname);
-        }}
-      >
-        <SelectTrigger size="sm" className="w-64 bg-card">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          <SelectGroup>
-            <SelectLabel>Seeded synthetic shipments</SelectLabel>
-            {SCENARIOS.map(([id, label]) => (
-              <SelectItem key={id} value={id}>{label}</SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+    <div className="flex items-start gap-2">
+      <FlaskConical aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div>
+        <div className="mb-1 text-xs leading-none text-muted-foreground">
+          Loads seeded synthetic shipment
+        </div>
+        <Select
+          value={current}
+          onValueChange={(next) => {
+            if (!next) return;
+            const params = new URLSearchParams(searchParams.toString());
+            if (next === "all") params.delete("scenario");
+            else params.set("scenario", next);
+            const query = params.toString();
+            router.push(query ? `${pathname}?${query}` : pathname);
+          }}
+        >
+          <SelectTrigger size="sm" className="w-48 bg-card">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end">
+            <SelectGroup>
+              <SelectLabel>Seeded synthetic shipments</SelectLabel>
+              {SCENARIOS.map(([id, label]) => (
+                <SelectItem key={id} value={id}>{label}</SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 }

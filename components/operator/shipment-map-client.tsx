@@ -13,6 +13,7 @@ import {
   useMap,
 } from "react-leaflet";
 import type { MapOverlay, MapPoint, ShipmentMapModel } from "@/lib/workbench";
+import { clampAnimationProgress } from "./shipment-map-animation";
 
 /**
  * Three kinds of line, told apart WITHOUT reading a tooltip.
@@ -104,7 +105,7 @@ function AnimatedVehicle({ point }: { point: MapPoint }) {
     const started = performance.now();
     let frame = 0;
     const tick = (now: number) => {
-      const progress = Math.min(1, (now - started) / 420);
+      const progress = clampAnimationProgress((now - started) / 420);
       const eased = 1 - Math.pow(1 - progress, 3);
       const coordinate = along(path, distance * eased).geometry.coordinates;
       setDisplay({ latitude: coordinate[1], longitude: coordinate[0] });

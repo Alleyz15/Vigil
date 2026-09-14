@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { ScatterPoint } from "@/lib/console/dataset";
+import { DEFAULT_GATE_THRESHOLDS } from "@/lib/gate/thresholds";
 
 /**
  * View 3: the two axes, and the four actions they produce.
@@ -71,8 +72,8 @@ export function GateExplorer({
   points: ScatterPoint[];
   counts: { total: number; bothEvaluated: number; patternUnknown: number; inconsistencyUnknown: number };
 }) {
-  const [xThreshold, setXThreshold] = useState(30);
-  const [yThreshold, setYThreshold] = useState(40);
+  const [xThreshold, setXThreshold] = useState(DEFAULT_GATE_THRESHOLDS.highInconsistency);
+  const [yThreshold, setYThreshold] = useState(DEFAULT_GATE_THRESHOLDS.highPattern);
   const [hovered, setHovered] = useState<ScatterPoint | null>(null);
 
   const series = useMemo(() => {
@@ -98,34 +99,34 @@ export function GateExplorer({
       // Instant. Any easing on the recolour reads as lag.
       animation: false,
       backgroundColor: "transparent",
-      grid: { left: 72, right: 250, top: 42, bottom: 64 },
+      grid: { left: 72, right: 56, top: 50, bottom: 64 },
       xAxis: {
         min: GUTTER - 6,
         max: AXIS_MAX,
         name: "single-event inconsistency",
         nameLocation: "middle",
         nameGap: 30,
-        nameTextStyle: { color: "#d4d4d8", fontSize: 13, fontWeight: 600 },
-        axisLine: { lineStyle: { color: "#3f3f46" } },
+        nameTextStyle: { color: "#94a3b8", fontSize: 13, fontWeight: 600 },
+        axisLine: { lineStyle: { color: "#64748b" } },
         axisLabel: {
-          color: "#71717a",
+          color: "#64748b",
           fontSize: 11,
           formatter: (v: number) => (v < 0 ? "n/e" : String(v)),
         },
-        splitLine: { lineStyle: { color: "#27272a" } },
+        splitLine: { lineStyle: { color: "#94a3b8", opacity: 0.55 } },
       },
       yAxis: {
         min: GUTTER - 6,
         max: AXIS_MAX,
         name: "pattern",
-        nameTextStyle: { color: "#d4d4d8", fontSize: 13, fontWeight: 600 },
-        axisLine: { lineStyle: { color: "#3f3f46" } },
+        nameTextStyle: { color: "#94a3b8", fontSize: 13, fontWeight: 600 },
+        axisLine: { lineStyle: { color: "#64748b" } },
         axisLabel: {
-          color: "#71717a",
+          color: "#64748b",
           fontSize: 11,
           formatter: (v: number) => (v < 0 ? "n/e" : String(v)),
         },
-        splitLine: { lineStyle: { color: "#27272a" } },
+        splitLine: { lineStyle: { color: "#94a3b8", opacity: 0.55 } },
       },
       tooltip: {
         trigger: "item",
@@ -186,8 +187,8 @@ export function GateExplorer({
             silent: true,
             symbol: "none",
             animation: false,
-            lineStyle: { color: "#e4e4e7", type: "dashed", width: 1 },
-            label: { color: "#a1a1aa", fontSize: 10 },
+            lineStyle: { color: "#94a3b8", type: "dashed", width: 1 },
+            label: { color: "#64748b", fontSize: 10 },
             data: [
               { xAxis: xThreshold, label: { formatter: `x ${xThreshold}` } },
               { yAxis: yThreshold, label: { formatter: `y ${yThreshold}` } },
@@ -243,7 +244,7 @@ export function GateExplorer({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <div className="rounded-lg border border-border/60 bg-card/40 p-2">
+      <div className="min-w-0 rounded-lg border border-border bg-card/50 p-2">
         <ReactECharts
           option={option}
           style={{ height: 620 }}
@@ -258,9 +259,10 @@ export function GateExplorer({
       </div>
 
       <aside className="space-y-4">
-        <div className="rounded-lg border border-border/60 bg-card/40 p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">
-            Thresholds
+        <div className="rounded-lg border border-border bg-card/50 p-4">
+          <div className="flex items-center justify-between gap-3 text-xs uppercase text-muted-foreground">
+            <span>Explorer thresholds</span>
+            <span className="normal-case text-xs">visual only</span>
           </div>
 
           <ThresholdSlider
@@ -289,8 +291,8 @@ export function GateExplorer({
           </div>
         </div>
 
-        <div className="rounded-lg border border-border/60 bg-card/40 p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">
+        <div className="rounded-lg border border-border bg-card/50 p-4">
+          <div className="text-xs uppercase text-muted-foreground">
             {hovered ? "Hovered" : "Dataset"}
           </div>
 
@@ -320,7 +322,7 @@ export function GateExplorer({
           )}
         </div>
 
-        <div className="rounded-lg border border-border/60 bg-card/40 p-4 text-sm leading-relaxed text-muted-foreground">
+        <div className="rounded-lg border border-border bg-card/50 p-4 text-sm leading-relaxed text-muted-foreground">
           <p>
             Points in the shaded bands could not be evaluated on that axis. They are drawn outside
             the scale rather than at zero — plotting them at the origin would claim a measurement

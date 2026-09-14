@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { detailStatusMessage, traceNodeStates } from "./handoff-detail-model";
+import { OperatorActionName } from "@/lib/workbench/types";
+import {
+  detailStatusMessage,
+  ledgerReferencePresentation,
+  operatorActionAvailability,
+  shouldShowEvidenceDetails,
+  traceNodeStates,
+} from "./handoff-detail-model";
 
 describe("correlated handoff detail presentation", () => {
   it("states that a co-signature halt sealed nothing", () => {
@@ -34,5 +41,38 @@ describe("correlated handoff detail presentation", () => {
     expect(nodes[0]).toMatchObject({ node: "parse", status: "done", durationMs: 2 });
     expect(nodes[1]).toMatchObject({ node: "lookup", status: "running" });
     expect(nodes.at(-1)).toMatchObject({ node: "explain", status: "pending" });
+  });
+
+  it("exposes exactly the actions accepted by the operator API", () => {
+    const availability = operatorActionAvailability({
+      state: "awaiting_cosignature",
+      rerouteAvailable: false,
+    });
+
+    expect(Object.keys(availability).sort()).toEqual([...OperatorActionName.options].sort());
+    expect(availability).toEqual({
+      approve: true,
+      reject: true,
+      request_evidence: true,
+      propose_reroute: false,
+      escalate: true,
+    });
+  });
+
+  it("renders an unwritten ledger position as status, never as a copy action", () => {
+    expect(ledgerReferencePresentation(null)).toEqual({
+      label: "Not written",
+      copyable: false,
+    });
+    expect(ledgerReferencePresentation(19)).toEqual({
+      label: "Ledger #19",
+      copyable: true,
+    });
+  });
+
+  it("does not reserve an empty evidence column for a hard rejection", () => {
+    expect(shouldShowEvidenceDetails({ flagCount: 0, hasAddressCorrection: false })).toBe(false);
+    expect(shouldShowEvidenceDetails({ flagCount: 1, hasAddressCorrection: false })).toBe(true);
+    expect(shouldShowEvidenceDetails({ flagCount: 0, hasAddressCorrection: true })).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { InboxTable } from "@/components/operator/inbox-table";
+import { HandoffsWorkspace } from "@/components/operator/handoffs-workspace";
 import { getWorkbench } from "@/lib/workbench";
 
 export const dynamic = "force-dynamic";
@@ -6,26 +6,22 @@ export const dynamic = "force-dynamic";
 export default async function InboxPage({ searchParams }: { searchParams: Promise<{ scenario?: string }> }) {
   const { scenario } = await searchParams;
   const workbench = await getWorkbench();
-  const all = workbench.listQueue();
-  const items = scenario ? all.filter((item) => item.scenarioId === scenario) : all;
+  const queue = workbench.listQueue();
+  const handoffs = workbench.listHandoffs();
+  const queueItems = scenario ? queue.filter((item) => item.scenarioId === scenario) : queue;
+  const allItems = scenario ? handoffs.items.filter((item) => item.scenarioId === scenario) : handoffs.items;
+  const accepted = allItems.filter((item) => item.decision === "accept" && item.sealed).length;
+  const summary = scenario
+    ? { ...handoffs.summary, automaticallyAccepted: accepted, total: allItems.length }
+    : handoffs.summary;
 
   return (
-    <div>
-      <header className="mb-6 flex items-end justify-between gap-8">
-        <div>
-          <h1 className="text-2xl font-semibold">Operator inbox</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Handoffs waiting for verification, co-signature, or escalation.</p>
-        </div>
-        <div className="text-right">
-          <div className="font-mono text-2xl font-semibold tabular-nums">{items.length}</div>
-          <div className="text-xs text-muted-foreground">items needing action</div>
-        </div>
-      </header>
-
-      {scenario && (
-        <p className="mb-3 text-xs text-muted-foreground">Showing seeded synthetic shipment <span className="font-mono font-semibold text-foreground">{scenario}</span></p>
-      )}
-      <InboxTable items={items} />
-    </div>
+    <HandoffsWorkspace
+      mode="inbox"
+      queueItems={queueItems}
+      allItems={allItems}
+      summary={summary}
+      scenario={scenario}
+    />
   );
 }

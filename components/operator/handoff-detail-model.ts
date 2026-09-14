@@ -1,8 +1,39 @@
 import { NODES, type TraceFrame } from "@/lib/agent/context";
 import type { ToolEndFrame } from "@/lib/agent/trace";
 import type { HandoffState } from "@/lib/workbench";
+import type { OperatorActionName } from "@/lib/workbench/types";
 
 export type DetailTone = "accepted" | "pending" | "alert" | "resolved";
+
+export function operatorActionAvailability(input: {
+  state: HandoffState;
+  rerouteAvailable: boolean;
+}): Record<OperatorActionName, boolean> {
+  const resolved = input.state.startsWith("resolved_") || input.state === "accepted";
+  return {
+    approve: !resolved && input.state === "awaiting_cosignature",
+    reject: !resolved,
+    request_evidence: !resolved,
+    propose_reroute: !resolved && input.rerouteAvailable,
+    escalate: !resolved,
+  };
+}
+
+export function ledgerReferencePresentation(sequence: number | null): {
+  label: string;
+  copyable: boolean;
+} {
+  return sequence === null
+    ? { label: "Not written", copyable: false }
+    : { label: `Ledger #${sequence}`, copyable: true };
+}
+
+export function shouldShowEvidenceDetails(input: {
+  flagCount: number;
+  hasAddressCorrection: boolean;
+}): boolean {
+  return input.flagCount > 0 || input.hasAddressCorrection;
+}
 
 export function detailStatusMessage(input: {
   state: HandoffState;

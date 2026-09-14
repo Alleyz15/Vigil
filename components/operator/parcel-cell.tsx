@@ -12,10 +12,10 @@ import type { HandoffSummary } from "@/lib/workbench";
  * (rule 3e). So the waybill is looked up across the world, and when the parcel
  * is not on this shipment, or no waybill exists at all, the row says so.
  */
-export function ParcelCell({ item }: { item: HandoffSummary }) {
+export function ParcelCell({ item, href }: { item: HandoffSummary; href?: string }) {
   return (
     <>
-      <Link href={`/operator/handoffs/${item.eventId}`} className="font-mono text-xs font-semibold hover:underline">
+      <Link href={href ?? `/operator/handoffs/${item.eventId}`} className="font-mono text-xs font-semibold hover:underline">
         {item.parcel.idKind === "epc" ? `EPC ${item.parcel.waybillNo}` : item.parcel.waybillNo}
       </Link>
       {!item.parcel.onThisShipment && (

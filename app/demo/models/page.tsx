@@ -1,5 +1,5 @@
 import { DivergenceMatrix } from "@/components/evidence/divergence-matrix";
-import { MEASURED_MODELS, readDivergence } from "@/lib/evidence/e4";
+import { readDivergence } from "@/lib/evidence/e4";
 
 export const dynamic = "force-dynamic";
 
@@ -8,16 +8,11 @@ export default function ModelDivergencePage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold">Why the model does not decide</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+      <header className="mb-5">
+        <h1 className="text-3xl font-semibold">Why the model does not decide</h1>
+        <p className="mt-2 max-w-4xl text-base leading-7 text-muted-foreground">
           The same three events, put to three model families and to the deterministic engine. Each
-          model is perfectly consistent with itself and they do not agree with each other — so the
-          verdict would depend on which vendor was configured. That is the reason the engine
-          decides and the model never does.
-        </p>
-        <p className="mt-2 font-mono text-xs text-muted-foreground">
-          {Object.values(MEASURED_MODELS).join(" · ")}
+          model is perfectly consistent with itself, but vendors do not always agree with each other.
         </p>
       </header>
 

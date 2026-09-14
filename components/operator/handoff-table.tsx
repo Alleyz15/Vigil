@@ -1,4 +1,6 @@
-import { ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { HandoffSummary } from "@/lib/workbench";
 import { AxisPair } from "./axis-pair";
 import { HandoffStateBadge } from "./status-badge";
@@ -25,10 +27,18 @@ function basisLabel(value: string | null): string {
   return value?.replaceAll("_", " ") ?? "basis unavailable";
 }
 
-export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summary: Summary }) {
+export function HandoffTable({
+  items,
+  summary,
+  showSummary = true,
+}: {
+  items: HandoffSummary[];
+  summary: Summary;
+  showSummary?: boolean;
+}) {
   return (
     <div>
-      <div className="mb-4 flex items-end justify-between gap-8 border-y bg-card px-4 py-4">
+      {showSummary && <div className="mb-4 flex items-end justify-between gap-8 border-y bg-card px-4 py-4">
         <div>
           <p className="text-lg font-semibold tabular-nums">
             {summary.automaticallyAccepted} of {summary.total} handoffs automatically accepted
@@ -40,7 +50,7 @@ export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summ
         <p className="max-w-lg text-right text-xs leading-5 text-muted-foreground">
           Automatic acceptance means both independent axes were low and mandate limits passed. Open any row to inspect the sealed basis.
         </p>
-      </div>
+      </div>}
 
       <div className="overflow-hidden rounded-md bg-card shadow-sm">
         <table className="operator-table">
@@ -52,6 +62,7 @@ export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summ
               <th>Risk axes · never summed</th>
               <th>Why</th>
               <th>Source</th>
+              <th aria-label="Open handoff" />
             </tr>
           </thead>
           <tbody>
@@ -60,7 +71,7 @@ export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summ
                 <td>
                   <div className="font-mono text-xs tabular-nums text-muted-foreground">{formatDate(item.eventTime)}</div>
                   <div className="mt-1">
-                    <ParcelCell item={item} />
+                    <ParcelCell item={item} href={`/operator/handoffs/${encodeURIComponent(item.eventId)}?from=all`} />
                   </div>
                 </td>
                 <td>
@@ -89,6 +100,16 @@ export function HandoffTable({ items, summary }: { items: HandoffSummary[]; summ
                     <ProvenanceLabel>synthetic</ProvenanceLabel>
                     <ProvenanceLabel>{item.provenance.pattern.replaceAll("_", " ")}</ProvenanceLabel>
                   </div>
+                </td>
+                <td className="text-right">
+                  <Button
+                    nativeButton={false}
+                    size="icon-sm"
+                    variant="ghost"
+                    render={<Link href={`/operator/handoffs/${encodeURIComponent(item.eventId)}?from=all`} aria-label={`Review ${item.parcel.waybillNo}`} />}
+                  >
+                    <ArrowRight />
+                  </Button>
                 </td>
               </tr>
             ))}

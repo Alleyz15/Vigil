@@ -48,6 +48,13 @@ describe("operator work lists", () => {
     expect(html).not.toContain("Combined");
   });
 
+  it("preserves readable columns when the combined workspace narrows the list pane", () => {
+    const html = renderToStaticMarkup(createElement(InboxTable, { items: [ITEM] }));
+
+    expect(html).toMatch(/data-table-scroll[^>]*class="[^"]*overflow-x-auto/);
+    expect(html).toMatch(/data-inbox-table[^>]*class="[^"]*min-w-\[64rem\]/);
+  });
+
   it("states the automatic-accept numerator, denominator and timeframe and exposes gate basis", () => {
     const accepted = { ...ITEM, state: "accepted" as const, decision: "accept", sealed: true };
     const html = renderToStaticMarkup(

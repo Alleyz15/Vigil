@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, CircleDashed, CloudRain, KeyRound, Link2, MapPinned, Pause, Play, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, CloudRain, Link2, Map, MapPinned, MessageSquareText, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { HandoffDetail } from "@/lib/workbench";
 import { formatEvidenceValue } from "@/lib/display/evidence";
 import { cn } from "@/lib/utils";
 import { AxisPair } from "./axis-pair";
-import { detailStatusMessage, traceNodeStates } from "./handoff-detail-model";
+import {
+  detailStatusMessage,
+  ledgerReferencePresentation,
+  shouldShowEvidenceDetails,
+  traceNodeStates,
+} from "./handoff-detail-model";
 import { OperatorActions } from "./operator-actions";
 import { ProvenanceLabel } from "./provenance-label";
 import { PlanAlternatives, RerouteAlternatives } from "./rejected-alternatives";
@@ -21,13 +26,23 @@ function sentence(value: string | null): string {
   return value?.replaceAll("_", " ") ?? "Unavailable";
 }
 
-export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
+export function HandoffDetailView({
+  detail,
+  backLink = { href: "/operator/inbox", label: "Back to inbox" },
+}: {
+  detail: HandoffDetail;
+  backLink?: { href: string; label: string };
+}) {
   const [activeLegIndex, setActiveLegIndex] = useState(detail.summary.legIndex);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
-  const [playing, setPlaying] = useState(false);
   const status = detailStatusMessage(detail.summary);
+  const ledger = ledgerReferencePresentation(detail.ledger.sequence);
   const latestRun = detail.runs.at(-1);
   const trace = useMemo(() => traceNodeStates(latestRun?.trace ?? []), [latestRun?.trace]);
+  const showEvidenceDetails = shouldShowEvidenceDetails({
+    flagCount: detail.flags.length,
+    hasAddressCorrection: Boolean(detail.addressCorrection),
+  });
   const revealOverlays = activeLegIndex >= detail.summary.legIndex;
   const rerouteAvailable = detail.reroute?.status === "proposed";
   const rerouteReason = detail.reroute?.status === "proposed"
@@ -39,171 +54,165 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
       : detail.reroute.proposal.target.courierId
     : null;
 
-  useEffect(() => {
-    if (!playing) return;
-    const currentPosition = detail.timeline.findIndex((leg) => leg.legIndex === activeLegIndex);
-    const timer = setTimeout(() => {
-      const next = detail.timeline[currentPosition + 1];
-      if (!next) {
-        setPlaying(false);
-        return;
-      }
-      setActiveLegIndex(next.legIndex);
-      if (currentPosition + 1 === detail.timeline.length - 1) setPlaying(false);
-    }, 1900);
-    return () => clearTimeout(timer);
-  }, [activeLegIndex, detail.timeline, playing]);
-
   return (
-    <div>
-      <header className="mb-4">
-        <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/operator/inbox" />}>
-          <ArrowLeft data-icon="inline-start" />
-          Back to inbox
+    <div className="space-y-6">
+      <div className="flex min-h-16 items-center gap-4">
+        <Button nativeButton={false} variant="ghost" size="icon-sm" render={<Link href={backLink.href} aria-label={backLink.label} />}>
+          <ArrowLeft />
         </Button>
-        <div className="mt-3 flex items-end justify-between gap-8">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold">{detail.summary.parcel.waybillNo}</h1>
-              <HandoffStateBadge state={detail.summary.state} provenance={detail.summary.stateProvenance} />
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {detail.summary.courier.displayName} · {detail.summary.bizStep} · seeded synthetic shipment {detail.summary.scenarioId}
-            </p>
-          </div>
-          <div className="text-right">
-            <div className="text-xs font-semibold uppercase text-muted-foreground">Correlation ID</div>
-            <div className="mt-1 max-w-md break-all font-mono text-xs">{detail.summary.eventId}</div>
-          </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-mono text-2xl font-bold">{detail.summary.parcel.waybillNo}</h1>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {detail.summary.courier.displayName} · {detail.summary.bizStep} · scenario {detail.summary.scenarioId} · event {detail.summary.eventId.slice(0, 4)}…{detail.summary.eventId.slice(-4)}
+          </p>
         </div>
-      </header>
-
-      <section
-        className={cn(
-          "mb-4 flex items-start gap-3 rounded-md border px-4 py-3",
-          status.tone === "pending" && "border-amber-300 bg-amber-50 text-amber-950",
-          status.tone === "alert" && "border-red-200 bg-red-50 text-red-950",
-          status.tone === "accepted" && "border-emerald-200 bg-emerald-50 text-emerald-950",
-          status.tone === "resolved" && "bg-card",
-        )}
-      >
-        {detail.summary.sealed ? <CheckCircle2 className="mt-0.5 size-5 shrink-0" /> : <CircleDashed className="mt-0.5 size-5 shrink-0" />}
-        <div>
-          <h2 className="text-sm font-semibold">{status.title}</h2>
-          <p className="mt-0.5 text-xs leading-5 opacity-80">{status.detail}</p>
+        <HandoffStateBadge state={detail.summary.state} provenance={detail.summary.stateProvenance} />
+        <Badge variant="secondary">{detail.summary.sealed ? "sealed" : "nothing sealed"}</Badge>
+        <div className="flex h-9 min-w-36 items-center justify-center gap-2 rounded-md border bg-muted/60 px-3 text-xs font-semibold">
+          <Link2 className="size-3.5" aria-hidden="true" />
+          {ledger.label}
         </div>
-      </section>
-
-      {detail.addressCorrection && <AddressCorrectionNotice detail={detail} />}
-
-      <div className="grid grid-cols-[minmax(0,1.7fr)_23rem] gap-4">
-        <section>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Route and contradiction evidence</h2>
-            <ProvenanceLabel>OpenStreetMap · synthetic event coordinates</ProvenanceLabel>
-          </div>
-          <ShipmentMap
-            model={detail.map}
-            activeLegIndex={activeLegIndex}
-            revealOverlays={revealOverlays}
-            selectedEvidenceId={selectedEvidenceId}
-            onSelectEvidence={setSelectedEvidenceId}
-          />
-
-          <div className="mt-2 flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                if (!playing && activeLegIndex === detail.timeline.at(-1)?.legIndex) {
-                  setActiveLegIndex(detail.timeline[0].legIndex);
-                }
-                setPlaying((value) => !value);
-              }}
-            >
-              {playing ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
-              {playing ? "Pause route" : "Play route"}
-            </Button>
-            <span className="text-xs text-muted-foreground">1.9 seconds per leg · contradiction appears at the reviewed handoff</span>
-          </div>
-          <ol className="mt-2 flex gap-1 overflow-x-auto pb-2" aria-label="Shipment legs">
-            {detail.timeline.map((leg) => (
-              <li key={leg.eventId} className="w-36 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setActiveLegIndex(leg.legIndex)}
-                  className={cn(
-                    "w-full rounded-md border px-2 py-2 text-left transition-colors",
-                    leg.legIndex === activeLegIndex ? "border-primary bg-accent" : "bg-card hover:bg-muted",
-                  )}
-                >
-                  <span className="block text-xs font-semibold uppercase text-muted-foreground">Leg {leg.legIndex + 1}</span>
-                  <span className="mt-0.5 block truncate text-xs font-medium capitalize">{leg.bizStep}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <aside className="self-start rounded-md bg-card p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Decision and action</h2>
-            <ProvenanceLabel>{detail.summary.sealed ? "sealed" : "pending"}</ProvenanceLabel>
-          </div>
-
-          <div className="mt-4 border-y py-4">
-            <AxisPair
-              variant="feature"
-              inconsistency={detail.summary.inconsistency}
-              pattern={detail.summary.pattern}
-              coverageLine={detail.summary.coverageLine}
-            />
-          </div>
-
-          <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 py-4 text-xs">
-            <dt className="text-muted-foreground">Engine verdict</dt>
-            <dd className="font-semibold capitalize">{sentence(detail.gate.decision)}</dd>
-            <dt className="text-muted-foreground">Gate basis</dt>
-            <dd className="font-medium">{sentence(detail.summary.gateBasis)}</dd>
-            <dt className="text-muted-foreground">Operator state</dt>
-            <dd className="font-medium">{sentence(detail.summary.state)}</dd>
-          </dl>
-
-          <OperatorActions
-            eventId={detail.summary.eventId}
-            state={detail.summary.state}
-            rerouteAvailable={rerouteAvailable}
-            rerouteReason={rerouteReason}
-          />
-
-          <div className="mt-4 border-t pt-4">
-            <div className="flex items-center gap-2 text-xs font-semibold"><KeyRound className="size-4" /> Credential</div>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              Courier signature {detail.credential?.courierValid ? "valid" : "missing"}. Operator signature {detail.credential?.operatorValid ? "valid" : "missing"}.
-            </p>
-          </div>
-        </aside>
       </div>
 
-      <div className="mt-8 grid grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)] gap-8">
-        <section>
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">Evidence behind the decision</h2>
-            <span className="text-xs text-muted-foreground">Select a coordinate-bearing flag to focus the map</span>
-          </div>
-          <div className="mt-3 flex flex-col gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_23rem] items-start gap-5">
+        <div className="min-w-0 space-y-3">
+          <section className="relative overflow-hidden rounded-lg border bg-card">
+            <div className="absolute left-3 top-3 z-[600] flex items-center gap-2 rounded-md border bg-white/95 px-3 py-2 text-xs font-semibold shadow-sm">
+              <Map className="size-3.5 text-primary" aria-hidden="true" />
+              coordinate-bearing evidence only
+            </div>
+            <ShipmentMap
+              model={detail.map}
+              activeLegIndex={activeLegIndex}
+              revealOverlays={revealOverlays}
+              selectedEvidenceId={selectedEvidenceId}
+              onSelectEvidence={setSelectedEvidenceId}
+            />
+          </section>
+
+          <ol className="grid grid-cols-6 gap-1.5" aria-label="Shipment legs">
+            {detail.timeline.map((leg) => {
+              const active = leg.legIndex === activeLegIndex;
+              return (
+                <li key={leg.eventId} className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveLegIndex(leg.legIndex)}
+                    className={cn(
+                      "h-[5.25rem] w-full rounded-md border bg-card px-2 py-2 text-left transition-colors hover:bg-muted",
+                      active && "border-primary bg-accent",
+                    )}
+                  >
+                    <span className="block text-xs font-medium text-muted-foreground">{active && leg.legIndex === detail.summary.legIndex ? "review" : "clear"}</span>
+                    <span className="mt-1 block truncate text-xs font-semibold capitalize">{leg.bizStep}</span>
+                    <span className="mt-1 block font-mono text-xs text-muted-foreground">{leg.eventTime.slice(11, 16)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+
+          <section className="space-y-2" aria-label="Contradiction evidence">
             {detail.flags.length === 0 ? (
-              <div className="border-y px-2 py-4 text-sm text-muted-foreground">No contradiction flags were raised.</div>
+              <div className="rounded-md border bg-card px-4 py-3 text-xs text-muted-foreground">No contradiction flags were raised.</div>
             ) : detail.flags.map((flag) => (
               <button
                 key={flag.id}
                 type="button"
                 onClick={() => setSelectedEvidenceId(flag.id)}
                 className={cn(
-                  "w-full rounded-md border bg-card px-4 py-3 text-left transition-colors",
-                  selectedEvidenceId === flag.id ? "border-primary ring-2 ring-primary/15" : "hover:bg-muted",
+                  "flex w-full items-center gap-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-left transition-shadow",
+                  selectedEvidenceId === flag.id && "ring-2 ring-red-300/60",
                 )}
               >
+                <Badge variant="outline" className="border-red-200 bg-red-100 font-mono text-red-700">{flag.id}</Badge>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-semibold text-red-950">{flag.label}</span>
+                  <span className="mt-0.5 block truncate text-xs text-red-800/70">Select to focus the corresponding map evidence</span>
+                </span>
+                <span className="text-xs font-medium text-red-700">map focus</span>
+              </button>
+            ))}
+          </section>
+
+          <section className="rounded-lg border bg-card p-3">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-sm font-semibold">Agent trace</h2>
+              <div className="flex items-center gap-3">
+                <ProvenanceLabel>frozen SSE contract</ProvenanceLabel>
+                <span className="text-xs text-muted-foreground">model can explain, never decide</span>
+              </div>
+            </div>
+            <ol className="mt-3 grid grid-cols-8 gap-1.5">
+              {trace.map((node) => (
+                <li key={node.node} className={cn("min-w-0 rounded-md border px-1.5 py-2 text-center", node.node === "gate" && "border-primary bg-accent")}>
+                  <span className="block min-h-8 break-words font-mono text-xs font-semibold leading-4">{node.node.replace("fetch_history", "fetch history").replace("external_context", "external context")}</span>
+                  <Badge variant="secondary" className="mt-1 h-auto max-w-full whitespace-normal px-1 py-1 text-xs leading-3">{node.status === "pending" ? "not reached" : node.status}</Badge>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+
+        <aside className="space-y-3">
+          <section className="rounded-lg border bg-card p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold">Decision and credential</h2>
+              <ProvenanceLabel>{detail.summary.sealed ? "sealed" : "pending"}</ProvenanceLabel>
+            </div>
+
+            <div className={cn(
+              "mt-4 rounded-md border px-3 py-2.5 text-xs leading-4",
+              status.tone === "pending" && "border-amber-300 bg-amber-50 text-amber-950",
+              status.tone === "alert" && "border-red-200 bg-red-50 text-red-950",
+              status.tone === "accepted" && "border-emerald-200 bg-emerald-50 text-emerald-950",
+              status.tone === "resolved" && "bg-muted",
+            )}>
+              <span className="font-semibold capitalize">Gate result: {sentence(detail.gate.decision)}.</span>{" "}{status.detail}
+            </div>
+
+            <div className="mt-3">
+              <AxisPair
+                variant="feature"
+                inconsistency={detail.summary.inconsistency}
+                pattern={detail.summary.pattern}
+                coverageLine={detail.summary.coverageLine}
+              />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <CredentialHalf label="Courier half" value={detail.credential?.courierValid ? "valid" : "missing"} valid={Boolean(detail.credential?.courierValid)} />
+              <CredentialHalf label="Operator half" value={detail.credential?.operatorValid ? "valid" : "missing"} valid={Boolean(detail.credential?.operatorValid)} />
+            </div>
+
+            <div className="mt-3">
+              <OperatorActions
+                eventId={detail.summary.eventId}
+                state={detail.summary.state}
+                rerouteAvailable={rerouteAvailable}
+                rerouteReason={rerouteReason}
+              />
+            </div>
+          </section>
+
+          {detail.flags.slice(0, 1).map((flag) => (
+            <StatusCard key={flag.id} code={flag.id} title={detail.summary.shortReason} detail="stored address disagrees" source="engine" tone="alert" />
+          ))}
+          <StatusCard code="R1" title={rerouteAvailable ? "Reroute proposed" : "Reroute unavailable"} detail={rerouteAvailable ? rerouteTarget ?? "authorised proposal" : "no proposal in this run"} source={rerouteAvailable ? "available" : "unavailable"} />
+          <StatusCard code="WX" title={detail.externalContext?.status === "available" ? "Weather context" : "Weather not selected"} detail={detail.externalContext?.summary ?? "planner did not request it"} source={detail.externalContext?.status === "available" ? "available" : "not used"} tone="info" />
+        </aside>
+      </div>
+
+      <div className="space-y-4 border-t pt-6">
+        {showEvidenceDetails && <section>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Evidence details</h2>
+            <span className="text-xs text-muted-foreground">Backend values used by the deterministic engine</span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {detail.addressCorrection && <AddressCorrectionNotice detail={detail} />}
+            {detail.flags.map((flag) => (
+              <div key={flag.id} className="rounded-md border bg-card px-4 py-3">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="font-mono">{flag.id}</Badge>
                   <span className="text-sm font-semibold">{flag.label}</span>
@@ -216,31 +225,12 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
                     </span>
                   ))}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
+        </section>}
 
-          <section className="mt-8">
-            <h2 className="text-base font-semibold">Eight-node run</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Frozen trace contract. State changes below are execution timing, not decorative animation.</p>
-            <ol className="mt-3 grid grid-cols-4 gap-2">
-              {trace.map((node) => (
-                <li key={node.node} className="rounded-md bg-card p-3 shadow-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs font-semibold">{node.node}</span>
-                    <Badge variant="outline" className="text-xs">{node.status}</Badge>
-                  </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {node.durationMs === null ? "not reached" : `${node.durationMs} ms`}
-                    {node.flags.length > 0 && ` · ${node.flags.join(", ")}`}
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </section>
-        </section>
-
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-3 items-start gap-4 [grid-auto-flow:dense]">
           <section className="rounded-md bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">Agent explanation</h2>
@@ -248,6 +238,27 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             </div>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">{detail.explanation.text ?? "No explanation was produced."}</p>
           </section>
+
+          {detail.recipientConfirmation && (
+            <section className="rounded-md bg-card p-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <MessageSquareText className="size-4" aria-hidden="true" />
+                <h2 className="text-sm font-semibold">Recipient confirmation</h2>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                Scoped one-time capability. Current state: <span className="font-medium text-foreground">{sentence(detail.recipientConfirmation.state.status)}</span>.
+              </p>
+              <Button
+                nativeButton={false}
+                variant="outline"
+                className="mt-3 w-full"
+                render={<Link href={`/confirm/${encodeURIComponent(detail.recipientConfirmation.tokenId)}`} />}
+              >
+                Open recipient link
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            </section>
+          )}
 
           <section className="rounded-md bg-card p-4 shadow-sm">
             <div className="flex items-center gap-2"><CloudRain className="size-4" /><h2 className="text-sm font-semibold">External context</h2></div>
@@ -278,7 +289,7 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
             Sits next to the outcome rather than in a separate view, because the
             option set is only meaningful beside the option taken.
           */}
-          <section className="rounded-md bg-card p-4 shadow-sm">
+          <section className="col-span-2 rounded-md bg-card p-4 shadow-sm">
             <PlanAlternatives
               considered={detail.planConsidered}
               source={detail.plan.source}
@@ -314,6 +325,60 @@ export function HandoffDetailView({ detail }: { detail: HandoffDetail }) {
         />
       </section>
     </div>
+  );
+}
+
+function CredentialHalf({ label, value, valid }: { label: string; value: string; valid: boolean }) {
+  return (
+    <div className={cn(
+      "rounded-md border px-3 py-2.5",
+      valid ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50",
+    )}>
+      <div className="flex items-center gap-1.5 text-xs font-semibold">
+        <KeyRoundIcon valid={valid} />
+        {label}
+      </div>
+      <div className={cn("mt-1 font-mono text-xs font-semibold", valid ? "text-emerald-700" : "text-amber-700")}>{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">binds event + nonce</div>
+    </div>
+  );
+}
+
+function KeyRoundIcon({ valid }: { valid: boolean }) {
+  return <span aria-hidden="true" className={cn("size-2 rounded-full", valid ? "bg-emerald-600" : "border border-amber-600")} />;
+}
+
+function StatusCard({
+  code,
+  title,
+  detail,
+  source,
+  tone = "neutral",
+}: {
+  code: string;
+  title: string;
+  detail: string;
+  source: string;
+  tone?: "neutral" | "alert" | "info";
+}) {
+  return (
+    <section className="grid min-h-[3.9rem] grid-cols-[3.4rem_minmax(0,1fr)_5.25rem] items-center gap-2 rounded-lg border bg-card px-3 py-2.5">
+      <Badge
+        variant="secondary"
+        className={cn(
+          "justify-center font-mono text-xs",
+          tone === "alert" && "bg-red-100 text-red-700",
+          tone === "info" && "bg-blue-100 text-blue-700",
+        )}
+      >
+        {code}
+      </Badge>
+      <div className="min-w-0">
+        <div className="truncate text-xs font-semibold">{title}</div>
+        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={detail}>{detail}</div>
+      </div>
+      <Badge variant="secondary" className="justify-center truncate px-1.5 text-xs text-muted-foreground">{source}</Badge>
+    </section>
   );
 }
 

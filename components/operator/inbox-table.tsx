@@ -34,18 +34,24 @@ function ageLabel(minutes: number): string {
 function Columns() {
   return (
     <colgroup>
+      <col className="w-40" />
+      <col className="w-40" />
       <col className="w-48" />
-      <col className="w-48" />
+      <col className="w-40" />
       <col className="w-56" />
-      <col />
-      <col className="w-60" />
-      <col className="w-24" />
+      <col className="w-20" />
       <col className="w-12" />
     </colgroup>
   );
 }
 
-export function InboxTable({ items }: { items: HandoffSummary[] }) {
+export function InboxTable({
+  items,
+  detailMode = "inbox",
+}: {
+  items: HandoffSummary[];
+  detailMode?: "inbox" | "all";
+}) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ other: false });
 
   if (items.length === 0) {
@@ -87,7 +93,7 @@ export function InboxTable({ items }: { items: HandoffSummary[] }) {
               <span className="font-mono text-sm font-semibold tabular-nums">{rows.length}</span>
               <span className="text-xs text-muted-foreground">{group.detail}</span>
             </header>
-            {open && <GroupTable groupId={group.id} rows={rows} />}
+            {open && <GroupTable groupId={group.id} rows={rows} detailMode={detailMode} />}
           </section>
         );
       })}
@@ -95,10 +101,10 @@ export function InboxTable({ items }: { items: HandoffSummary[] }) {
   );
 }
 
-function GroupTable({ groupId, rows }: { groupId: InboxGroupId; rows: HandoffSummary[] }) {
+function GroupTable({ groupId, rows, detailMode }: { groupId: InboxGroupId; rows: HandoffSummary[]; detailMode: "inbox" | "all" }) {
   return (
-    <div className="overflow-hidden rounded-md bg-card shadow-sm">
-      <table className="operator-table table-fixed">
+    <div data-table-scroll className="overflow-x-auto rounded-md bg-card shadow-sm">
+      <table data-inbox-table className="operator-table min-w-[64rem] table-fixed">
         <Columns />
         <thead>
           <tr>
@@ -114,9 +120,9 @@ function GroupTable({ groupId, rows }: { groupId: InboxGroupId; rows: HandoffSum
         <tbody>
           {groupId === "pattern"
             ? byCourier(rows).map(([courierId, handoffs]) => (
-                <CourierAggregate key={courierId} handoffs={handoffs} />
+                <CourierAggregate key={courierId} handoffs={handoffs} detailMode={detailMode} />
               ))
-            : rows.map((item) => <HandoffRow key={item.eventId} item={item} markPattern />)}
+            : rows.map((item) => <HandoffRow key={item.eventId} item={item} markPattern detailMode={detailMode} />)}
         </tbody>
       </table>
     </div>
@@ -129,11 +135,12 @@ function byCourier(rows: HandoffSummary[]): Array<[string, HandoffSummary[]]> {
   return [...map.entries()];
 }
 
-function HandoffRow({ item, markPattern = false, nested = false }: { item: HandoffSummary; markPattern?: boolean; nested?: boolean }) {
+function HandoffRow({ item, markPattern = false, nested = false, detailMode }: { item: HandoffSummary; markPattern?: boolean; nested?: boolean; detailMode: "inbox" | "all" }) {
+  const href = `/operator/handoffs/${encodeURIComponent(item.eventId)}?from=${detailMode}`;
   return (
     <tr>
       <td className={cn(nested && "pl-8")}>
-        <ParcelCell item={item} />
+        <ParcelCell item={item} href={href} />
         <div className="mt-1 font-mono text-xs text-muted-foreground">{item.scenarioId} · leg {item.legIndex + 1}</div>
       </td>
       <td>
@@ -160,7 +167,7 @@ function HandoffRow({ item, markPattern = false, nested = false }: { item: Hando
           nativeButton={false}
           size="icon-sm"
           variant="ghost"
-          render={<Link href={`/operator/handoffs/${item.eventId}`} aria-label={`Review ${item.parcel.waybillNo}`} />}
+          render={<Link href={href} aria-label={`Review ${item.parcel.waybillNo}`} />}
         >
           <ArrowRight />
         </Button>
@@ -173,7 +180,7 @@ function HandoffRow({ item, markPattern = false, nested = false }: { item: Hando
  * One courier's pattern anomaly as one row, showing the handoff with the highest
  * pattern score as its representative. Expand to see every handoff behind it.
  */
-function CourierAggregate({ handoffs }: { handoffs: HandoffSummary[] }) {
+function CourierAggregate({ handoffs, detailMode }: { handoffs: HandoffSummary[]; detailMode: "inbox" | "all" }) {
   const [open, setOpen] = useState(false);
   const worst = [...handoffs].sort((a, b) => (b.pattern.score ?? -1) - (a.pattern.score ?? -1))[0];
   const patternScores = handoffs.map((h) => h.pattern.score).filter((s): s is number => s !== null);
@@ -213,7 +220,7 @@ function CourierAggregate({ handoffs }: { handoffs: HandoffSummary[] }) {
         <td className="font-mono text-xs tabular-nums text-muted-foreground">{ageLabel(oldest)}</td>
         <td />
       </tr>
-      {open && handoffs.map((item) => <HandoffRow key={item.eventId} item={item} nested />)}
+      {open && handoffs.map((item) => <HandoffRow key={item.eventId} item={item} nested detailMode={detailMode} />)}
     </Fragment>
   );
 }

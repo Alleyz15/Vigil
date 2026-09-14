@@ -3,16 +3,14 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Inbox, Link2, PenLine, Route, Scale, ShieldCheck, Syringe } from "lucide-react";
+import { ClipboardList, Link2, Route, Scale, Shield, Syringe, Waypoints } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DemoDataControl } from "./demo-data-control";
+import { getOperatorShellCopy } from "./app-shell-model";
 import { RoleSwitcher } from "@/components/shells/role-switcher";
-import { IdentityBar } from "@/components/shells/identity-bar";
-import type { RoleIdentity } from "@/lib/workbench/service";
 
 const PRIMARY = [
-  { href: "/operator/inbox", label: "Inbox", icon: Inbox },
-  { href: "/operator/handoffs", label: "All handoffs", icon: ClipboardList },
+  { href: "/operator/inbox", label: "Handoffs", icon: ClipboardList },
 ];
 
 const EVIDENCE = [
@@ -20,7 +18,6 @@ const EVIDENCE = [
   { href: "/verify", label: "Verify the ledger", icon: Link2 },
   { href: "/demo/models", label: "Model divergence", icon: Scale },
   { href: "/demo/injection", label: "Injection", icon: Syringe },
-  { href: "/demo/cosign", label: "Co-sign, side by side", icon: PenLine },
 ];
 
 /**
@@ -42,14 +39,10 @@ const EVIDENCE = [
  */
 const STANDALONE = ["/courier", "/confirm", "/sender", "/demo/cosign", "/"];
 
-export function AppShell({
-  identity,
-  children,
-}: {
-  identity: RoleIdentity;
-  children: React.ReactNode;
-}) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isHandoffRoute = pathname.startsWith("/operator/inbox") || pathname.startsWith("/operator/handoffs");
+  const shellCopy = getOperatorShellCopy(pathname);
 
     // `pathname === prefix` first, and the prefix form skipped for "/", or the
   // root entry would match every route in the application and the console
@@ -63,20 +56,21 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="fixed inset-y-0 left-0 flex w-56 flex-col border-r bg-sidebar px-3 py-4">
+      <aside className="fixed inset-y-0 left-0 z-40 flex w-[252px] flex-col border-r bg-sidebar px-3.5 py-5">
         <Link href="/operator/inbox" className="flex items-center gap-2 px-2 py-2">
-          <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <ShieldCheck aria-hidden="true" />
+          <span className="relative flex size-11 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Shield aria-hidden="true" className="absolute size-7" />
+            <Waypoints aria-hidden="true" className="relative size-3.5" />
           </span>
           <span>
-            <span className="block text-sm font-semibold leading-tight">Vigil</span>
+            <span className="block text-base font-semibold leading-tight">Vigil</span>
             <span className="block text-xs text-muted-foreground">operator workbench</span>
           </span>
         </Link>
 
         <nav className="mt-8 flex flex-col gap-1" aria-label="Operator navigation">
           {PRIMARY.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active = isHandoffRoute;
             const Icon = item.icon;
             return (
               <Link
@@ -132,26 +126,22 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className="ml-56 min-w-0 flex-1">
+      <div className="ml-[252px] min-w-0 flex-1">
         <div className="sticky top-0 z-30">
-          {/* Same strip, same place, on all three surfaces. That is what makes
-              a paused frame legible: a viewer compares one band against the
-              one they saw a moment ago, not two different page designs. */}
-          <IdentityBar identity={identity} />
-
-          <header className="flex h-16 items-center justify-between border-b bg-background/95 px-8 backdrop-blur-sm">
-            <div className="text-sm text-muted-foreground">
-              Process handoffs that need a decision
+          <header className="flex min-h-24 flex-wrap items-center justify-between gap-x-8 gap-y-3 border-b bg-background/95 px-9 py-4 backdrop-blur-sm">
+            <div className="min-w-80 flex-1">
+              <div className="text-xl font-semibold">{shellCopy.title}</div>
+              <div className="mt-1 max-w-xl text-xs text-muted-foreground">{shellCopy.description}</div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="ml-auto flex shrink-0 items-center gap-4">
               <RoleSwitcher />
-              <Suspense fallback={<div className="h-8 w-[26rem]" aria-hidden="true" />}>
+              <Suspense fallback={<div className="h-12 w-52" aria-hidden="true" />}>
                 <DemoDataControl />
               </Suspense>
             </div>
           </header>
         </div>
-        <main className="mx-auto max-w-[1680px] px-8 py-6">{children}</main>
+        <main className="mx-auto max-w-[1680px] px-9 py-6">{children}</main>
       </div>
     </div>
   );

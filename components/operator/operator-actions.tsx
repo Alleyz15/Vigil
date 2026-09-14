@@ -6,6 +6,7 @@ import { Check, FileQuestion, Route, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { HandoffState } from "@/lib/workbench";
 import type { OperatorActionName } from "@/lib/workbench/types";
+import { operatorActionAvailability } from "./handoff-detail-model";
 
 export function OperatorActions({
   eventId,
@@ -21,6 +22,7 @@ export function OperatorActions({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const availability = operatorActionAvailability({ state, rerouteAvailable });
   const resolved = state.startsWith("resolved_") || state === "accepted";
 
   const act = (action: OperatorActionName) => {
@@ -46,7 +48,7 @@ export function OperatorActions({
 
   return (
     <div>
-      {state === "awaiting_cosignature" && (
+      {availability.approve && (
         <Button className="w-full" size="lg" disabled={pending} onClick={() => act("approve")}>
           <Check data-icon="inline-start" />
           Approve and co-sign
@@ -60,7 +62,7 @@ export function OperatorActions({
         </Button>
         <Button
           variant="outline"
-          disabled={pending || !rerouteAvailable}
+          disabled={pending || !availability.propose_reroute}
           title={rerouteAvailable ? "Propose the authorised reroute" : rerouteReason}
           onClick={() => act("propose_reroute")}
         >
