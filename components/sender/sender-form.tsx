@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
 import { cn } from "@/lib/utils";
 import type { BuiltFault } from "@/lib/generate/builder";
+import { RegisteredAddressMap } from "./registered-address-map";
 
-export type SenderAddress = { index: number; label: string };
+export type SenderAddress = { index: number; label: string; latitude?: number; longitude?: number };
 
 export type SenderPolicy = {
   cosignOverSen: number | null;
@@ -18,12 +19,12 @@ export type SenderPolicy = {
 };
 
 const FAULTS: { value: BuiltFault; label: string; detail: string }[] = [
-  { value: "none", label: "None", detail: "An ordinary shipment. Every leg should accept." },
+  { value: "none", label: "None", detail: "No injected fault. The verifier still checks the shipment." },
   { value: "gps_spoof", label: "GPS spoof", detail: "The delivery scan claims the doorstep from elsewhere." },
   { value: "clock_tamper", label: "Clock tamper", detail: "The handset claims the scan happened in the server's future." },
   { value: "out_of_scope", label: "Out of scope", detail: "A parcel the courier's mandate does not cover." },
   { value: "eventid_reuse", label: "Event ID reuse", detail: "The same event ID resubmitted with different content." },
-  { value: "batch_scan", label: "Batch scanning", detail: "Needs dozens of parcels to one building — not expressible here." },
+  { value: "batch_scan", label: "Batch scanning", detail: "Batch scanning is a property of a set, not of one parcel: it needs multiple parcels addressed to one building. A single shipment cannot express it." },
 ];
 
 function ringgit(sen: number): string {
@@ -41,8 +42,8 @@ export function SenderForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [originIndex, setOriginIndex] = useState(0);
-  const [destinationIndex, setDestinationIndex] = useState(20);
+  const [originIndex, setOriginIndex] = useState(addresses.find((a) => a.index === 0)?.index ?? addresses[0]?.index ?? 0);
+  const [destinationIndex, setDestinationIndex] = useState(addresses.find((a) => a.index === 20)?.index ?? addresses[1]?.index ?? 0);
   const [valueRinggit, setValueRinggit] = useState("120.00");
   const [channel, setChannel] = useState("+60119990001");
   const [recipientName, setRecipientName] = useState("");
@@ -69,7 +70,7 @@ export function SenderForm({
 
   const sameEnds = originIndex === destinationIndex;
   const batchRefused = fault === "batch_scan";
-  const canSubmit = !pending && !sameEnds && !batchRefused && declaredValueSen > 0;
+  const canSubmit = !pending && !sameEnds && !batchRefused && Number.isSafeInteger(declaredValueSen) && declaredValueSen > 0 && channel.length >= 3 && addresses.some((a) => a.index === originIndex) && addresses.some((a) => a.index === destinationIndex);
 
   const faultDetail = useMemo(
     () => FAULTS.find((f) => f.value === fault)?.detail ?? "",
@@ -79,6 +80,7 @@ export function SenderForm({
   const submit = () => {
     setError(null);
     startTransition(async () => {
+      try {
       const response = await fetch("/api/sender/shipments", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -100,11 +102,14 @@ export function SenderForm({
       // Stays here: the parcel is out for delivery and the delivery scan is a
       // separate act. That gap is what makes a mid-route correction possible.
       router.refresh();
+      } catch {
+        setError("The request could not be confirmed. Reload before retrying; creation may have completed.");
+      }
     });
   };
 
   return (
-    <div>
+    <div id="create-shipment" className="scroll-mt-6">
       {/*
         The page's subject. At text-base it sat below the identity strip in
         weight, and the strip is background — who you are, not what you are here
@@ -112,9 +117,7 @@ export function SenderForm({
       */}
       <h1 className="text-2xl font-semibold">Create a shipment</h1>
       <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">
-        What you declare here is what the system later checks the courier against: the address
-        their scan is measured from, the value that decides whether an operator must co-sign, and
-        the channel the one-time code is verified through.
+        Declare the delivery point, parcel value and recipient channel the courier will be checked against.
       </p>
 
       <div className="mt-4">
@@ -123,6 +126,9 @@ export function SenderForm({
         </ProvenanceLabel>
       </div>
 
+      <div className="sender-workspace mt-6">
+      <section className="min-w-0 rounded-lg border bg-card p-5">
+      <h2 className="text-sm font-semibold">Shipment details</h2>
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
         <Field label="Collect from">
           <Select value={originIndex} onChange={setOriginIndex} options={addresses} />
@@ -143,6 +149,7 @@ export function SenderForm({
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">RM</span>
             <input
+              aria-label="Declared value"
               inputMode="decimal"
               value={valueRinggit}
               onChange={(event) => setValueRinggit(event.target.value)}
@@ -200,6 +207,9 @@ export function SenderForm({
           </p>
         )}
       </div>
+      </section>
+      <RegisteredAddressMap addresses={addresses} originIndex={originIndex} destinationIndex={destinationIndex} onOriginChange={setOriginIndex} onDestinationChange={setDestinationIndex} />
+      </div>
     </div>
   );
 }
@@ -239,26 +249,23 @@ function ValueConsequence({
         <>
           <span className="flex items-center gap-2 font-medium">
             <PenLine aria-hidden="true" className="size-4 shrink-0" />
-            An operator co-signature will be required
+            The amount condition requires an operator co-signature
           </span>
           <span className="mt-1 block">
-            {ringgit(declaredValueSen)} is above {ringgit(policy.cosignOverSen ?? 0)}, the figure{" "}
-            {policy.courier}&apos;s mandate sets for a parcel that needs a second signature. The
-            courier&apos;s signature alone will be cryptographically valid and still insufficient,
-            so nothing seals until an operator signs.
+            {ringgit(declaredValueSen)} is above {ringgit(policy.cosignOverSen ?? 0)}, the amount threshold provided by the current policy.
           </span>
         </>
       ) : (
         <span>
-          {ringgit(declaredValueSen)} is at or below {ringgit(policy.cosignOverSen ?? 0)}, so this
-          handoff can seal on the courier&apos;s signature alone.
+          {policy.cosignOverSen === null ? "No amount-based co-sign condition is listed in the policy." : `${ringgit(declaredValueSen)} is at or below ${ringgit(policy.cosignOverSen)}: the amount condition does not require co-signing.`}
         </span>
       )}
 
+      <span className="mt-1 block text-xs">Other risk or evidence conditions may still require an operator signature.</span>
       {overMaxValue && (
         <span className="mt-2 flex items-center gap-2 font-medium">
           <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
-          Above the mandate&apos;s {ringgit(policy.maxValueSen)} ceiling — the gate will escalate.
+          Above the mandate&apos;s {ringgit(policy.maxValueSen)} ceiling. The gate applies mandate limits independently of co-signing.
         </span>
       )}
       {overCodCap && !overMaxValue && (

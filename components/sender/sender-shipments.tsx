@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { MapPinned, PackageCheck, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ProvenanceLabel } from "@/components/operator/provenance-label";
 import type { SenderShipmentView } from "@/lib/workbench/service";
 import type { SenderAddress } from "./sender-form";
 
@@ -28,14 +29,13 @@ export function SenderShipments({
   shipments: SenderShipmentView[];
   addresses: SenderAddress[];
 }) {
-  if (shipments.length === 0) return null;
-
   return (
-    <section className="mt-10">
-      <h2 className="text-sm font-semibold">Dispatched</h2>
+    <section id="pending-deliveries" className="mt-10 scroll-mt-6 border-t pt-6">
+      <h2 className="text-lg font-semibold">Awaiting delivery scan</h2>
       <p className="mt-1 max-w-prose text-xs leading-5 text-muted-foreground">
-        Out for delivery. The courier has the parcel; the delivery scan has not happened yet.
+        Pending delivery scans only — not complete shipment history or live tracking.
       </p>
+      {shipments.length === 0 && <p className="mt-4 text-sm text-muted-foreground">No pending delivery scans.</p>}
 
       <ul className="mt-4 flex flex-col gap-3">
         {shipments.map((shipment) => (
@@ -63,6 +63,7 @@ function Shipment({
   const post = (path: string, body?: unknown, then?: (result: Record<string, unknown>) => void) => {
     setError(null);
     startTransition(async () => {
+      try {
       const response = await fetch(`/api/sender/shipments/${shipment.runId}/${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -75,11 +76,15 @@ function Shipment({
       }
       if (then) then(result);
       else router.refresh();
+      } catch {
+        setError("The request could not be confirmed. Reload before retrying; the action may have completed.");
+      }
     });
   };
 
   return (
-    <li className="rounded-lg bg-muted/50 p-4">
+    <li className="sender-shipment overflow-hidden rounded-lg border bg-card">
+      <div className="min-w-0 p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <span className="font-mono text-sm">{shipment.waybillNo}</span>
         <span className="text-xs text-muted-foreground">
@@ -98,6 +103,8 @@ function Shipment({
           />
         )}
       </dl>
+      </div>
+      <div className="min-w-0 border-t p-5">
 
       {!shipment.correction && (
         <div className="mt-4">
@@ -110,6 +117,7 @@ function Shipment({
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <select
+              aria-label={`Correct address for ${shipment.waybillNo}`}
               value={target}
               onChange={(event) => setTarget(Number(event.target.value))}
               className="h-9 min-w-0 flex-1 rounded-md bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -133,12 +141,18 @@ function Shipment({
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      {shipment.correction && <p className="text-xs leading-5 text-muted-foreground">Address correction recorded. The original delivery reference is preserved.</p>}
+      </div>
+      <div className="min-w-0 space-y-3 border-t bg-amber-50/50 p-5">
+        <ProvenanceLabel>Demo control · not product behaviour</ProvenanceLabel>
+        <p className="text-xs leading-5 text-muted-foreground">Act on behalf of the courier to submit the held delivery scan.</p>
         <Button
           disabled={pending}
           onClick={() =>
             post("deliver", undefined, (result) =>
-              router.push(`/operator/handoffs/${encodeURIComponent(String(result.eventId))}`),
+              typeof result.eventId === "string" && result.eventId.length > 0
+                ? router.push(`/operator/handoffs/${encodeURIComponent(result.eventId)}`)
+                : setError("The response has no handoff reference. Reload before retrying."),
             )
           }
         >
@@ -154,10 +168,11 @@ function Shipment({
             ? "To the corrected address. The check will compare it against the record above."
             : "To the address on record."}
         </span>
+        <p className="text-xs leading-5 text-muted-foreground">After the scan, open operator detail. The result may be sealed or still awaiting co-signature.</p>
       </div>
 
       {error && (
-        <p role="alert" className="mt-2 text-xs leading-5 text-red-700 dark:text-red-400">
+          <p role="alert" className="p-5 text-xs leading-5 text-red-700 dark:text-red-400">
           {error}
         </p>
       )}

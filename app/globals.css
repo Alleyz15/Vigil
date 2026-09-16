@@ -2,6 +2,32 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+.courier-sidebar { position: fixed; inset: 0 auto 0 0; width: 252px; display: flex; flex-direction: column; }
+.courier-main { margin-left: 252px; }
+.sender-sidebar { position: fixed; inset: 0 auto 0 0; width: 252px; display: flex; flex-direction: column; }
+.sender-main { margin-left: 252px; }
+body:has(.sender-main) { min-width: 0; }
+.sender-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: start; gap: 24px; }
+.sender-shipment { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr) minmax(0, 1fr); }
+@media (max-width: 1199px) { .sender-shipment { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1199px) { .sender-workspace { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 767px) {
+  .sender-sidebar { position: static; width: auto; }
+  .sender-sidebar nav { margin-top: 12px; flex-direction: row; flex-wrap: wrap; }
+  .sender-sidebar > p { display: none; }
+  .sender-main { margin-left: 0; }
+}
+body:has(.courier-main) { min-width: 0; }
+.courier-workspace { display: grid; grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.6fr); align-items: start; gap: 24px; }
+@media (max-width: 1100px) {
+  .courier-workspace { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .courier-sidebar { position: static; width: auto; }
+  .courier-sidebar nav, .courier-sidebar > p { display: none; }
+  .courier-main { margin-left: 0; }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -172,6 +198,29 @@
 
 .leaflet-container {
   font-family: var(--font-inter), sans-serif;
+}
+
+.injection-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.injection-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+@media (max-width: 1199px) {
+  .injection-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .injection-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @keyframes map-evidence-focus {

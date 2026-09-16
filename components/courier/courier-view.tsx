@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw } from "lucide-react";
+import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw, MapPin, Package, PenLine, Shield } from "lucide-react";
 import type { CourierOutcome, CourierOutcomeKind } from "@/lib/workbench/courier";
 import type { CourierDraft } from "@/lib/workbench/service";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,8 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
   const [drafts, setDrafts] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState(initial[0]?.draftId ?? null);
+  const selected = drafts.find((draft) => draft.draftId === selectedId) ?? drafts[0];
 
   async function submit(draftId: string, signed: boolean) {
     setBusy(`${draftId}:${signed}`);
@@ -49,6 +51,7 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
       if (!response.ok) throw new Error(payload.error ?? "submission failed");
 
       const listing = await fetch("/api/courier/drafts", { cache: "no-store" });
+      if (!listing.ok) throw new Error("Could not refresh the handoff listing. Submission may have completed; reload before retrying.");
       const { items } = (await listing.json()) as { items: CourierDraft[] };
       setDrafts(items);
     } catch (caught) {
@@ -60,11 +63,9 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
 
   return (
     <div>
-      {/* No page header here: the shell's identity strip already says who this
-          is, and repeating it would spend the narrow column on furniture. */}
-      <h1 className="text-base font-semibold">Your handoffs</h1>
+      <h1 className="text-2xl font-semibold">Your handoffs</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Submit a scan and sign it with your device key.
+        Choose a prepared delivery scan and sign it with your device key.
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -77,16 +78,25 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
         </p>
       )}
 
-      <ul className="mt-4 flex flex-col gap-4">
+      <div className="courier-workspace mt-6">
+      <section aria-label="Prepared delivery scans" className="min-w-0 overflow-hidden rounded-lg border bg-card">
+        <div className="border-b p-5"><h2 className="text-sm font-semibold">Prepared delivery scans <Badge variant="secondary" className="ml-2">{drafts.length} drafts</Badge></h2></div>
+      <ul>
         {drafts.map((draft) => (
-          <DraftCard
-            key={draft.draftId}
-            draft={draft}
-            busy={busy}
-            onSubmit={(signed) => submit(draft.draftId, signed)}
-          />
+          <li key={draft.draftId} className="border-b">
+            <button type="button" aria-pressed={selected?.draftId === draft.draftId} onClick={() => setSelectedId(draft.draftId)} className={cn("w-full p-5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary", selected?.draftId === draft.draftId && "bg-sidebar-accent")}>
+              <span className="block text-sm font-semibold">{draft.title}</span>
+              <span className="mt-3 flex items-center gap-2 font-mono text-xs"><Package aria-hidden="true" className="size-4 shrink-0" />{draft.waybillNo}</span>
+              <span className="mt-2 flex items-start gap-2 text-xs text-muted-foreground"><MapPin aria-hidden="true" className="size-4 shrink-0" />{draft.recipientAddress}</span>
+              <span className="mt-3 block font-mono text-xs text-muted-foreground">{draft.scenarioId} · {draft.leg}</span>
+            </button>
+          </li>
         ))}
       </ul>
+      <p className="flex gap-2 p-5 text-xs leading-5 text-muted-foreground"><Shield aria-hidden="true" className="mt-0.5 size-4 shrink-0" />The courier supplies evidence and a device signature. The verifier owns the decision.</p>
+      </section>
+      {selected ? <DraftCard draft={selected} busy={busy} onSubmit={(signed) => submit(selected.draftId, signed)} /> : <p className="p-5 text-sm text-muted-foreground">No prepared delivery scans available.</p>}
+      </div>
     </div>
   );
 }
@@ -104,20 +114,26 @@ function DraftCard({
   const sealed = draft.attempts.some((attempt: Attempt) => attempt.outcome.sealed);
 
   return (
-    <li className="overflow-hidden rounded-lg bg-muted/40">
-      <div className="flex flex-wrap items-start justify-between gap-4 px-4 pt-4">
+    <section aria-label="Selected handoff" className="min-w-0 overflow-hidden rounded-lg border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b p-5">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">{draft.title}</h2>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">{draft.waybillNo}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{draft.recipientAddress}</p>
+          <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{draft.eventId}</p>
         </div>
         <Badge variant="outline" className="font-mono text-xs font-normal">
           {draft.scenarioId} · {draft.leg}
         </Badge>
       </div>
-
-      <div className="flex flex-wrap items-center gap-2 px-4 py-4">
+      <dl className="grid gap-5 border-b p-5 sm:grid-cols-3">
+        <div className="min-w-0"><dt className="text-xs text-muted-foreground">Waybill</dt><dd className="mt-2 break-all font-mono text-xs">{draft.waybillNo}</dd></div>
+        <div className="min-w-0"><dt className="text-xs text-muted-foreground">Recipient address</dt><dd className="mt-2 text-sm">{draft.recipientAddress}</dd></div>
+        <div className="min-w-0"><dt className="text-xs text-muted-foreground">EPCIS leg</dt><dd className="mt-2 text-sm">{draft.leg} · {draft.scenarioId}</dd></div>
+      </dl>
+      <div className="p-5"><h3 className="flex items-center gap-2 text-sm font-semibold"><PenLine aria-hidden="true" className="size-4 text-primary" />Courier device signature</h3>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">The credential travels alongside the unchanged EPCIS event, never inside it.</p>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => onSubmit(true)} disabled={busy !== null}>
+          <PenLine aria-hidden="true" className="size-4" />
           {sealed ? "Submit again" : "Sign and submit"}
         </Button>
         {!sealed && draft.attempts.length === 0 && (
@@ -131,10 +147,11 @@ function DraftCard({
             : "Your device signs the scan; the signature travels alongside it, never inside it."}
         </span>
       </div>
+      </div>
 
       {latest && <OutcomePanel outcome={latest.outcome} />}
       {draft.attempts.length > 1 && <AttemptHistory attempts={draft.attempts} />}
-    </li>
+    </section>
   );
 }
 
@@ -197,7 +214,7 @@ function AttemptHistory({ attempts }: { attempts: Attempt[] }) {
       </div>
       <ol className="mt-2 flex flex-col gap-2">
         {attempts.map((attempt) => (
-          <li key={attempt.run.run} className="flex items-baseline gap-2 text-xs">
+          <li key={attempt.run.run} className="flex flex-wrap items-baseline gap-2 text-xs">
             <span className="font-mono text-muted-foreground">#{attempt.run.run}</span>
             <span className={cn("font-medium", TONE[attempt.outcome.kind].text)}>
               {attempt.outcome.headline}

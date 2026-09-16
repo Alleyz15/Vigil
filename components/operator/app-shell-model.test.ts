@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { getOperatorShellCopy } from "./app-shell-model";
+import { getOperatorShellCopy, isFixedInjectionEvidence } from "./app-shell-model";
 
 describe("getOperatorShellCopy", () => {
+  it("uses the measured E4c claim for injection", () => {
+    expect(getOperatorShellCopy("/demo/injection")).toEqual({
+      title: "Injection",
+      description: "Measured E4c evidence: instruction-shaped text moved models, not the deterministic engine.",
+    });
+  });
+
+  it("replaces shipment selection only on injection routes", () => {
+    expect(isFixedInjectionEvidence("/demo/injection")).toBe(true);
+    expect(isFixedInjectionEvidence("/demo/injection/example")).toBe(true);
+    expect(isFixedInjectionEvidence("/demo/injection-other")).toBe(false);
+    expect(isFixedInjectionEvidence("/demo/gate")).toBe(false);
+    expect(isFixedInjectionEvidence("/operator/inbox")).toBe(false);
+  });
   it("uses the gate-specific title and evidence description", () => {
     expect(getOperatorShellCopy("/demo/gate")).toEqual({
       title: "Gate evidence",

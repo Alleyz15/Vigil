@@ -90,6 +90,11 @@ export function HandoffDetailView({
             />
           </section>
 
+          <div className="space-y-2 text-xs leading-5 text-muted-foreground">
+            <ProvenanceLabel>Synthetic cell / WiFi references · not real observations</ProvenanceLabel>
+            <p>Reference signals are derived from the cached address set. GPS and reference-signal contradictions in this demo illustrate the mechanism using simulated evidence, not field measurements.</p>
+          </div>
+
           <ol className="grid grid-cols-6 gap-1.5" aria-label="Shipment legs">
             {detail.timeline.map((leg) => {
               const active = leg.legIndex === activeLegIndex;

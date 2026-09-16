@@ -1,20 +1,9 @@
 import type { RoleIdentity } from "@/lib/workbench/service";
-import { IdentityBar } from "./identity-bar";
+import Link from "next/link";
+import { ClipboardList, FlaskConical, Shield, Waypoints } from "lucide-react";
 import { RoleSwitcher } from "./role-switcher";
 
-/**
- * The courier surface. HANDHELD-SHAPED, and deliberately not an application.
- *
- * NO NAVIGATION, and that absence is the point. A sidebar is the single
- * strongest signal that a viewer is looking at the console; removing it says
- * "this is a different person on a different device" faster than any label
- * could, and it is legible in one frame with the sound off. A courier scanning
- * a parcel has one thing to do, and a surface offering them a work queue would
- * be describing a product nobody is building — see anti-reference 3.
- *
- * The narrow column is doing the same work. Next to the operator's 1680px
- * workspace it reads as a phone held in one hand, which is what it is.
- */
+// Shared visual language, but no operator queue or evidence navigation.
 export function CourierShell({
   identity,
   children,
@@ -23,18 +12,31 @@ export function CourierShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-muted/40">
-      {/* The demo control sits OUTSIDE the device frame, so nothing inside the
-          frame is anything but the courier's own surface. */}
-      <div className="flex justify-end px-4 py-3">
-        <RoleSwitcher />
-      </div>
-
-      <div className="mx-auto max-w-md px-4 pb-16">
-        <div className="overflow-hidden rounded-2xl bg-background shadow-sm">
-          <IdentityBar identity={identity} />
-          <div className="p-4">{children}</div>
-        </div>
+    <div className="min-h-screen bg-background">
+      <aside className="courier-sidebar border-r bg-sidebar px-3.5 py-5">
+        <Link href="/courier" className="flex items-center gap-2 px-2 py-2">
+          <span className="relative flex size-11 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Shield aria-hidden="true" className="absolute size-7" />
+            <Waypoints aria-hidden="true" className="relative size-3.5" />
+          </span>
+          <span><span className="block text-base font-semibold">Vigil</span><span className="block text-xs text-muted-foreground">courier workspace</span></span>
+        </Link>
+        <nav aria-label="Courier navigation" className="mt-8">
+          <Link href="/courier" aria-current="page" className="flex h-9 items-center gap-2 rounded-md bg-sidebar-accent px-3 text-sm font-medium text-sidebar-accent-foreground">
+            <ClipboardList aria-hidden="true" className="size-4" />Your handoffs
+          </Link>
+        </nav>
+        <p className="mt-auto border-t pt-4 text-xs leading-5 text-muted-foreground">Simulated identity · real Ed25519 signatures</p>
+      </aside>
+      <div className="courier-main min-w-0">
+        <header className="flex flex-wrap items-center justify-end gap-4 border-b bg-sidebar px-5 py-4">
+          <RoleSwitcher className="flex-wrap" />
+          <span className="flex items-center gap-2 text-xs text-muted-foreground"><FlaskConical aria-hidden="true" className="size-4" />Seeded synthetic shipments</span>
+        </header>
+        <main className="mx-auto max-w-[1440px] px-5 py-8 md:px-9">
+          <span className="sr-only">Acting courier: {identity.subject}</span>
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -3,10 +3,10 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Link2, Route, Scale, Shield, Syringe, Waypoints } from "lucide-react";
+import { ClipboardList, Database, Link2, Route, Scale, Shield, Syringe, Waypoints } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DemoDataControl } from "./demo-data-control";
-import { getOperatorShellCopy } from "./app-shell-model";
+import { getOperatorShellCopy, isFixedInjectionEvidence } from "./app-shell-model";
 import { RoleSwitcher } from "@/components/shells/role-switcher";
 
 const PRIMARY = [
@@ -135,9 +135,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-4">
               <RoleSwitcher />
-              <Suspense fallback={<div className="h-12 w-52" aria-hidden="true" />}>
-                <DemoDataControl />
-              </Suspense>
+              {isFixedInjectionEvidence(pathname) ? (
+                <div className="flex items-start gap-2">
+                  <Database aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs text-muted-foreground">Evidence source</div>
+                    <div className="mt-1 text-sm font-medium">E4c CSV</div>
+                  </div>
+                </div>
+              ) : (
+                <Suspense fallback={<div className="h-12 w-52" aria-hidden="true" />}>
+                  <DemoDataControl />
+                </Suspense>
+              )}
             </div>
           </header>
         </div>
