@@ -579,7 +579,7 @@ brief states two paragraphs later.**
 below thirty-three pattern rows. The plan also carried one error of its own, stated as 34 rows where
 the queue held 33.
 
-#### Seven lists a person had to remember to update
+#### Eight hand-maintained lists or derived tables a person had to remember to update
 
 The same shape keeps recurring: a set of things is enumerated by hand in one place, the set grows
 somewhere else, and nothing connects the two. Nothing throws; the new member is simply not covered.
@@ -593,6 +593,15 @@ somewhere else, and nothing connects the two. Nothing throws; the new member is 
 | 5 | 20 | guard 8's `CONSOLE_TREES` | `components/sender`, added without updating it |
 | 6 | 20 | guard 9's `VIEW_TREES` | `sender`, `evidence`, `ledger` — found in session 21 by enumerating |
 | 7 | 20 | guard 8 again, one level down | subdirectories: the walk read the top level only |
+| 8 | 16; found in the 2026-09-17 results audit | RESULTS.md's E3 episode table, transcribed separately from the main curve | the main curve was refreshed for identity evidence, but charged-mid-shift and handset-swap rows retained pre-identity counts |
+
+**Instance 8 is a partial refresh, not a detector change.** The archived reporting CSV
+in `ef4c2f0` contains 8 alerted charged-mid-shift shipments out of 49 (16.3%) and
+8 alerted handset-swap shipments out of 8 (100.0%). The document retained 5/49
+(10.2%) and 1/8 (12.5%) from `c2d8f7b` while updating the main curve to
+0.4% / 0.9% / 2.2%. Nothing checked that all derived rows belonged to the same
+result version. The 2026-09-17 correction changes the document, not the CSV,
+generator, thresholds or any historical session result.
 
 (The brief counted guard 8 as the seventh; the table above is the set that can be sourced from
 this file and the code. Rows 5 and 7 are the same list failing on two axes.)

@@ -182,7 +182,7 @@ decisions, all of them `flag` rather than `escalate` or `freeze`.
 |---|---|
 | 1 | I15 ×2, I10 ×2, H1 ×1, I6 ×1, I16 ×1 |
 | 2 | H1 ×4, I6 ×3, I16 ×3, I15 ×3, I10 ×2, I1 ×1, I11 ×1 |
-| 3 | I16 ×11, I6 ×8, H1 ×7, I15 ×6, I9 ×5, I14 ×4, I10 ×4, I1 ×4, I11 ×4, P5 ×2 |
+| 3 | I16 ×11, I6 ×8, H1 ×7, I15 ×6, I9 ×6, I14 ×5, I10 ×4, I1 ×4, I11 ×4, P5 ×2 |
 
 **Per episode**, from the generator's own record of what it drew — not inferred back out of the
 events, which would mean explaining the detector's output with the detector's own measurement.
@@ -192,8 +192,8 @@ events, which would mean explaining the detector's output with the detector's ow
 | Recipient absent → redelivery | 33 | 0 | 0.0% |
 | Address correction mid-route | 16 | 9 | 56.3% |
 | Missed scan | 27 | 10 | 37.0% |
-| Charged mid-shift | 49 | 5 | 10.2% |
-| Handset swap | 8 | 1 | 12.5% |
+| Charged mid-shift | 49 | 8 | 16.3% |
+| Handset swap | 8 | 8 | 100.0% |
 | Stale recipient channel | 6 | 6 | 100.0% |
 | Temporary attestation downgrade | 15 | 5 | 33.3% |
 
@@ -630,9 +630,9 @@ whole-system alert rate on clean data is dominated by things this sweep does not
 so counting every alert here would report E3's number under E6's heading and hide the edge
 entirely. Both columns are in the CSV.
 
-| Limit (km/h) | Detection | I3 false positives (identical at levels 0–3) |
+| Limit (km/h) | Detection | I3 false positives |
 |---|---|---|
-| 20 | 100% | **93.8%** |
+| 20 | 100% | **93.8%** at levels 0–2; **87.5%** at level 3 |
 | 30 | 100% | 56.3% |
 | 40 | 100% | 56.3% |
 | **50** | **100%** | **0.0%** |
