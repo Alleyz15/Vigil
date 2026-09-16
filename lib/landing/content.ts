@@ -108,7 +108,7 @@ export const SECTIONS: Section[] = [
     eyebrow: "Measured, not asserted",
     title: "Every number here came from a run we committed predictions against",
     body: [
-      "Detection is measured on a deterministic holdout, with the reporting half untouched until the implementation is frozen. False positives are measured against synthetic fleets carrying real environmental noise — degraded GPS, queued uploads, missed scans, clock drift — with every noise parameter carrying a citation or the word assumption.",
+      "Detection is measured on a deterministic holdout, with the reporting half untouched until the implementation is frozen. False positives are measured against synthetic fleets carrying modelled environmental noise — degraded GPS, queued uploads, missed scans, clock drift — with every noise parameter carrying a citation or the word assumption.",
       "The ledger is a hash-chained file, not a table, and you can verify it in your own browser. Tamper with a record and it names the index where the chain breaks.",
     ],
     stats: [
@@ -170,7 +170,7 @@ export const PIPELINE_REVEAL = {
 };
 
 export const LIMITS = [
-  "A rooted device operated by someone colluding with the recipient is out of reach. That is a boundary of the idea, and it is measured rather than hidden.",
+  "In E1's level 4, an attacker with a patched build forging the radio environment, synthesised motion and battery signals, and a colluding recipient completed all 40 attempts undetected in each of 12 runs. Root access alone is not this measured boundary.",
   "A hub that chronically loses its departure scan is frozen every time — narrow over-refusal, stated and not softened.",
   "Identity is simulated; the signatures are real Ed25519 and verified by the same code used everywhere else.",
 ];
