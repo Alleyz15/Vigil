@@ -134,6 +134,13 @@ plausibility. They are the values a reader should press on.
 
 ### Two modelling decisions worth stating
 
+**Noise-model version:** session 10 introduced levels 0–3. Session 16 (`695cf3d`)
+added the stale-recipient-channel and temporary-attestation-downgrade episodes
+shown above. Both are zero at level 0; their L1 / L2 / L3 probabilities are
+0.3% / 1% / 3% and 0.5% / 2% / 5%, respectively. This addition did not change
+the existing GPS, upload-delay or clock-profile parameters. Results from older
+commits must be read with their corresponding noise-model version.
+
 **The reported accuracy and the actual error are drawn separately.** A receiver's accuracy figure
 is a confidence radius, not a measurement of its own error. The true error is a Rayleigh draw
 scaled so the reported figure is its 68th percentile, so a fix can be **precise-looking and

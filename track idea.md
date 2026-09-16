@@ -366,6 +366,7 @@ CourierMandate {
                      fetch_route_history
                      check_traffic_weather
                      lookup_recipient_history
+                     check_address_history
                      出错或 lite 模式 → 完全相同的确定性启发式
 
 4. verify            确定性引擎 — **轴 1：单次不一致性**
@@ -375,7 +376,9 @@ CourierMandate {
 5. fetch_history     （条件）该快递员/路线近期行为
                      — **轴 2：累积模式** P1–P5（滑动窗口）
 
-6. external_context  （条件）天气/交通，用于解释异常停留
+6. external_context  （条件）执行 plan 选中的工具：快递员近期交接、
+                     收件通道投诉历史、地址历史及区域天气
+                     仅作解释佐证，不进入 gate；没有交通供应商
 
 7. gate              **两个轴在这里交汇，而且只在这里**
                      正交矩阵 → accept | flag | escalate | freeze
@@ -675,7 +678,7 @@ vitest
 | **Technical implementation** | 25% | EPCIS 标准建模、确定性引擎、幂等 append-only 账本、Ed25519 co-sign、zod schema 强制 |
 | **Problem relevance** | 20% | GDEX 是冠名方，这是他们的真实痛点；三条痛点各带具体后果 |
 | **Effective use of Agentic AI** | 20% | 封闭枚举工具选择、LLM 不产判决、SSE 可见推理、schema 防幻觉、诚实限制 |
-| **Cybersecurity value** | 20% | 攻击者成本量化、五类注入攻击检出率、重放防护、作用域授权 |
+| **Cybersecurity value** | 20% | 攻击者成本量化、七类模型化攻击检出率、重放防护、作用域授权 |
 | **Presentation & usability** | 15% | 双轴门探索器、四档判决可展开、三个反直觉案例 |
 
 ### Brief 六项演示要求逐项对照

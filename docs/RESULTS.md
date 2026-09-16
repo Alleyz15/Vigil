@@ -16,6 +16,10 @@ npm run experiment:e5:providers  # cross-provider enforcement
 
 Base seed `vigil-2026`. Holdout seed `vigil-holdout-2026`.
 
+The commands above write to `results/` and replace the corresponding CSVs.
+Running them on current code is a new measurement, not a reconstruction of an older
+configuration; use the archived commit when checking a historical result.
+
 ---
 
 ## Read this first
@@ -51,6 +55,13 @@ One post-run trace corrected the experiment-only replacement enrollment from the
 to another courier in `8185703`; E2 was rerun on both halves and remained byte-for-byte equivalent
 in its reported outcome. E3 does not build that case and was unaffected.
 
+**Optional tools changed in session 18 (`0d5b90e`).** The closed enum grew from three
+to four entries, but effective implementations grew from one to four:
+`fetch_route_history` and `lookup_recipient_history` previously did nothing when
+selected. Both now query stored context, alongside the existing weather tool and
+the new `check_address_history`. These optional results can affect explanations,
+not sealed verdicts. This change did not produce a new E1/E2/E3/E6 result archive.
+
 ---
 
 ## E1 — Attacker cost
@@ -63,6 +74,10 @@ npx tsx scripts/experiments/e1-attacker-cost.ts     # results/e1-attacker-cost.c
 
 n = 12 seeds per level, max 40 forged deliveries per run, reporting half only.
 
+**Historical configuration:** session 9, archived in `1d6cde6`, without the
+environmental noise model or the later I15/I16 identity rules. This experiment
+has not been archived again under those additions.
+
 | Level | Capability | Detected | Mean completed | Worst case | Caught by |
 |---|---|---|---|---|---|
 | 0 | A mock-location app | **12/12** | 0.0 | 0 | I1, I7 |
@@ -71,8 +86,10 @@ n = 12 seeds per level, max 40 forged deliveries per run, reporting half only.
 | 3 | + synthesised accelerometer and battery | **12/12** | 9.4 | 14 | **P2** |
 | 4 | + a recipient who agrees not to complain | **0/12** | 40.0 | 40 | — |
 
-**What this shows.** Cost rises sharply with capability, and the *mechanism* of detection
-changes. Levels 0–1 are caught instantly on a single event. Levels 2–3 defeat every single-event
+**What this shows.** More capable attackers can complete deliveries before detection, and
+the *mechanism* of detection changes. The observed means do not increase strictly with
+capability: level 3 completed fewer than level 2 in this sample. Levels 0–1 are caught
+instantly on a single event. Levels 2–3 defeat every single-event
 check and are caught anyway — by **P2, the customer complaint**, after about ten deliveries.
 That is the pattern axis catching what no single event contains.
 
@@ -157,6 +174,22 @@ npx tsx scripts/experiments/e3-false-positives.ts   # results/e3-false-positives
 n = 120 seeds per scenario per noise level, reporting half only. 960 shipments, 5,805 legs.
 Session 16 uses the same seeds and denominators as session 11, so the identity cost is directly
 comparable rather than inferred from a different sample.
+
+### Superseded reporting curves
+
+These are historical measurements, not alternative estimates from the current configuration.
+CSV paths were reused; the commit identifies which archived file to read.
+
+| Run | Archived CSV commit | L1 / L2 / L3 alerts | L1 / L2 / L3 per-leg rate |
+|---|---|---|---|
+| Session 10: environmental noise, old absolute clock rule | `a76fd4c`, `results/e3-false-positives.csv` | 3 / 50 / 184 | 0.2% / 3.5% / 12.4% |
+| Session 11: directional I4/I5, before identity rules | `c2d8f7b`, `results/e3-false-positives.csv` | 3 / 7 / 18 | 0.2% / 0.5% / 1.2% |
+| Session 16: identity evidence, current archived reporting curve | `ef4c2f0`, `results/e3-false-positives.csv` | 6 / 13 / 32 | 0.4% / 0.9% / 2.2% |
+
+All three runs used L1 / L2 / L3 denominators of 1,447 / 1,439 / 1,479 legs.
+Session 16 added stale-recipient-channel and temporary-attestation-downgrade episodes
+to the noise model in `695cf3d`; it did not retune the earlier GPS, clock or upload
+parameters. The detailed tables below describe session 16 unless explicitly dated otherwise.
 
 > **The earlier number was 0% across 240 legs, and it was a floor, not a rate.** The generator's
 > clean shipments had bounded noise by construction — GPS 6–18 m, latency 8–90 s, a battery that
@@ -303,10 +336,17 @@ npm run llm:validate                 # results/provider-live-validation.csv
 ```
 
 Session 14 exercised three exact models: **`gemini-3.5-flash-lite`**,
-**`claude-haiku-4-5-20251001`** and local **`qwen2.5:7b`**. The live suite passed **10/10**,
+**`claude-haiku-4-5-20251001`** and local **`qwen2.5:7b`**. The session log records that the
+dedicated live test suite passed **10/10**,
 including real plan/explain calls and byte-identical sealed verdict and ledger meaning with
 `llm: undefined` and each provider. The model can alter optional evidence gathering and prose;
 it still has no route to the verdict.
+
+**Separate evidence sources:** `results/provider-live-validation.csv`, archived in
+`7a7c1d7`, contains seven preflight operations: plan and explain for each of three
+providers, plus one Ollama warm-up. Seven CSV calls are not ten test passes. The
+10/10 figure is the session 14 test-run report in CLAUDE.md, not a count inferred
+from this CSV; no live suite was rerun for this documentation update.
 
 Ollama's configured model was confirmed through `/api/tags` before use. Its cold-process warm-up
 took 15.6 s; the recorded already-loaded warm-up took 0.66 s, followed by a 1.45 s plan and
@@ -328,13 +368,17 @@ with an explicit API-version header; Ollama uses the documented native
 
 ### Retained Session 13 Gemini preflight
 
-The live suite passed **7/7**, including connectivity, deterministic `plan` fallback, accepted
+The session 13 test-run report in CLAUDE.md records **7/7** live tests, including
+connectivity, deterministic `plan` fallback, accepted
 `explain`, and a parity run whose sealed verdict is byte-identical with and without Gemini. On the
 final recorded run, `plan` exceeded its 20-second integration deadline and selected tools with the
 same deterministic heuristic used offline; `explain` returned a schema-valid live response. That
 timeout is the fallback working, not a successful plan completion. Both ledger chains verify and
 commit to the same event payload and verdict; their wall-clock `recordedAt` fields and therefore
 their hash bytes are expected to differ between separate runs.
+
+This is a different test run from session 14's 10/10 and is not derived from
+the seven-operation session 14 preflight CSV.
 
 The first live attempt found two configuration bugs before it measured a model. The provider and
 `.env.example` still defaulted to retired `gemini-2.0-flash`, and `.env` declared
@@ -366,6 +410,9 @@ npm run experiment:e4a               # results/e4a-cross-vendor.csv
 Three neutral delivery fixtures × three providers × five calls = **45 attempts**, temperature
 zero. Every provider was internally consistent in every cell and every response parsed as the
 closed decision object.
+
+Exact models in the session 14 archive (`7a7c1d7`): `gemini-3.5-flash-lite`,
+`claude-haiku-4-5-20251001`, and `qwen2.5:7b`. Each CSV row records its model ID.
 
 | Case | Gemini | Claude Haiku | Qwen 2.5 7B | Pairwise vendor agreement | Engine |
 |---|---|---|---|---:|---|
@@ -630,6 +677,11 @@ npx tsx scripts/experiments/e6-threshold-sensitivity.ts    # results/e6-threshol
 
 n = 16 attack + 16 clean seeds per point, per noise level. 15 sweep points × 4 levels = 1,920
 runs. Attacks claim 40–115 km in 30 minutes (80–230 km/h implied), reporting half only.
+
+**Historical configuration:** the current CSV is the session 11 archive in `c2d8f7b`,
+after directional I4/I5, using the session 10 environmental noise model. No E6
+rerun was archived after session 16 added identity rules and noise episodes.
+The table reports that historical speed sweep, not a current whole-system alert rate.
 
 **The false positive this sweep is about is I3 firing on a clean shipment.** Under noise the
 whole-system alert rate on clean data is dominated by things this sweep does not vary — see E3 —
