@@ -1,11 +1,10 @@
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { postJson } from "./post-json.mjs";
+import { captureStable } from "./stable-capture.mjs";
 
 const ROOT = process.cwd();
-const OUT = join(ROOT, "docs", "screenshots", "session-17a");
+const OUT = process.env.VIGIL_QA_OUT ?? join(ROOT, "docs", "screenshots", "session-17a");
 const BASE = process.env.VIGIL_BASE_URL ?? "http://localhost:3000";
 
 const candidates = [
@@ -23,7 +22,7 @@ if (!chromePath) throw new Error("Chrome not found. Set CHROME_PATH to its execu
 mkdirSync(OUT, { recursive: true });
 
 /**
- * `reducedMotion` forces the viewer's reduced-motion preference.
+ * All still frames force reduced motion and wait for settled pixels.
  *
  * Headless virtual time does not finish a JavaScript-driven camera animation.
  * The stale-record frame came back as a grey rectangle with a route line on it:
@@ -37,36 +36,10 @@ mkdirSync(OUT, { recursive: true });
  * camera jump instead of fly, and the frame is the settled state a still should
  * show anyway.
  */
-function capture(name, path, options = {}) {
-  const profile = mkdtempSync(join(tmpdir(), "vigil-capture-"));
+async function capture(name, path) {
   const target = join(OUT, name);
-  try {
-    const result = spawnSync(
-      chromePath,
-      [
-        "--headless=new",
-        "--hide-scrollbars",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--window-size=1920,1080",
-        "--force-device-scale-factor=1",
-        "--run-all-compositor-stages-before-draw",
-        "--virtual-time-budget=5000",
-        ...(options.reducedMotion ? ["--force-prefers-reduced-motion"] : []),
-        `--user-data-dir=${profile}`,
-        `--screenshot=${target}`,
-        `${BASE}${path}`,
-      ],
-      { encoding: "utf8", timeout: 30_000 },
-    );
-
-    if (result.status !== 0) {
-      throw new Error(result.stderr || `Chrome exited with status ${result.status}.`);
-    }
-    process.stdout.write(`${target}\n`);
-  } finally {
-    rmSync(profile, { recursive: true, force: true });
-  }
+  await captureStable(chromePath, `${BASE}${path}`, target);
+  process.stdout.write(`${target}\n`);
 }
 
 /**
@@ -117,14 +90,14 @@ if (!pendingS1) {
   );
 }
 
-capture("operator-inbox-1920x1080.png", "/operator/inbox?scenario=S1");
-capture("all-handoffs-1920x1080.png", "/operator/handoffs");
-capture(
+await capture("operator-inbox-1920x1080.png", "/operator/inbox?scenario=S1");
+await capture("all-handoffs-1920x1080.png", "/operator/handoffs");
+await capture(
   "handoff-s1-pending-1920x1080.png",
   `/operator/handoffs/${encodeURIComponent(pendingS1.eventId)}`,
 );
-capture("courier-submission-1920x1080.png", "/courier");
-capture("gate-evidence-1920x1080.png", "/demo/gate");
+await capture("courier-submission-1920x1080.png", "/courier");
+await capture("gate-evidence-1920x1080.png", "/demo/gate");
 
 /**
  * The sender, so all four role surfaces exist as evidence at one size.
@@ -133,7 +106,7 @@ capture("gate-evidence-1920x1080.png", "/demo/gate");
  * anything: the declaration is what this surface is for, and a viewer comparing
  * the four frames should see a merchant at a desk, not a result page.
  */
-capture("sender-1920x1080.png", "/sender");
+await capture("sender-1920x1080.png", "/sender");
 
 /**
  * The dev server intermittently resets a connection when several large JSON
@@ -213,7 +186,7 @@ async function runSequence(name, steps) {
       const problem = data ? step.check(data, context) : "the state could not be read";
       if (problem) throw new Error(`${where}: ${problem}`);
     } else if (step.kind === "capture") {
-      capture(step.frame, step.path(context), { reducedMotion: step.reducedMotion });
+      await capture(step.frame, step.path(context));
     }
   }
   return context;
@@ -247,7 +220,7 @@ if (!recipientToken) {
       "otherwise be captured from a page that cannot show what its filename claims.",
   );
 }
-capture("recipient-confirm-1920x1080.png", `/confirm/${encodeURIComponent(recipientToken)}`);
+await capture("recipient-confirm-1920x1080.png", `/confirm/${encodeURIComponent(recipientToken)}`);
 
 /**
  * THE STALE RECORD: the limitation that demonstrates as a strength.
@@ -303,8 +276,6 @@ await runSequence("stale-record", [
     describe: "the operator's view of an honest delivery flagged for a stale record",
     frame: "stale-record-1920x1080.png",
     path: (ctx) => `/operator/handoffs/${encodeURIComponent(ctx.eventId)}`,
-    // The map is the second half of this frame's argument; see `capture`.
-    reducedMotion: true,
   },
 ]);
 

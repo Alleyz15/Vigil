@@ -20,39 +20,11 @@ const EVIDENCE = [
   { href: "/demo/injection", label: "Injection", icon: Syringe },
 ];
 
-/**
- * Surfaces that are NOT the operator workbench.
- *
- * A courier must not see the operator's queue and a recipient must not see
- * either — they are different people with different authority, and putting the
- * work queue behind every route would be the surveillance framing anti-
- * reference 3 rules out. These render bare.
- *
- * `/demo/cosign` is bare for a different reason: it puts a courier surface and
- * an operator surface side by side, and wrapping that in the operator console
- * would nest one of the two panes inside the very chrome it is being
- * contrasted against.
- *
- * THIS ARRAY IS THE TRAP RECORDED IN KNOWN LIMITATIONS. A fourth surface added
- * without editing it silently inherits the console shell, and nothing fails.
- * The structural fix is a `(console)` route group.
- */
-const STANDALONE = ["/courier", "/confirm", "/sender", "/demo/cosign", "/"];
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isHandoffRoute = pathname.startsWith("/operator/inbox") || pathname.startsWith("/operator/handoffs");
   const shellCopy = getOperatorShellCopy(pathname);
 
-    // `pathname === prefix` first, and the prefix form skipped for "/", or the
-  // root entry would match every route in the application and the console
-  // would lose its shell entirely.
-  const bare = STANDALONE.some(
-    (prefix) => pathname === prefix || (prefix !== "/" && pathname.startsWith(`${prefix}/`)),
-  );
-  if (bare) {
-    return <div className="min-h-screen bg-background">{children}</div>;
-  }
 
   return (
     <div className="flex min-h-screen bg-background">

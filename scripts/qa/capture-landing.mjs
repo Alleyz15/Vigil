@@ -35,7 +35,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
-const OUT = join(ROOT, "docs", "screenshots", "landing");
+const OUT = process.env.VIGIL_QA_OUT ?? join(ROOT, "docs", "screenshots", "landing");
 const BASE = process.env.VIGIL_BASE_URL ?? "http://localhost:3000";
 
 const HEADLINE_MIN = 7;

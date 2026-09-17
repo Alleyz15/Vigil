@@ -31,6 +31,7 @@ export default defineConfig({
       "components/**/*.test.ts",
       "app/**/*.test.ts",
       "scripts/experiments/**/*.test.ts",
+      "scripts/qa/**/*.test.ts",
     ],
   },
   resolve: {
