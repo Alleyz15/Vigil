@@ -173,9 +173,12 @@ fix that. The tally is kept because the pattern is only visible together.
 | 2 | 10 | the noise model's parameters | Level 3 could have been turned up until E3 produced a quotable number. Not done — that is `0%` written in a different file |
 | 3 | 20 | the builder's 45 km/h road speed | Choosing it against I3's cut would guarantee no built route ever alerts. Chosen on world grounds; the highest implied speed across all 552 routes is 46.4 km/h and that is **reported**, not engineered |
 
+| 4 | 24 | the service area's 5% area tolerance | Petaling maps 3.4% larger than its published area. The tolerance was proposed, justified and APPROVED BY THE REVIEWER before the extraction ran, rather than chosen afterwards from a number that needed to pass — and the 3.4%, with both readings of it, is written into the boundary file rather than left as "the tolerance passed" |
+
 **In all three the honest number and the convenient number happened to agree.** That is luck, and
 it is exactly why the rule has to be followed when they do — a habit only formed on easy cases is
-not a habit.
+not a habit. The fourth adds the other half: when a threshold has to be picked to admit a
+measurement, pick it BEFORE the measurement and have someone else agree to it.
 
 ### 2c. When the world changes one signal, every signal that moves with it must move too
 
@@ -646,6 +649,13 @@ generator, thresholds or any historical session result.
 (The brief counted guard 8 as the seventh; the table above is the set that can be sourced from
 this file and the code. Rows 5 and 7 are the same list failing on two axes.)
 
+**A misleading name can be corrected in place, and does not always have to be renamed.**
+`kl-addresses.json` holds 15 Kuala Lumpur addresses and 9 Selangor ones across three districts —
+the name says KL and the contents say more. Renaming it would touch scripts, tests and DATASET.md
+for a filename; instead the file's own `note` states what it holds, and DATASET.md repeats it. The
+condition is what makes this acceptable: **the correction must be visible where the name is read.**
+A note in another document would leave the name lying to anyone who only opens the file.
+
 **The rule for this shape: when a set can be enumerated from the filesystem or a type, enumerate it
 and write down the EXCLUSIONS, with a reason each.** Guards 8 and 9 now call `componentTrees()` in
 `lib/purity.test.ts`, which reads every directory under `components/` recursively and excludes only
@@ -900,6 +910,22 @@ looked sites up by address would have placed address 0's tower beside an arbitra
 read before anything was built: `map-model.ts` draws only the cell the EVENT reported, and an
 online scan reports none, so no site is drawn. Looking for where a rule could be broken, rather
 than waiting to find where it was, is the cheaper order.
+
+**A name is a claim, and a name can fabricate coverage.** Session 24's service area covers Kuala
+Lumpur plus the Selangor districts of Petaling, Hulu Langat and Sepang — the four units that hold a
+cached address or a depot. The two obvious names for it, "Klang Valley" and "Greater Kuala Lumpur",
+both officially include Klang and Gombak, where this project has no address, no depot and no data.
+Using either would have claimed coverage that was refused two paragraphs earlier in the same
+decision.
+
+> **This project has now refused to fabricate a coordinate, a line-haul, an evidence row, a model's
+> rationale, and a coverage area. The carrier differs; the error does not.** A label is as capable
+> of asserting something nobody measured as a map pin is.
+
+The service area is therefore named by LISTING its members, in the file, the code comment and the
+UI. That has a second property worth copying: **the name is the list**, so a future session that
+adds a district without updating it produces a mismatch rather than a quietly wider claim — the
+inverse of a hand-maintained list, where the list is the identifier instead of a copy of it.
 
 > **A rule's instance count records DEFECTS FOUND, never checks that passed.** This check found
 > nothing, so 3e still has four instances and this is an application of it. Counting a clean check
@@ -1366,8 +1392,11 @@ lib/
     identity-cases.ts    experiment-only OTP-channel and replacement-device cases
     ingest.ts            runs a generated scenario through the real agent
   shipment/              ONLINE SHIPMENTS. Confirmed points in, the same GeneratedScenario out.
-    boundary.ts          service-area check (Turf); no boundary configured -> refuse
-    service-area.ts      loads the sourced boundary file; the store's path on disk
+    data/                service-area.json: KL FT + Petaling + Hulu Langat + Sepang,
+                         extracted from OSM by scripts/fetch-kl-boundary.mjs. ODbL
+    boundary.ts          service-area check (Turf); no boundary at all -> refuse
+    service-area.ts      loads the committed boundary; VIGIL_SERVICE_AREA=placeholder
+                         steps back to the derived depot radius; the store's path
     depot.ts             nearest of the existing three depots; local stays local
     store.ts             created / replayed / conflict; append-only corrections
     build.ts             adapter over lib/generate: exact coordinates, sha256 event
@@ -1775,7 +1804,15 @@ centroid. For a point a person confirmed on a map, moving it 60 m silently is th
 about what was confirmed. The confirmed point is the reference byte for byte; the simulated
 courier's scan is a separate input, stored with `source: simulation`.
 
-**Boundary candidates, none downloaded:** geoBoundaries gbOpen `MYS-ADM1-15666254` is not its own
+**The service area landed, and the address set is what decided its shape.** Extracting Kuala
+Lumpur alone put 9 of 24 cached addresses and the SS15 Subang Jaya depot outside it — the file is
+named `kl-addresses.json` and holds a four-district set. The reviewer's two acceptance criteria
+("all 24 inside", "Cyberjaya outside") could not both hold, because Cyberjaya is one of the 24; the
+script refused and reported rather than widening a tolerance. The area is now KL FT plus Petaling,
+Hulu Langat and Sepang: 2,190.8 km², all 24 addresses and all three depots inside, Ipoh and
+Seremban refused, checked before and after simplification at a recorded 0.0001° tolerance.
+
+**Boundary candidates, and the one chosen:** geoBoundaries gbOpen `MYS-ADM1-15666254` is not its own
 survey — its metadata gives the source as "OpenStreetMap, Wambacher", 2017, under **ODbL 1.0**, not
 the CC BY that geoBoundaries is usually cited under; so attribution goes to OpenStreetMap
 contributors and the extracted polygon stays ODbL. The alternatives are the OSM relation for Kuala
@@ -3819,16 +3856,32 @@ restart a stored shipment is still readable, and a replayed create returns it wi
 `running: false` and says so; nothing resumes it. Restartable workflow is separate work, and no
 surface or document may imply it exists.
 
-**The service area is a labelled placeholder until a sourced boundary is confirmed.** The real
-boundary must be an administrative file with a source, licence and version; candidates are listed
-in the session 24 log and none is used until its licence is confirmed. Until then the check uses a
-**placeholder service radius around the three existing depots**, derived rather than chosen: the
-distance from the farthest cached address to its nearest depot, **17.090 km** (Cyberjaya). It is
-not a rectangle and it is not Kuala Lumpur — it is generous, covers well beyond the city, and the
-Subang Jaya depot's circle is mostly outside KL. Every answer carries
-`boundary: { placeholder: true, label: "Boundary data pending confirmation …" }`, every snapshot is
-stamped `placeholder-depot-radius-v1 (…)`, and the operator's location note shows "Boundary data
-pending confirmation". The tests use their own fixture rectangle, labelled as such.
+**The service area is four administrative units, and it is named by listing them.** Kuala Lumpur
+Federal Territory (OSM relation 2939672 v107) plus the Selangor districts of Petaling (12391134
+v45), Hulu Langat (12438351 v18) and Sepang (10743315 v14) — every cached address and every depot
+sits in exactly one of them, verified by point-in-polygon rather than by the address labels. **It
+is not called "Klang Valley" or "Greater Kuala Lumpur"**: both officially include Klang and Gombak,
+where this project has no data, and claiming them in a label is the same error as a fabricated
+line-haul. Extracted once by `scripts/fetch-kl-boundary.mjs` and committed to
+`lib/shipment/data/service-area.json`; **nothing fetches a boundary at runtime**. ODbL 1.0, and the
+attribution naming every relation and version travels with the geometry rather than depending on
+each surface to remember it.
+
+**Kuala Lumpur alone would have been wrong, and the address set is what showed it.** Nine of the 24
+cached addresses are in Selangor, and so is one of the three depots — SS15 Subang Jaya. A KL-only
+service area would have excluded a sortation hub from the area it serves, and refused online
+shipments to streets the seeded demo delivers to happily. `lib/shipment/service-area.test.ts`
+asserts every depot is inside by importing `DEPOTS` rather than naming them.
+
+**Petaling maps 3.4% larger than its published area**, the loosest of the four (the others are
+0.1%, 1.7%, 0.5%). Either OSM's edge differs from the official figure or the figure predates a
+revision; it is not a partial ring, which shows as a large deficit. Accepted under a 5% tolerance
+fixed before the extraction ran, and recorded in the file's `areaNote` — "the tolerance passed" is
+not the same statement as "every member matched".
+
+**The depot-radius placeholder is kept behind `VIGIL_SERVICE_AREA=placeholder`**, not deleted: a
+problem with the real boundary can be stepped around without a deploy, and the two are compared in
+the suite on points where they genuinely disagree.
 
 **Identity is simulated; the signatures are real.** The courier, recipient and operator entry
 routes use hardcoded demo identities rather than authentication. Recipient links are scoped

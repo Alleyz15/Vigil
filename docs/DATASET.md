@@ -213,6 +213,15 @@ read from it is never of unknown origin:
 
 Address data © OpenStreetMap contributors, ODbL 1.0.
 
+**Despite the file name, this is not a Kuala Lumpur-only set**, and the difference decides the
+service area. It holds **15 addresses in Kuala Lumpur and 9 in Selangor**: Petaling (Petaling Jaya,
+SS15 Subang Jaya, Damansara Utama, Kota Damansara, Shah Alam Seksyen 7 and 13, Puchong), Hulu
+Langat (Ampang Jaya) and Sepang (Cyberjaya). Each was attributed by point-in-polygon against the
+administrative boundaries, not by reading its label. One of the three derived depots — SS15 Subang
+Jaya — is therefore in Selangor, which is why the online service area is those four units rather
+than Kuala Lumpur alone (see `lib/shipment/data/service-area.json`). The file was not renamed; its
+own `note` field says this, so the correction is visible wherever the name is.
+
 The generator **never** hits the network. A dataset that changes because a third-party geocoder
 changed is not reproducible, and reproducibility is the point.
 

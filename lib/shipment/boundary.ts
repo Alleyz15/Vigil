@@ -32,18 +32,37 @@ export type ServiceBoundary = {
   licence: string;
   area: Feature<Polygon | MultiPolygon>;
   /**
-   * True for the depot-radius stand-in used until a sourced boundary is
-   * confirmed. Every surface that shows a checked point must say so; the
-   * placeholder is never presented as a city boundary.
+   * True for the depot-radius stand-in. Every surface that shows a checked point
+   * must say so; the placeholder is never presented as an administrative area.
    */
   placeholder?: boolean;
+  /**
+   * The ODbL attribution line, carried with the geometry rather than written
+   * next to one of the places it is shown. A licence condition that depends on
+   * each surface remembering it is a licence condition waiting to be breached.
+   */
+  attribution?: string;
+  /** When the boundary was extracted, so "which version did we check" is answerable. */
+  extractedAt?: string;
 };
 
-/** What a surface says about the boundary a point was checked against. */
-export function boundaryLabel(boundary: Pick<ServiceBoundary, "placeholder" | "version">): string {
-  return boundary.placeholder
-    ? "Boundary data pending confirmation — checked against a placeholder service radius around the existing depots, not the Kuala Lumpur city boundary"
-    : `Checked against ${boundary.version}`;
+/**
+ * What a surface says about the boundary a point was checked against.
+ *
+ * For a real boundary this is the ODbL attribution plus the extraction date —
+ * the licence requires the credit, and the date is what makes the check
+ * reproducible. For the placeholder it says so plainly.
+ */
+export function boundaryLabel(
+  boundary: Pick<ServiceBoundary, "placeholder" | "version" | "attribution" | "extractedAt">,
+): string {
+  if (boundary.placeholder) {
+    return (
+      "Boundary data pending confirmation — checked against a placeholder service radius around " +
+      "the existing depots, not an administrative area"
+    );
+  }
+  return boundary.attribution ?? `Checked against ${boundary.version}`;
 }
 
 export type BoundaryCheck =

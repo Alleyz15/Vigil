@@ -453,7 +453,7 @@ describe("the placeholder boundary, used until a sourced one is confirmed", () =
     expect(placeholder.placeholder).toBe(true);
     expect(placeholder.version.startsWith("placeholder-")).toBe(true);
     expect(boundaryLabel(placeholder)).toMatch(/^Boundary data pending confirmation/);
-    expect(boundaryLabel(placeholder)).toMatch(/not the Kuala Lumpur city boundary/);
+    expect(boundaryLabel(placeholder)).toMatch(/not an administrative area/);
     expect(placeholder.source).toMatch(/not an administrative boundary/);
   });
 

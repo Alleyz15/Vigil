@@ -134,7 +134,7 @@ export type HandoffDetail = {
     gap: { code: string; summary: string; detail: string };
     scanSource: "simulation";
     /** The boundary the reference was checked against, as stamped on its snapshot. */
-    boundary: { version: string; placeholder: boolean };
+    boundary: { version: string; placeholder: boolean; attribution: string };
   } | null;
   addressCorrection: {
     fromLabel: string;

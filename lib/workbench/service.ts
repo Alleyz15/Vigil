@@ -164,7 +164,13 @@ type OnlineRun = {
 };
 
 /** Which boundary a point was checked against, said on every answer that involves one. */
-export type BoundaryNote = { version: string; placeholder: boolean; label: string };
+export type BoundaryNote = {
+  version: string;
+  placeholder: boolean;
+  /** The ODbL attribution for a real boundary, or the pending-confirmation line. */
+  label: string;
+  extractedAt: string | null;
+};
 
 export type OnlineCreateResult = { boundary: BoundaryNote } & (
   | { status: "created" | "replayed"; shipmentId: string; running: true; eventIds: string[] }
@@ -956,8 +962,15 @@ export class OperatorWorkbench {
   /** The boundary in force, as a surface should describe it. */
   boundaryNote(): BoundaryNote {
     const boundary = this.boundary();
-    if (!boundary) return { version: "none", placeholder: false, label: "No service-area boundary is configured" };
-    return { version: boundary.version, placeholder: Boolean(boundary.placeholder), label: boundaryLabel(boundary) };
+    if (!boundary) {
+      return { version: "none", placeholder: false, label: "No service-area boundary is configured", extractedAt: null };
+    }
+    return {
+      version: boundary.version,
+      placeholder: Boolean(boundary.placeholder),
+      label: boundaryLabel(boundary),
+      extractedAt: boundary.extractedAt ?? null,
+    };
   }
 
   /**
@@ -1253,6 +1266,9 @@ export class OperatorWorkbench {
           boundary: {
             version: reference?.boundaryVersion ?? "unknown",
             placeholder: reference?.boundaryVersion.startsWith("placeholder-") ?? false,
+            // The attribution of the boundary IN FORCE NOW, beside the version this
+            // point was actually checked against — which may be an earlier one.
+            attribution: this.boundaryNote().label,
           },
         };
       })(),

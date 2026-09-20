@@ -124,7 +124,9 @@ describe("the boundary note on every answer", () => {
     expect(result.boundary).toEqual({
       version: "test-fixture-rectangle-v1",
       placeholder: false,
+      // The fixture carries no attribution, so the label falls back to the version.
       label: "Checked against test-fixture-rectangle-v1",
+      extractedAt: null,
     });
   });
 });

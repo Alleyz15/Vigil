@@ -1,6 +1,6 @@
 {
   "source": "nominatim",
-  "note": "Geocoded from OpenStreetMap via Nominatim. Data © OpenStreetMap contributors, ODbL.",
+  "note": "Geocoded from OpenStreetMap via Nominatim. Data © OpenStreetMap contributors, ODbL. DESPITE THE FILE NAME, this is not a Kuala Lumpur-only set: it is 15 addresses in Kuala Lumpur and 9 in Selangor — Petaling (Petaling Jaya, SS15 Subang Jaya, Damansara Utama, Kota Damansara, Shah Alam Seksyen 7 and 13, Puchong), Hulu Langat (Ampang Jaya) and Sepang (Cyberjaya). Verified by point-in-polygon against those administrative boundaries, and it is why the service area is those four units rather than Kuala Lumpur alone.",
   "generatedAt": "2026-09-08T17:03:05.119Z",
   "attribution": "© OpenStreetMap contributors, ODbL 1.0",
   "count": 24,

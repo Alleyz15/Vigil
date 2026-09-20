@@ -428,6 +428,8 @@ function LocationEvidenceNotice({ detail }: { detail: HandoffDetail }) {
         <ProvenanceLabel>Scan position simulated</ProvenanceLabel>
         {evidence.boundary.placeholder && <ProvenanceLabel>Boundary data pending confirmation</ProvenanceLabel>}
       </div>
+      {/* ODbL requires the credit wherever the data is used; it travels with the boundary. */}
+      <p className="mt-1.5 font-mono text-xs text-muted-foreground">{evidence.boundary.attribution}</p>
       <p className="mt-1.5 max-w-prose text-xs leading-5 text-muted-foreground">{evidence.gap.detail}</p>
       {detail.summary.coverageLine && (
         <p className="mt-2 font-mono text-xs text-foreground">This handoff: {detail.summary.coverageLine}</p>

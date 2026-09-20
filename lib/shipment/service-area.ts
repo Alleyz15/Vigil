@@ -10,25 +10,54 @@ import type { ServiceBoundary } from "./boundary";
 import { depotFor } from "./depot";
 
 /**
- * The service-area boundary file, and where the online store lives on disk.
+ * The service area, and where the online store lives on disk.
  *
- * NO FILE IS SHIPPED YET. The boundary must be a sourced administrative file
- * with a named licence and version, and the choice of file is waiting on the
- * licence being confirmed. Until it exists `loadServiceBoundary` returns the
- * clearly-labelled placeholder below — never a rectangle, a bounding box, or
- * the Klang Valley, and never presented as the city boundary.
+ * THE SERVICE AREA IS FOUR ADMINISTRATIVE UNITS, AND IT IS NAMED BY LISTING THEM:
+ * Kuala Lumpur Federal Territory, and the Selangor districts of Petaling, Hulu
+ * Langat and Sepang. Every cached address and every depot sits in exactly one of
+ * them, and nothing else is claimed.
  *
- * The file is local: loading it sends nothing anywhere and costs nothing.
+ * IT IS NOT CALLED "KLANG VALLEY" OR "GREATER KUALA LUMPUR". Both officially
+ * include Klang and Gombak, which hold no cached address and no depot, so either
+ * name would claim coverage this project does not have — a fabricated line-haul
+ * committed in a label. The name being the list also makes a future addition
+ * loud: add a district and the list no longer matches.
+ *
+ * `scripts/fetch-kl-boundary.mjs` extracted it once from OpenStreetMap and
+ * committed the result; the file is local, so loading it sends nothing anywhere
+ * and costs nothing. `VIGIL_SERVICE_AREA=placeholder` falls back to the derived
+ * depot-radius stand-in below, so a problem with the real boundary can be
+ * stepped around without a deploy, and the two can be compared side by side.
  */
 
 export const SERVICE_AREA_PATH = join(dirname(fileURLToPath(import.meta.url)), "data", "service-area.json");
 
 const Position = z.tuple([z.number(), z.number()]);
 const Ring = z.array(Position).min(4);
+const Member = z.object({
+  relationId: z.number(),
+  label: z.string(),
+  version: z.number(),
+  lastEditedAt: z.string(),
+  adminLevel: z.string(),
+  areaKm2: z.number(),
+  publishedAreaKm2: z.number(),
+  publishedSource: z.string(),
+  areaDeltaPercent: z.number(),
+});
+
 const ServiceAreaFile = z.strictObject({
   version: z.string().min(1),
   source: z.string().min(1),
   licence: z.string().min(1),
+  /** Required on a real boundary: ODbL credit is a condition, not a nicety. */
+  attribution: z.string().min(1),
+  extractedAt: z.string().min(1),
+  members: z.array(Member).min(1),
+  areaNote: z.string().min(1),
+  areaTolerance: z.number(),
+  simplifyToleranceDegrees: z.number(),
+  areaKm2: z.number(),
   area: z.object({
     type: z.literal("Feature"),
     properties: z.record(z.string(), z.unknown()).nullable(),
@@ -40,7 +69,7 @@ const ServiceAreaFile = z.strictObject({
 });
 
 /**
- * THE PLACEHOLDER, used until a sourced boundary file is confirmed.
+ * THE PLACEHOLDER, kept behind `VIGIL_SERVICE_AREA=placeholder`.
  *
  * NOT A CITY BOUNDARY, AND NOT A RECTANGLE. It is a service radius around the
  * three existing depots, and the radius is DERIVED rather than chosen: the
@@ -85,10 +114,28 @@ export function placeholderBoundary(): ServiceBoundary {
  * error, not a missing boundary: failing loudly beats serving an area nobody
  * can vouch for (rule 3b).
  */
-export function loadServiceBoundary(path: string = SERVICE_AREA_PATH): ServiceBoundary {
-  if (!existsSync(path)) return placeholderBoundary();
+/**
+ * Which boundary is in force. `placeholder` steps back to the derived stand-in;
+ * anything else uses the committed file, falling back only if it is absent.
+ */
+export function serviceAreaMode(env: Record<string, string | undefined> = process.env): "file" | "placeholder" {
+  return env.VIGIL_SERVICE_AREA === "placeholder" ? "placeholder" : "file";
+}
+
+export function loadServiceBoundary(
+  path: string = SERVICE_AREA_PATH,
+  env: Record<string, string | undefined> = process.env,
+): ServiceBoundary {
+  if (serviceAreaMode(env) === "placeholder" || !existsSync(path)) return placeholderBoundary();
   const parsed = ServiceAreaFile.parse(JSON.parse(readFileSync(path, "utf8")));
-  return parsed as ServiceBoundary;
+  return {
+    version: parsed.version,
+    source: parsed.source,
+    licence: parsed.licence,
+    attribution: parsed.attribution,
+    extractedAt: parsed.extractedAt,
+    area: parsed.area as ServiceBoundary["area"],
+  };
 }
 
 /** Where the online store lives. Resolved here so the default is reachable by a test (rule 1d). */
