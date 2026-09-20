@@ -4,6 +4,7 @@ import type { VigilDb } from "@/lib/db/client";
 import { locationCorrections, locationSnapshots, shipments } from "@/lib/db/schema";
 import { canonicalHash } from "@/lib/ledger/canonical";
 import { checkPoint, type ServiceBoundary } from "./boundary";
+import { COORDINATE_DECIMALS } from "./picker";
 import { routeBetween, type Point } from "./depot";
 
 /**
@@ -31,9 +32,39 @@ import { routeBetween, type Point } from "./depot";
  */
 
 export type LocationInput = Point & {
-  /** What the sender typed for this point. Stored verbatim; nothing parses it. */
-  addressClaim: string;
+  /**
+   * What the sender typed for this point, if anything. Stored verbatim; nothing
+   * parses it, and nothing supplies one when it is absent.
+   *
+   * OPTIONAL, BECAUSE NO GEOCODER RUNS. A confirmed coordinate has no resolved
+   * address — asking a person to type one before they may dispatch would make
+   * the field look like a lookup that succeeded. Absent is stored as the empty
+   * string, which is not a claim anyone can type: `normaliseClaim` trims, so a
+   * claim is non-empty by construction. Read it back through `addressClaimOf`
+   * rather than testing for `""` at each call site.
+   */
+  addressClaim?: string;
 };
+
+/** The claim on a stored snapshot, or `null` where nobody made one. */
+export function addressClaimOf(snapshot: { addressClaim: string }): string | null {
+  return snapshot.addressClaim.trim().length > 0 ? snapshot.addressClaim : null;
+}
+
+/**
+ * A snapshot's display line: the claim if there is one, otherwise the
+ * coordinate said plainly as a coordinate. Never a street nobody resolved.
+ */
+export function addressLabelOf(snapshot: {
+  addressClaim: string;
+  latitude: number;
+  longitude: number;
+}): string {
+  return (
+    addressClaimOf(snapshot) ??
+    `${snapshot.latitude.toFixed(COORDINATE_DECIMALS)}, ${snapshot.longitude.toFixed(COORDINATE_DECIMALS)} (no address claimed)`
+  );
+}
 
 export type ShipmentRequest = {
   origin: LocationInput;
@@ -61,9 +92,17 @@ export type CreateResult =
 
 /** The request as hashed: defaults filled in, so an omitted 0 and an explicit 0 are one request. */
 function normalised(request: ShipmentRequest) {
+  const point = (location: LocationInput) => ({
+    latitude: location.latitude,
+    longitude: location.longitude,
+    // Explicit, so "no claim sent" and "empty claim sent" are ONE request
+    // rather than two hashes — a retry that drops an empty field is still the
+    // same shipment (rule 5's reasoning, at the field level).
+    addressClaim: location.addressClaim?.trim() || null,
+  });
   return {
-    origin: { ...request.origin },
-    destination: { ...request.destination },
+    origin: point(request.origin),
+    destination: point(request.destination),
     declaredValueSen: request.declaredValueSen,
     codAmountSen: request.codAmountSen ?? 0,
     recipientChannel: request.recipientChannel,
@@ -198,7 +237,7 @@ function snapshotRow(
     purpose,
     latitude: location.latitude,
     longitude: location.longitude,
-    addressClaim: location.addressClaim,
+    addressClaim: location.addressClaim?.trim() ?? "",
     source: "map_confirmed" as const,
     confirmedAt: nowIso,
     boundaryVersion,

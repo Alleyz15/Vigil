@@ -44,6 +44,14 @@ export type ServiceBoundary = {
   attribution?: string;
   /** When the boundary was extracted, so "which version did we check" is answerable. */
   extractedAt?: string;
+  /**
+   * The administrative units this area is made of, carried WITH the geometry for
+   * the same reason the attribution is: the service area is named by listing its
+   * members, so a surface that prints the name must read the list rather than
+   * keep a copy of it. Absent on the placeholder, which has no members — it is a
+   * radius, and saying otherwise would be the fabricated coverage this rule bans.
+   */
+  members?: string[];
 };
 
 /**

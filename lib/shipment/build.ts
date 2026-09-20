@@ -7,7 +7,7 @@ import { travelMinutes } from "@/lib/generate/route";
 import { epcFor, prefixFor, type GeneratedParcel, type GeneratedWorld } from "@/lib/generate/world";
 import { distanceMeters } from "@/lib/engine/geo";
 import { routeBetween, type DepotRoute, type Point } from "./depot";
-import type { ShipmentHistory } from "./store";
+import { addressLabelOf, type ShipmentHistory } from "./store";
 
 /**
  * An online shipment, turned into the same `GeneratedScenario` every other
@@ -140,7 +140,7 @@ export function buildOnlineScenario(
     waybillNo: `WB-ON-${shipment.shipmentId.slice(0, 8).toUpperCase()}`,
     recipientName: shipment.recipientName?.trim() || courierParcels[0].recipientName,
     recipientPhone: shipment.recipientChannel,
-    recipientAddress: reference.addressClaim,
+    recipientAddress: addressLabelOf(reference),
     // THE ORIGINAL REFERENCE, UNMOVED. A correction does not rewrite it: that
     // unreconciled gap is the stale record, as in session 20.
     recipientPoint: pointOf(reference),
@@ -185,7 +185,7 @@ export function buildOnlineScenario(
     locationGap: UNREGISTERED_LOCATION_GAP,
     scenario: {
       id,
-      title: `Online shipment — ${history.origin.addressClaim} to ${reference.addressClaim}`,
+      title: `Online shipment — ${addressLabelOf(history.origin)} to ${addressLabelOf(reference)}`,
       description: describe(route),
       courier,
       parcels: [parcel],

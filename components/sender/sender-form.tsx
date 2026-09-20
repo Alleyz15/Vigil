@@ -34,9 +34,12 @@ function ringgit(sen: number): string {
 export function SenderForm({
   addresses,
   policy,
+  serviceArea,
 }: {
   addresses: SenderAddress[];
   policy: SenderPolicy;
+  /** Derived from the boundary's own member list; see `RegisteredAddressMap`. */
+  serviceArea: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -208,7 +211,7 @@ export function SenderForm({
         )}
       </div>
       </section>
-      <RegisteredAddressMap addresses={addresses} originIndex={originIndex} destinationIndex={destinationIndex} onOriginChange={setOriginIndex} onDestinationChange={setDestinationIndex} />
+      <RegisteredAddressMap addresses={addresses} serviceArea={serviceArea} originIndex={originIndex} destinationIndex={destinationIndex} onOriginChange={setOriginIndex} onDestinationChange={setDestinationIndex} />
       </div>
     </div>
   );

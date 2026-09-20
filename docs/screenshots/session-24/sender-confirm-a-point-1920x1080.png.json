@@ -1,0 +1,50 @@
+{
+  "url": "http://localhost:3000/sender",
+  "ready": true,
+  "fonts": "loaded",
+  "reducedMotion": true,
+  "loadingTiles": 0,
+  "loadingMap": false,
+  "mapTiles": 12,
+  "mapPresent": true,
+  "tileUrls": [
+    "https://a.tile.openstreetmap.org/9/399/252.png",
+    "https://a.tile.openstreetmap.org/9/400/251.png",
+    "https://a.tile.openstreetmap.org/9/401/250.png",
+    "https://a.tile.openstreetmap.org/9/402/252.png",
+    "https://b.tile.openstreetmap.org/9/399/250.png",
+    "https://b.tile.openstreetmap.org/9/400/252.png",
+    "https://b.tile.openstreetmap.org/9/401/251.png",
+    "https://b.tile.openstreetmap.org/9/402/250.png",
+    "https://c.tile.openstreetmap.org/9/399/251.png",
+    "https://c.tile.openstreetmap.org/9/400/250.png",
+    "https://c.tile.openstreetmap.org/9/401/252.png",
+    "https://c.tile.openstreetmap.org/9/402/251.png"
+  ],
+  "mapPaths": [
+    {
+      "d": "M267 121L283 133L275 142L277 142L277 148L276 150L272 151L273 157L282 157L284 160L284 164L286 164L286 170L289 168L290 175L292 175L291 176L297 176L299 180L302 178L302 180L303 175L303 177L307 177L314 183L312 183L314 185L313 186L309 186L313 192L312 195L314 199L320 199L347 249L353 256L360 259L342 280L341 291L328 291L329 319L326 322L357 331L361 333L364 339L369 339L370 338L367 336L367 334L372 330L377 330L375 323L377 320L383 318L382 313L380 311L383 307L385 307L386 302L388 300L384 238L432 240L445 209L447 201L450 199L450 193L454 191L454 185L455 186L457 183L464 181L462 173L463 171L460 168L461 163L459 156L456 153L456 151L461 147L461 143L463 140L460 138L456 131L454 124L456 121L455 117L457 116L456 110L447 96L442 97L442 95L439 94L433 96L429 92L418 92L418 94L413 98L414 99L406 112L407 117L405 119L403 126L407 133L406 136L405 135L403 137L398 133L395 137L391 136L388 133L381 132L379 130L378 126L385 127L387 124L386 119L380 112L382 108L380 106L375 108L373 112L371 112L371 114L367 112L365 108L356 108L353 102L348 106L343 107L343 112L340 115L336 115L333 118L326 118L321 116L315 108L312 109L310 112L298 112L291 108L290 124L289 121L281 121z",
+      "stroke": "#15803d",
+      "opacity": "1"
+    }
+  ],
+  "animations": 0,
+  "zooming": false,
+  "fingerprints": [],
+  "tileMode": "live",
+  "tileHashes": {
+    "https://b.tile.openstreetmap.org/9/400/252.png": "106f55b2e987106eb7665c05924e036a2c7cc29e6bf969fcedabdb0a37047455",
+    "https://b.tile.openstreetmap.org/9/402/250.png": "56c075ce1e4158da3d16eabda9820d164094f8f7021448f0f91ff9fc4e04e3cb",
+    "https://c.tile.openstreetmap.org/9/401/252.png": "8c00a7d52446c8689f41f173f700afedb7b49ffb1c91f793d1d5f58844958072",
+    "https://b.tile.openstreetmap.org/9/401/251.png": "dd9788a83f3b58c0a827b4826f4f2af1a205eda7ce325a2398948a19722da524",
+    "https://b.tile.openstreetmap.org/9/399/250.png": "72a4ae9b6aca8b5a3ee67c71f78d394969f5cb3ba88e144a82b702109b825f20",
+    "https://c.tile.openstreetmap.org/9/399/251.png": "cfd09f32a11eb62587c52ee7eb0a9699d480df3c00d977c0c69eafcdf78dadb6",
+    "https://c.tile.openstreetmap.org/9/402/251.png": "4350df2348c6bd74cd857ba7931890770b816472b2ef8a78a2fc6486cb973f4c",
+    "https://c.tile.openstreetmap.org/9/400/250.png": "eef4d5f0b82c5263f7eda1e53deecd4ca873a84fe4c6703c8513abfe9f717c7b",
+    "https://a.tile.openstreetmap.org/9/399/252.png": "e2c1ff9ccfbf20e2e712ee2c95eff6680e38ccafc32792cbb8f472727a8717fd",
+    "https://a.tile.openstreetmap.org/9/402/252.png": "4f7930ed27427fdbb88e57d2b6d591929ac4b9e5b7cce1f021befe32fd1b0e87",
+    "https://a.tile.openstreetmap.org/9/400/251.png": "190c164b6fadb2e368db358f2e567dfaca90bbe9f61e4adebb3c138e81611ae4",
+    "https://a.tile.openstreetmap.org/9/401/250.png": "a0856c95734ff695164eca2bd786b1b8596eaed5efead5aa06ffb755f91d166e"
+  },
+  "consecutiveIdenticalFrames": 3
+}

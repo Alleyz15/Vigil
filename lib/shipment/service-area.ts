@@ -134,6 +134,7 @@ export function loadServiceBoundary(
     licence: parsed.licence,
     attribution: parsed.attribution,
     extractedAt: parsed.extractedAt,
+    members: parsed.members.map((member) => member.label),
     area: parsed.area as ServiceBoundary["area"],
   };
 }

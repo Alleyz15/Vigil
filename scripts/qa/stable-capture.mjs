@@ -11,6 +11,24 @@ if (tileCache) mkdirSync(tileCache, { recursive: true });
 if (!["record", "replay"].includes(tileMode)) throw new Error("Unknown QA tile fixture mode.");
 const tileFile = (url) => join(tileCache, `${createHash("sha256").update(url).digest("hex")}.png`);
 
+/**
+ * A REFUSED TILE IS STILL A VALID PNG, AND THAT IS THE TRAP.
+ *
+ * openstreetmap.org answers a denied tile request with HTTP 200 and an image
+ * reading "Access blocked", carrying `x-blocked` and `x-totp: INVALID`. The
+ * settle check below waits for every `.leaflet-tile` to finish loading, and a
+ * refusal notice finishes loading perfectly — so a frame showing eight copies of
+ * that notice satisfied every assertion and would have been written out as a
+ * map. `response.ok` cannot see it either.
+ *
+ * So the refusal is read from the header the server sends. A capture that
+ * cannot get tiles must fail, not write a frame that claims to show a map.
+ */
+function assertTileServed(url, headers) {
+  const blocked = headers.get?.("x-blocked") ?? headers["x-blocked"] ?? headers["X-Blocked"];
+  if (blocked) throw new Error(`Tile server refused ${url}: ${blocked}`);
+}
+
 export async function captureStable(chromePath, url, target) {
   const profile = mkdtempSync(join(tmpdir(), "vigil-stable-"));
   const proc = spawn(chromePath, ["--headless=new", "--hide-scrollbars", "--disable-gpu",
@@ -75,6 +93,7 @@ export async function captureStable(chromePath, url, target) {
           // viewport's request; a later replay must never depend on live tiles.
           tileReads.push(fetch(request.url).then(async (response) => {
             if (!response.ok) throw new Error(`QA tile recording failed (${response.status}): ${request.url}`);
+            assertTileServed(request.url, response.headers);
             const bytes = Buffer.from(await response.arrayBuffer());
             if (!bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) throw new Error(`QA tile is not PNG: ${request.url}`);
             if (!existsSync(file)) writeFileSync(file, bytes, { flag: "wx" });
@@ -87,6 +106,11 @@ export async function captureStable(chromePath, url, target) {
         }
       }
       if (message.method === "Network.responseReceived" && message.params.response.url.includes(".tile.openstreetmap.org/")) {
+        try {
+          assertTileServed(message.params.response.url, message.params.response.headers ?? {});
+        } catch (error) {
+          fixtureErrors.push(error);
+        }
         tileRequests.set(message.params.requestId, message.params.response.url);
       }
       if (!tileCache && message.method === "Network.loadingFinished" && tileRequests.has(message.params.requestId)) {

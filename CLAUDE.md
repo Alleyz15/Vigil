@@ -468,6 +468,24 @@ injection became inert triggers (`SELECT 1`), which failed exactly the four appe
 > a pass that tested nothing, a failure that tested something else — look like opposite problems
 > and have one cause: the probe was never checked against the property it named.
 
+#### Session 24, the map picker: the instrument was wrong twice more
+
+| What happened | Which failure mode |
+|---|---|
+| the QA tile cache recorded twenty copies of OpenStreetMap's **"Access blocked"** image and replayed them as a map | **a check that cannot see its own case**: a refused tile is HTTP 200 with a valid PNG body, so `response.ok` passed, every `.leaflet-tile` finished loading, and the settle predicate was satisfied by a frame full of refusal notices |
+| the first run of the new blocked-tile guard "passed" | **the probe measured the old code**: it ran a scratchpad copy of `stable-capture.mjs` taken before the guard was added, and recorded twenty blocked tiles without a word |
+| five injections into `picker.ts`, each failing the one test aimed at it | the half that worked — snapped coordinate, four-decimal display, "Klang Valley", a refusal naming no member, a guessed address |
+| a sixth injection produced `Tests no tests` | **a failure for the wrong reason**: it broke the file's syntax rather than its behaviour, and was redone as a valid edit that failed naming `Kuala Lumpur` |
+
+The first is the sharpest of the four, because nothing anywhere was broken: the server answered,
+the image loaded, the assertion held, and the frame was a picture of a refusal. `stable-capture.mjs`
+now reads the `x-blocked` header the server sends and fails rather than writing that frame —
+verified by running it against the live refusal, which named the tile URL and the policy.
+
+> **A response that arrives, parses and renders can still be a refusal.** `ok` is the transport's
+> opinion; whether the thing you asked for came back is a different question, and on a picture it
+> has to be asked deliberately.
+
 ### 1g. A test suite verifies the invariants someone thought to write
 
 **Found by opening the page, not because anything reported it.**
@@ -554,6 +572,19 @@ read first: identical values at the seam meant no colour could be adjusted to fi
 was the curve's shape. A plausible visual explanation is a hypothesis in the same sense as an
 assumption about code — **before changing a colour, a height or a timing, measure the one you think
 is wrong.**
+
+#### Two more guesses that measurement overturned, session 24
+
+| Guessed | Measured |
+|---|---|
+| Putrajaya sits inside the depot-radius placeholder and outside the administrative area, so it is the point that separates them | it is outside BOTH. A 0.02° grid sweep found the real pairs: 95 points inside only the placeholder, 152 inside only the real boundary |
+| editing a `note` field in `kl-addresses.json` cannot change generator output | true, and now evidenced: the seven scenarios hash `998918b7c13e` with the edit and without it |
+
+The first is rule 1g in one line: a plausible property of code (or of a map) is a hypothesis, and
+the grid sweep cost less than the paragraph justifying the guess would have. The second is the
+session-20 discipline applied to a change that "obviously" does nothing — **when the claim is
+"nothing changed", produce the value from before the change and compare it.** "Sounds impossible"
+is not evidence.
 
 #### An approved plan is reasoned, not verified
 
@@ -926,6 +957,22 @@ The service area is therefore named by LISTING its members, in the file, the cod
 UI. That has a second property worth copying: **the name is the list**, so a future session that
 adds a district without updating it produces a mismatch rather than a quietly wider claim — the
 inverse of a hand-maintained list, where the list is the identifier instead of a copy of it.
+
+**A licence condition that each surface has to remember is a licence condition waiting to be
+breached.** ODbL requires the credit wherever the data is used, so the attribution string travels
+INSIDE `ServiceBoundary` and `boundaryLabel` derives what a surface shows; no page keeps its own
+copy of the sentence. That is the fourth of the same move, and they belong together:
+
+| What was memory-dependent | What made it structural |
+|---|---|
+| a guard pointed at named directories | enumerate every tree, write down the exclusions (rule 2a) |
+| a label table keyed by rule id | enumerate the rule registries, fail naming the missing id (session 23) |
+| a coverage area named by a phrase | the name IS the list of members |
+| an ODbL credit each surface must print | the attribution rides with the geometry |
+
+> **Anything that depends on the next person remembering will eventually meet someone who does
+> not.** The fix is always the same shape: make the thing that must not be forgotten a property of
+> the object rather than a step in a procedure.
 
 > **A rule's instance count records DEFECTS FOUND, never checks that passed.** This check found
 > nothing, so 3e still has four instances and this is an application of it. Counting a clean check
@@ -1401,6 +1448,8 @@ lib/
     store.ts             created / replayed / conflict; append-only corrections
     build.ts             adapter over lib/generate: exact coordinates, sha256 event
                          ids, no invented cell/WiFi. Under the anti-circularity guard
+    picker.ts            what the map picker SAYS, derived: the members sentence, the
+                         out-of-area reason, the ODbL stamp, the click's rounding
   purity.test.ts         guards the I/O ban, the never-summed rule AND
                          the generator/detector separation
   assemble/              WHERE THE I/O IS. Deliberately NOT under the purity test.
@@ -1831,6 +1880,42 @@ argument.** Rerunning the deterministic experiments left E1, E2 and E3 byte-iden
 byte-identical to mine — so the drift predates the change and belongs to session 16's partial
 refresh (rule 1g). Not refreshed; annotated in RESULTS.md instead. **Removing that worktree deleted
 the main `node_modules` through a junction** — see the Console conventions entry.
+
+**The map picker closed phase one.** `/sender` gained a second panel: the outlined service area is
+drawn before anything is clicked, a click shows its own latitude and longitude, and only a confirmed
+point is submitted. **Nothing snaps, nothing is geocoded, and no address is invented for an
+arbitrary click** — the address is NOT RESOLVED and says so, with the sender's own words storable
+beside it as a claim. A click outside is answered with the reason and the four units that are
+covered rather than a greyed-out control. The confirmed coordinate is rounded once, AT THE CLICK,
+to six decimals (about 11 cm), so the number shown is the number stored; the generator's 60 m
+doorstep offset is not applied. After a shipment is created the surface reads the stored reference
+back and prints it beside the confirmed point, because "we did not move it" is a claim.
+
+**Measured, not asserted, on the finished surface:** a click inside gave `2.934812, 101.697693` with
+no confirm control missing; a click outside gave `3.195364, 102.130280` and the sentence naming
+Kuala Lumpur, Petaling, Hulu Langat and Sepang, with **the two confirm buttons absent rather than
+disabled**; a created shipment's stored delivery reference read back `2.904639, 101.745758`,
+identical to the confirmed point.
+
+**The UI sentence is derived, not typed.** `ServiceBoundary` now carries `members`, and
+`serviceAreaSentence` builds "Service area: Kuala Lumpur, Petaling, Hulu Langat, Sepang" from it —
+so a district added to the boundary file lengthens the sentence and fails the test rather than
+leaving a stale name. The same move removed the one place the old surface over-claimed:
+`registered-address-map.tsx` said **"Klang Valley"**, which officially includes Klang and Gombak.
+
+**Only `/sender` changed, and that was measured.** The four surfaces were captured at 1920x1080,
+my files reverted to HEAD in place, captured again, and compared: **courier, operator and recipient
+0 changed pixels; sender 86,842.** Each surface also has a property no other has, asserted
+independently rather than as a difference (rule 1i): sender 9 form fields, a map and a 4px amber
+header rule; operator 8 queue rows; courier the only signing control; recipient the only answer
+controls, no sidebar, and a 386x432 centred ink box in a 1920x1080 frame.
+
+**Two things this round deliberately did not do.** The picker has no entry in the sender sidebar,
+because `components/shells/sender-shell.tsx` carries another session's uncommitted identity-bar
+work and was not touched; the section is reachable by scrolling and by `#confirm-a-point`. And
+`npm run qa:capture` wrote its ten frames, which were then **reverted rather than committed** — a
+capture taken from this working tree shows that same unfinished identity bar on three of the four
+surfaces, and committing it would put another session's in-progress UI into the evidence set.
 
 Measured and injected: see Known Limitations and rule 2a. Every acceptance test was checked by an
 injection that failed on the test aimed at it — including the triggers, where the first injection
@@ -3849,6 +3934,19 @@ each handoff's own result rather than stated for "arbitrary points" in general. 
 promises that a spoof there is detectable nor that it is not.** I7, I8 and the distance rules run
 as usual and are tested at arbitrary points.
 
+**An online point's address claim is optional, and absence is stored as the empty string.** There
+is no geocoder, so a confirmed coordinate has no resolved address; requiring one would make an
+empty box look like a lookup that failed and would push a sender into typing something so the form
+would submit. NULL would be the better column, and `location_snapshots.address_claim` is `NOT NULL`
+in a migration already committed: SQLite cannot relax that without rebuilding the table, and the
+rebuild is not available here — `foreign_keys` is ON, the rebuild's `DROP TABLE` performs an
+implicit delete against two referencing tables, and a migration runs inside a transaction where the
+pragma cannot be changed. So the empty string carries it, which is unambiguous because a claim is
+non-empty by construction (`normaliseClaim` trims). It is read back through `addressClaimOf` and
+rendered through `addressLabelOf` — one place each, rather than a `=== ""` test every caller has to
+remember. **The less severe failure, chosen deliberately and written down** (the `seedDraftIdentity`
+rule).
+
 **Persisting a location is not persisting the workflow.** Online shipments, their location
 snapshots and their corrections are rows in `data/db/shipments.db`, append-only by trigger. The
 signing keys, the held delivery leg and each shipment's ingest harness are process state. After a
@@ -3873,6 +3971,14 @@ service area would have excluded a sortation hub from the area it serves, and re
 shipments to streets the seeded demo delivers to happily. `lib/shipment/service-area.test.ts`
 asserts every depot is inside by importing `DEPOTS` rather than naming them.
 
+**The members' areas sum to the union, and that is a check worth running.** 243.8 + 500.6 +
+843.7 + 602.6 = 2,190.7 against a measured union of 2,190.8 km², so the four districts do not
+overlap. **Assembling several sources needs a check that they do not overlap, as much as it needs
+each one to be valid on its own**: two relations covering the same ground would still produce a
+closed, plausible union, and the only visible symptom would be a union noticeably smaller than the
+sum. That would mean the administrative hierarchy had been misread — a district inside another
+district, or the same place under two names.
+
 **Petaling maps 3.4% larger than its published area**, the loosest of the four (the others are
 0.1%, 1.7%, 0.5%). Either OSM's edge differs from the official figure or the figure predates a
 revision; it is not a partial ring, which shows as a large deficit. Accepted under a 5% tolerance
@@ -3882,6 +3988,21 @@ not the same statement as "every member matched".
 **The depot-radius placeholder is kept behind `VIGIL_SERVICE_AREA=placeholder`**, not deleted: a
 problem with the real boundary can be stepped around without a deploy, and the two are compared in
 the suite on points where they genuinely disagree.
+
+**OpenStreetMap's tile servers refuse this project's non-browser client, and that is a demo-day
+risk.** A tile request from Node's `fetch` or from curl comes back HTTP 200 carrying an
+**"Access blocked"** image, `x-blocked: Access denied` and `x-totp: INVALID`; headless Chrome, with
+a browser user agent and a referer, is served real tiles. So `npm run qa:capture` works — it runs
+live — and `VIGIL_QA_TILE_CACHE` **cannot currently be recorded**, because the recorder fetches
+each tile itself and would cache the refusal. `stable-capture.mjs` now fails on that header rather
+than caching a refusal notice as a map.
+
+Two consequences worth stating before submission. The demo's basemap depends on a volunteer service
+that may refuse at any time, and the operator's route map and the sender's service-area map would
+both go blank-but-loaded if it did. **The boundary geometry is unaffected**: it is committed to the
+repository and nothing fetches it at runtime, so an outline, its four members and the ODbL credit
+still render with no basemap at all. Choosing a tile source that permits this use — with its own
+licence and attribution — is a decision that has not been made.
 
 **Identity is simulated; the signatures are real.** The courier, recipient and operator entry
 routes use hardcoded demo identities rather than authentication. Recipient links are scoped

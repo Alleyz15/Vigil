@@ -31,6 +31,7 @@ import { ADDRESSES, jitterPoint, type GeneratedParcel } from "@/lib/generate/wor
 import { createOpenMeteoProvider, OPEN_METEO_CACHE_DIR } from "@/lib/weather";
 import { createMigratedDb } from "@/lib/db/migrate";
 import {
+  addressLabelOf,
   appendCorrection,
   boundaryLabel,
   buildOnlineScenario,
@@ -1280,8 +1281,8 @@ export class OperatorWorkbench {
           const last = history?.corrections.at(-1);
           return history && last
             ? {
-                fromLabel: history.originalReference.addressClaim,
-                toLabel: last.to.addressClaim,
+                fromLabel: addressLabelOf(history.originalReference),
+                toLabel: addressLabelOf(last.to),
                 correctedAt: last.correctedAt,
               }
             : null;
