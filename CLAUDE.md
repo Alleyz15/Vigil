@@ -502,6 +502,31 @@ And the narrower form the other three share:
 > still be an error page.** `ok` is the transport's opinion, `readyState` is the renderer's;
 > neither says the thing you asked for came back. On a picture that has to be asked deliberately.
 
+##### The severest of the four: a browser error page written into the evidence set
+
+This one is recorded on its own because its consequence is different in kind. The tile defect put
+a wrong picture in a cache. **This one put a wrong picture in `docs/screenshots/`, under the
+filename of the surface it claimed to show.** With the dev server down, `captureStable` wrote
+Chrome's `ERR_CONNECTION_REFUSED` page out as `/sender`, and every condition it checks was
+genuinely satisfied: `readyState` complete, `document.querySelector('main, h1')` matching the error
+page's own heading, fonts loaded, no animations, three consecutive identical frames.
+
+**Why that is worse than a bad cache.** A cache is read by a script, which can be made suspicious.
+The evidence set is read by a PERSON — a reviewer, a judge, a future session checking what a
+surface looked like — and a person opening a correctly-named PNG has no reason to doubt it. The
+filename is the claim, and here the filename was right while the image was a different page
+entirely.
+
+> **A frame's filename is an assertion about what is in the frame.** Every other assertion in this
+> project is checked; this one was carried by the script's own confidence that it had loaded the
+> page it asked for. A capture must prove it reached the page before it is allowed to name one.
+
+`Page.navigate` reports the failure in `errorText` and the script was not reading it. Injected
+against a dead port: it now fails naming `net::ERR_CONNECTION_REFUSED` and writes no file. The same
+sentence covers the other two capture defects — a frame taken while a map still read "loading", and
+a map made of refusal notices — which is why *A refresh of the evidence set is committed with the
+change it records* sits beside them in Console conventions.
+
 All three are fixed and each fix was verified against the real failure: the `x-blocked` header
 fails the capture naming the tile URL and the policy; the loading check matches any "loading … map"
 wording; a refused navigation fails naming `net::ERR_CONNECTION_REFUSED` and writes no file.
@@ -605,6 +630,43 @@ the grid sweep cost less than the paragraph justifying the guess would have. The
 session-20 discipline applied to a change that "obviously" does nothing — **when the claim is
 "nothing changed", produce the value from before the change and compare it.** "Sounds impossible"
 is not evidence.
+
+#### An approved DIAGNOSIS is not a verified one either, and that is the other direction
+
+Session 24 reported that OpenStreetMap's tile servers "refuse this project's non-browser client",
+and the reviewer approved that account. It was wrong. Reading the policy and testing one tile three
+ways showed the refusal is aimed at an UNIDENTIFIED client, not a non-browser one: default agent →
+the refusal image, an agent naming this project → a real tile. **The fault was ours and one header
+fixed it**, which is the opposite of an upstream that cannot be relied on.
+
+> **An approved diagnosis carries exactly as much evidence as an approved plan: the reasoning of
+> whoever wrote it.** Approval records that the account was plausible to two people, not that
+> anyone measured it.
+
+Rule 1g now has instances in **both directions**: a plan approved before the work (session 23's
+seam colours, this session's boundary tolerance) and a diagnosis approved after it. The forward
+case is caught by measuring on the way in. The backward case is caught by reading the upstream's
+own words — the policy said outright *"traffic that uses these defaults will be blocked"* — and by
+testing the mechanism the diagnosis names, which here cost one `curl` with a header.
+
+**The shape underneath was the familiar one, and the audit is the useful part.** Three callers in
+this repository are bound by OpenStreetMap's usage policies, and the same constraint is
+implemented three times:
+
+| Caller | Service | Identifying agent |
+|---|---|---|
+| `scripts/fetch-addresses.mjs` | Nominatim | yes — and its comment states the policy requires it |
+| `scripts/fetch-kl-boundary.mjs` | Overpass | yes |
+| `scripts/qa/stable-capture.mjs` | tile servers | **no, until this session** |
+
+Two of the three were right **and wrote down why**, and the third still missed it. That is worse
+than a constraint nobody knew: the knowledge was in the repository, in a comment, one directory
+away. **A rule that is satisfied by each caller separately is satisfied until a caller is added.**
+The remaining outbound callers were checked in the same sweep: `anthropic.ts` and `gemini.ts`
+authenticate with a key and their terms ask for no agent; `lib/weather/open-meteo.ts` is the
+nearest analogue — a free service with no key and no agent — and is **deliberately left**, because
+its terms do not require one, its results are cached to a committed file, and changing the request
+would move a contract that has offline tests. Recorded rather than changed.
 
 #### An approved plan is reasoned, not verified
 
@@ -1886,7 +1948,12 @@ npm run db:migrate
 
 ## Session log
 
-### Session 24 — online shipments at a confirmed point, phase one (in progress)
+### Session 24 — online shipments at a confirmed point, phase one (complete)
+
+**PHASE ONE IS CLOSED.** The map picker, the boundary, the store and the online build layer are
+all in. **Phase two — address search and reverse geocoding — is NOT open**, and a future session
+must not begin it without the reviewer deciding to: it is the part that calls a provider, and the
+whole of phase one was built so that nothing does.
 
 Phase one of arbitrary-location shipments: the backend, the store, the operator's view of the
 location gap, and the API. **No geocoder is called and no code path sends data out or costs
@@ -3806,6 +3873,16 @@ rather than about a handoff. It was deferred because the scores are not sealed a
 the operator signs, so it needs a two-step commitment (sign the assessment hash, then seal) and
 that is a larger change than this session's scope. Revisit if there is time before submission.
 
+**Caching tiles into the repository is deferred, and its priority dropped when the agent was
+fixed.** The original reason to consider it was that the tile servers appeared to refuse this
+project; they do not, and one header settled it. What remains is only a hedge against the service
+refusing on the day, which is now no more likely than for any free dependency. The policy permits
+the FETCHING — *"bulk downloading is any pre-emptive fetching of tiles other than those a user is
+actively viewing"*, and the QA cache takes only what the capture page displays — but
+**redistribution of rendered tiles in a public repository is a separate licence question about the
+cartography, and nobody has answered it.** Do not commit tiles until someone has, and do not spend
+a session on it before that answer exists.
+
 **The pattern window is 24h and the shift window is 12h**, both arbitrary. They are assembler
 config (`DEFAULT_PATTERN_WINDOW_HOURS`, `DEFAULT_SHIFT_WINDOW_HOURS`) and overridable per run
 via `deps.windows`, so experiment 6 can sweep them.
@@ -4063,7 +4140,9 @@ rides on the refusal and appears nowhere in the policy; it is not what decided t
 **So the fault was ours and it is fixed.** `stable-capture.mjs` now names the project in its tile
 requests, and `VIGIL_QA_TILE_CACHE` records real tiles again — verified: 20 distinct bodies, none
 of them the refusal image. It also still fails on `x-blocked`, because a guard that caught this
-once should stay.
+once should stay. **The first account of this, which the reviewer approved, was wrong** — see
+*An approved DIAGNOSIS is not a verified one* under rule 1g, which also carries the sweep of every
+other outbound caller.
 
 **What the policy permits, in its own words, because the next session will want to cache tiles into
 the repository:** *"Bulk downloading is any pre-emptive fetching of tiles other than those a user is
