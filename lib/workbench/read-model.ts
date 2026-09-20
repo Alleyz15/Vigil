@@ -124,6 +124,18 @@ export type HandoffDetail = {
    * operator seeing "distance from recipient address" and an operator seeing
    * that the address changed after the parcel was already moving.
    */
+  /**
+   * What location evidence could not exist for this handoff, and why — online
+   * shipments at a point with no registered reference sites. Not an engine
+   * input: the engine found the absence on its own. `null` for every seeded and
+   * built shipment, whose addresses are in the registry.
+   */
+  locationEvidence: {
+    gap: { code: string; summary: string; detail: string };
+    scanSource: "simulation";
+    /** The boundary the reference was checked against, as stamped on its snapshot. */
+    boundary: { version: string; placeholder: boolean };
+  } | null;
   addressCorrection: {
     fromLabel: string;
     toLabel: string;

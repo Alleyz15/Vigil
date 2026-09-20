@@ -42,6 +42,7 @@ export function HandoffDetailView({
   const showEvidenceDetails = shouldShowEvidenceDetails({
     flagCount: detail.flags.length,
     hasAddressCorrection: Boolean(detail.addressCorrection),
+    hasLocationGap: Boolean(detail.locationEvidence),
   });
   const revealOverlays = activeLegIndex >= detail.summary.legIndex;
   const rerouteAvailable = detail.reroute?.status === "proposed";
@@ -215,6 +216,7 @@ export function HandoffDetailView({
             <span className="text-xs text-muted-foreground">Backend values used by the deterministic engine</span>
           </div>
           <div className="mt-3 space-y-2">
+            {detail.locationEvidence && <LocationEvidenceNotice detail={detail} />}
             {detail.addressCorrection && <AddressCorrectionNotice detail={detail} />}
             {detail.flags.map((flag) => (
               <div key={flag.id} className="rounded-md border bg-card px-4 py-3">
@@ -408,6 +410,32 @@ function StatusCard({
  * the system is as sensitive to stale records as to fraud; this is where a
  * viewer watches it happen and sees it named.
  */
+/**
+ * A location nobody registered reference sites for.
+ *
+ * WORDED TO THE MECHANISM: the engine never searches for towers near a point; it
+ * looks up the IDs a handset reported, and an arbitrary point's IDs are not in
+ * the registry. The evaluable-check line is this handoff's own, read from its
+ * result — never a number written down for "arbitrary points", which would be
+ * wrong the first time a scan differed.
+ */
+function LocationEvidenceNotice({ detail }: { detail: HandoffDetail }) {
+  const evidence = detail.locationEvidence!;
+  return (
+    <section className="rounded-md border bg-card px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">{evidence.gap.summary}</h2>
+        <ProvenanceLabel>Scan position simulated</ProvenanceLabel>
+        {evidence.boundary.placeholder && <ProvenanceLabel>Boundary data pending confirmation</ProvenanceLabel>}
+      </div>
+      <p className="mt-1.5 max-w-prose text-xs leading-5 text-muted-foreground">{evidence.gap.detail}</p>
+      {detail.summary.coverageLine && (
+        <p className="mt-2 font-mono text-xs text-foreground">This handoff: {detail.summary.coverageLine}</p>
+      )}
+    </section>
+  );
+}
+
 function AddressCorrectionNotice({ detail }: { detail: HandoffDetail }) {
   const correction = detail.addressCorrection!;
   const at = correction.correctedAt.replace("T", " ").slice(0, 16);

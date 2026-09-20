@@ -31,8 +31,10 @@ export function ledgerReferencePresentation(sequence: number | null): {
 export function shouldShowEvidenceDetails(input: {
   flagCount: number;
   hasAddressCorrection: boolean;
+  /** A location with no registered reference sites. Worth saying even when nothing fired. */
+  hasLocationGap?: boolean;
 }): boolean {
-  return input.flagCount > 0 || input.hasAddressCorrection;
+  return input.flagCount > 0 || input.hasAddressCorrection || Boolean(input.hasLocationGap);
 }
 
 export function detailStatusMessage(input: {

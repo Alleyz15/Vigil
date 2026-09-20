@@ -270,7 +270,33 @@ describe("the generator does not import the detector's thresholds", () => {
     /from\s+["']@\/lib\/(engine|pattern|gate)["']/,
   ];
 
-  function generatorSources(dir = join(LIB, "generate")): { path: string; source: string }[] {
+  /**
+   * EVERY TREE UNDER lib/ IS SCANNED, EXCEPT THE ONES NAMED HERE WITH A REASON.
+   *
+   * The guard began as `lib/generate` alone, and a guard pointed at one
+   * directory is bypassed by writing the same code in another. Session 24 added
+   * `lib/shipment`, which builds world facts for online shipments — exactly the
+   * code this rule is about — and naming it would have been the eighth
+   * hand-maintained list (CLAUDE.md, rule 1g). So the set is ENUMERATED from the
+   * filesystem and the exclusions are written down: a new directory is guarded
+   * the moment it exists, and exempting one takes a sentence.
+   */
+  const THRESHOLD_READERS: Record<string, string> = {
+    engine: "owns axis 1's thresholds",
+    pattern: "owns axis 2's thresholds",
+    gate: "owns the cut points where the two axes meet",
+    agent: "runs the detector and hands it its thresholds; it builds no world facts",
+    assemble: "builds the detector's input from stored rows; it builds no world facts",
+  };
+
+  function guardedTrees(): string[] {
+    return readdirSync(LIB, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !(entry.name in THRESHOLD_READERS))
+      .map((entry) => entry.name);
+  }
+
+  function generatorSources(dir?: string): { path: string; source: string }[] {
+    if (!dir) return guardedTrees().flatMap((tree) => generatorSources(join(LIB, tree)));
     const out: { path: string; source: string }[] = [];
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
@@ -285,6 +311,18 @@ describe("the generator does not import the detector's thresholds", () => {
     }
     return out;
   }
+
+  it("scans every world-building tree, and every exclusion still names a real directory", () => {
+    const trees = guardedTrees();
+    expect(trees).toContain("generate");
+    expect(trees).toContain("shipment");
+    for (const excluded of Object.keys(THRESHOLD_READERS)) {
+      expect(
+        existsSync(join(LIB, excluded)),
+        `lib/${excluded} is exempted from the anti-circularity guard but no longer exists. Remove the exclusion, or a future directory of that name inherits an exemption nobody granted it.`,
+      ).toBe(true);
+    }
+  });
 
   /**
    * The experiment scripts fall under the same rule, with ONE exception.

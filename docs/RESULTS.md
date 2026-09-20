@@ -709,6 +709,15 @@ entirely. Both columns are in the CSV.
 | 2 `urban` | 50 km/h | 100% | 68.8% |
 | 3 `adverse` | 50 km/h | 100% | 68.8% |
 
+**The `alerted` column in `results/e6-threshold-sensitivity.csv` has not been rerun since session
+11, and the file is therefore NOT current as a whole.** Session 16 added the identity checks (I15,
+I16) and refreshed E3 only. Reran on 2026-09-19 against the current code: 38 of 1,920 rows change,
+every one of them `alerted` 0 → 1 on a clean-arm row, and **not one `i3_fired` value moves**. So
+every figure E6 publishes — the curve above, the 50 km/h edge at every noise level — still holds,
+because all of them are computed from `i3_fired`. The stale column is the carried
+`any_alert` one, which E6 reports only as context for E3's own number. It was left as it is rather
+than silently refreshed, so the CSV still matches the session it was produced in.
+
 **Session 11 rerun.** The I4/I5 change did not alter one `I3_fired` value in the 1,920-row CSV:
 the speed-specific curve is identical. It removed 127 `any_alert` observations caused by the old
 clock rule and added none. That is the expected separation: E6 varies I3, while the corrected

@@ -450,3 +450,106 @@ export const recipientConfirmations = sqliteTable(
     index("recipient_confirmations_expiry_idx").on(t.expiresAt),
   ],
 );
+
+/**
+ * SHIPMENTS CREATED ONLINE, WITH A DELIVERY REFERENCE A PERSON CONFIRMED ON A MAP.
+ *
+ * Three record kinds, and the split is the point:
+ *
+ *   shipments            who declared what, under which idempotency key
+ *   location_snapshots   a coordinate, the address text claimed for it, where it
+ *                        came from, when it was confirmed, and which boundary
+ *                        version it was checked against
+ *   location_corrections one row per correction, naming the snapshot before and
+ *                        the snapshot after
+ *
+ * APPEND-ONLY, ENFORCED BY THE DATABASE. Migration 0006 installs triggers that
+ * abort any UPDATE or DELETE on all three tables. The original delivery
+ * reference is never overwritten: a correction appends a new snapshot and a row
+ * pointing from the old one to the new one. "We only ever insert" would be a
+ * promise about our code; a trigger is a property of the file (rule 6's
+ * reasoning, one level down).
+ *
+ * WHAT THIS IS NOT. Persisting the LOCATION is not persisting the WORKFLOW. The
+ * signing keys, a held delivery leg and each shipment's ingest harness remain
+ * process state; a restart keeps these rows and loses the run. Restartable
+ * workflow is a separate scope and nothing here should be read as supporting it.
+ */
+export const locationSnapshots = sqliteTable(
+  "location_snapshots",
+  {
+    snapshotId: text("snapshot_id").primaryKey(),
+    /** Plain column, not a foreign key: the snapshot is written before its shipment. */
+    shipmentId: text("shipment_id").notNull(),
+    /**
+     * `delivery_reference` is what a person confirmed; `simulated_scan` is where the
+     * simulated courier stood. They are different inputs and must never be merged:
+     * the confirmed point is the record a scan is measured AGAINST.
+     */
+    purpose: text("purpose", { enum: ["origin", "delivery_reference", "simulated_scan"] }).notNull(),
+    latitude: real("latitude").notNull(),
+    longitude: real("longitude").notNull(),
+    /** The address text the sender typed. A claim, stored as written, never parsed. */
+    addressClaim: text("address_claim").notNull(),
+    /** How the coordinate was obtained. No geocoder exists in this phase. */
+    source: text("source", { enum: ["map_confirmed", "simulation"] }).notNull(),
+    confirmedAt: text("confirmed_at").notNull(),
+    /** The boundary file's version the point was checked against, or `unchecked` for a simulated scan. */
+    boundaryVersion: text("boundary_version").notNull(),
+  },
+  (t) => [index("location_snapshots_shipment_idx").on(t.shipmentId)],
+);
+
+export const shipments = sqliteTable(
+  "shipments",
+  {
+    /** Server-generated (crypto.randomUUID). Never derived from the request. */
+    shipmentId: text("shipment_id").primaryKey(),
+    /** The client's retry key. UNIQUE: one key, one shipment, whatever races. */
+    idempotencyKey: text("idempotency_key").notNull(),
+    /** sha256 of the canonical request, so a reused key with different content is refused. */
+    requestHash: text("request_hash").notNull(),
+    /** Where the sender hands the parcel over. Confirmed the same way; decides the origin depot. */
+    originSnapshotId: text("origin_snapshot_id")
+      .notNull()
+      .references(() => locationSnapshots.snapshotId),
+    /** The ORIGINAL delivery reference. Immutable; corrections append, they never replace this. */
+    referenceSnapshotId: text("reference_snapshot_id")
+      .notNull()
+      .references(() => locationSnapshots.snapshotId),
+    originDepot: text("origin_depot").notNull(),
+    destinationDepot: text("destination_depot").notNull(),
+    /** Both ends resolve to one depot: a local delivery, stated rather than papered over. */
+    local: integer("local", { mode: "boolean" }).notNull(),
+    declaredValueSen: integer("declared_value_sen").notNull(),
+    codAmountSen: integer("cod_amount_sen").notNull(),
+    recipientChannel: text("recipient_channel").notNull(),
+    recipientName: text("recipient_name"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("shipments_idempotency_key_uidx").on(t.idempotencyKey),
+    uniqueIndex("shipments_origin_snapshot_uidx").on(t.originSnapshotId),
+    uniqueIndex("shipments_reference_snapshot_uidx").on(t.referenceSnapshotId),
+  ],
+);
+
+export const locationCorrections = sqliteTable(
+  "location_corrections",
+  {
+    correctionId: text("correction_id").primaryKey(),
+    shipmentId: text("shipment_id")
+      .notNull()
+      .references(() => shipments.shipmentId),
+    /** 1, 2, 3 … per shipment. UNIQUE with the shipment, so two writers cannot both be "next". */
+    sequence: integer("sequence").notNull(),
+    fromSnapshotId: text("from_snapshot_id")
+      .notNull()
+      .references(() => locationSnapshots.snapshotId),
+    toSnapshotId: text("to_snapshot_id")
+      .notNull()
+      .references(() => locationSnapshots.snapshotId),
+    correctedAt: text("corrected_at").notNull(),
+  },
+  (t) => [uniqueIndex("location_corrections_sequence_uidx").on(t.shipmentId, t.sequence)],
+);

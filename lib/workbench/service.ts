@@ -29,6 +29,22 @@ import {
 import { buildRequestedScenario, type BuildRequest } from "@/lib/generate/builder";
 import { ADDRESSES, jitterPoint, type GeneratedParcel } from "@/lib/generate/world";
 import { createOpenMeteoProvider, OPEN_METEO_CACHE_DIR } from "@/lib/weather";
+import { createMigratedDb } from "@/lib/db/migrate";
+import {
+  appendCorrection,
+  boundaryLabel,
+  buildOnlineScenario,
+  createShipment,
+  getShipment,
+  loadServiceBoundary,
+  recordSimulatedScan,
+  shipmentStorePath,
+  UNREGISTERED_LOCATION_GAP,
+  type LocationInput,
+  type Point,
+  type ServiceBoundary,
+  type ShipmentRequest,
+} from "@/lib/shipment";
 import { epcsOf } from "@/lib/epcis";
 import { rmSync } from "node:fs";
 import { OperatorActionRequest, type CaseState, type OperatorActionRequest as ActionRequest } from "./types";
@@ -129,8 +145,40 @@ export type SenderShipmentView = {
   deliveryEventId: string | null;
 };
 
+/**
+ * An online shipment's RUN in this process.
+ *
+ * The shipment and its locations are rows in the durable store; this is not.
+ * The harness, the held delivery leg and the signing keys live here, and a
+ * restart loses them. Restartable workflow is a separate scope — see Known
+ * Limitations — so nothing below pretends a stored shipment can be resumed by a
+ * process that did not start it.
+ */
+type OnlineRun = {
+  runId: string;
+  shipmentId: string;
+  scenario: GeneratedScenario;
+  world: GeneratedWorld;
+  harness: IngestHarness;
+  deliveryEventId?: string;
+};
+
+/** Which boundary a point was checked against, said on every answer that involves one. */
+export type BoundaryNote = { version: string; placeholder: boolean; label: string };
+
+export type OnlineCreateResult = { boundary: BoundaryNote } & (
+  | { status: "created" | "replayed"; shipmentId: string; running: true; eventIds: string[] }
+  | { status: "replayed"; shipmentId: string; running: false; reason: string }
+  | { status: "conflict"; reason: string }
+  | { status: "rejected"; field: "origin" | "destination"; code: string; reason: string }
+);
+
 /** One stored entry, built the same way the boot path builds them. */
-function storedEntryFor(shipment: BuiltShipment, built: BuiltEvent, ctx: AgentContext): StoredEntry {
+function storedEntryFor(
+  shipment: { runId: string; scenario: GeneratedScenario; world: GeneratedWorld; harness: IngestHarness },
+  built: BuiltEvent,
+  ctx: AgentContext,
+): StoredEntry {
   const pending = ctx.halted?.reason === "PENDING_COSIGNATURE";
   const actionable = pending || (ctx.decision !== undefined && ctx.decision !== "accept");
   const state: CaseState | null = pending ? "awaiting_cosignature" : actionable ? "flagged" : null;
@@ -501,6 +549,10 @@ export class OperatorWorkbench {
   /** tokenId -> the handoff it asks about. */
   private readonly confirmations = new Map<string, StoredEntry>();
   private readonly harnesses = new Set<IngestHarness>();
+  /** Online shipments with a run in THIS process, by shipment id. */
+  private readonly online = new Map<string, OnlineRun>();
+  private onlineStore?: VigilDb;
+  private onlineBoundary: ServiceBoundary | null | undefined;
   private actionSequence = 0;
   private readonly nowIso: string;
 
@@ -881,6 +933,177 @@ export class OperatorWorkbench {
     }));
   }
 
+  /**
+   * Point the online surface at a store and a boundary. Tests pass an in-memory
+   * store and a fixture boundary; the app opens the durable file and reads the
+   * confirmed boundary lazily on first use.
+   */
+  configureOnline(options: { store: VigilDb; boundary: ServiceBoundary | null }): void {
+    this.onlineStore = options.store;
+    this.onlineBoundary = options.boundary;
+  }
+
+  private store(): VigilDb {
+    this.onlineStore ??= createMigratedDb(shipmentStorePath());
+    return this.onlineStore;
+  }
+
+  private boundary(): ServiceBoundary | null {
+    if (this.onlineBoundary === undefined) this.onlineBoundary = loadServiceBoundary();
+    return this.onlineBoundary;
+  }
+
+  /** The boundary in force, as a surface should describe it. */
+  boundaryNote(): BoundaryNote {
+    const boundary = this.boundary();
+    if (!boundary) return { version: "none", placeholder: false, label: "No service-area boundary is configured" };
+    return { version: boundary.version, placeholder: Boolean(boundary.placeholder), label: boundaryLabel(boundary) };
+  }
+
+  /**
+   * Create a shipment from two points the sender confirmed, and run it up to
+   * out-for-delivery. The delivery scan is held: it is a separate act by the
+   * courier, and that gap is what makes a correction possible.
+   *
+   * A replayed request returns the same shipment. If this process already runs
+   * it, the caller gets the same run; if not — the server restarted since — the
+   * answer says so rather than starting a second run under the same event ids or
+   * pretending the old one survived.
+   */
+  async createOnlineShipment(request: ShipmentRequest, idempotencyKey: string): Promise<OnlineCreateResult> {
+    const result = createShipment(this.store(), {
+      request,
+      idempotencyKey,
+      boundary: this.boundary(),
+      nowIso: this.nowIso,
+    });
+    const boundary = this.boundaryNote();
+    if (result.status === "conflict" || result.status === "rejected") return { ...result, boundary };
+
+    const shipmentId = result.shipment.shipmentId;
+    const existing = this.online.get(shipmentId);
+    if (existing) {
+      return { status: result.status, shipmentId, running: true, eventIds: this.eventIdsOf(existing), boundary };
+    }
+    if (result.status === "replayed") {
+      return {
+        boundary,
+        status: "replayed",
+        shipmentId,
+        running: false,
+        reason:
+          "This shipment is on file, but its run belonged to an earlier server process. The locations " +
+          "are kept; the workflow is not restartable, so it is not resumed here.",
+      };
+    }
+
+    const history = getShipment(this.store(), shipmentId)!;
+    const world = buildWorld(SEED);
+    const { scenario } = buildOnlineScenario(history, { world, startMs: START_MS });
+    const { entries } = await buildScenarioEntries(
+      { scenario, world },
+      { holdBackFinalLeg: true, leavePendingAt: (event, s) => event.legIndex === s.timeline.length - 1 },
+    );
+    for (const entry of entries) {
+      this.entries.set(entry.built.event.eventID, entry);
+      this.harnesses.add(entry.harness);
+    }
+    const run: OnlineRun = { runId: scenario.id, shipmentId, scenario, world, harness: entries[0].harness };
+    this.online.set(shipmentId, run);
+    return { status: "created", shipmentId, running: true, eventIds: this.eventIdsOf(run), boundary };
+  }
+
+  private eventIdsOf(run: OnlineRun): string[] {
+    return [...this.entries.values()]
+      .filter((entry) => entry.scenario.id === run.runId)
+      .sort((a, b) => a.built.legIndex - b.built.legIndex)
+      .map((entry) => entry.built.event.eventID);
+  }
+
+  /**
+   * Append a correction to the delivery reference. The original point stays on
+   * the parcel and in the store, and nothing tells the engine (session 20's
+   * stale-record behaviour, unchanged).
+   *
+   * Refused after delivery, and refused when this process has no run for the
+   * shipment: whether it was delivered is run state, and a correction that might
+   * postdate the delivery it explains must not be written (rule 3g).
+   */
+  correctOnlineShipment(
+    shipmentId: string,
+    to: LocationInput,
+  ): { ok: true; sequence: number } | { ok: false; code: string; reason: string } {
+    const run = this.online.get(shipmentId);
+    if (!run) {
+      return {
+        ok: false,
+        code: "no_run",
+        reason: "No run for this shipment in this process, so whether it was delivered cannot be told.",
+      };
+    }
+    if (run.deliveryEventId) {
+      return {
+        ok: false,
+        code: "delivered",
+        reason:
+          "This parcel has already been delivered. A correction now would be written after the scan it " +
+          "would explain.",
+      };
+    }
+    const result = appendCorrection(this.store(), { shipmentId, to, boundary: this.boundary(), nowIso: this.nowIso });
+    return result.ok ? { ok: true, sequence: result.correction.sequence } : result;
+  }
+
+  /**
+   * The simulated courier scans the delivery.
+   *
+   * `scan` is a SIMULATION INPUT and is recorded as one. Omitted, the courier
+   * stands at the current delivery reference — the point they were sent to. It
+   * never changes the reference the scan is measured against.
+   */
+  async deliverOnlineShipment(
+    shipmentId: string,
+    scan?: Point,
+  ): Promise<{ ok: true; eventId: string } | { ok: false; code: string; reason: string }> {
+    const run = this.online.get(shipmentId);
+    if (!run) return { ok: false, code: "no_run", reason: "No run for this shipment in this process." };
+    if (run.deliveryEventId) return { ok: false, code: "delivered", reason: "This parcel has already been delivered." };
+
+    const history = getShipment(this.store(), shipmentId)!;
+    const point = scan ?? { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude };
+    recordSimulatedScan(this.store(), { shipmentId, point, nowIso: this.nowIso });
+
+    const rebuilt = buildOnlineScenario(history, { world: run.world, startMs: START_MS, scan: point });
+    const built = rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1];
+    const ctx = await ingestEvent(run.harness, built, {
+      courierPrivateKey: run.scenario.courier.keys.privateKey,
+      mandateId: run.scenario.courier.mandate.mandateId,
+    });
+
+    this.entries.set(built.event.eventID, storedEntryFor(run, built, ctx));
+    run.deliveryEventId = built.event.eventID;
+    return { ok: true, eventId: built.event.eventID };
+  }
+
+  /** The stored history for the sender's own surface, and whether this process runs it. */
+  onlineShipment(shipmentId: string) {
+    const history = getShipment(this.store(), shipmentId);
+    if (!history) return undefined;
+    const run = this.online.get(shipmentId);
+    return {
+      history,
+      running: Boolean(run),
+      delivered: Boolean(run?.deliveryEventId),
+      deliveryEventId: run?.deliveryEventId ?? null,
+    };
+  }
+
+  private onlineRunFor(eventId: string): OnlineRun | undefined {
+    const entry = this.entries.get(eventId);
+    if (!entry) return undefined;
+    return [...this.online.values()].find((run) => run.runId === entry.scenario.id);
+  }
+
   /** The correction behind a delivery, for the operator's explanation. */
   correctionFor(eventId: string): AddressCorrection | null {
     for (const shipment of this.shipments.values()) {
@@ -1017,7 +1240,36 @@ export class OperatorWorkbench {
        * once. See Known Limitations.
        */
       recipientConfirmation: this.confirmationFor(eventId) ?? null,
+      locationEvidence: (() => {
+        // Online shipments only: a location nobody registered sites for. Said at
+        // the location, with the scan's provenance, so the evaluable-check count
+        // beside the verdict has its reason next to it.
+        const run = this.onlineRunFor(eventId);
+        if (!run) return null;
+        const reference = getShipment(this.store(), run.shipmentId)?.originalReference;
+        return {
+          gap: UNREGISTERED_LOCATION_GAP,
+          scanSource: "simulation" as const,
+          boundary: {
+            version: reference?.boundaryVersion ?? "unknown",
+            placeholder: reference?.boundaryVersion.startsWith("placeholder-") ?? false,
+          },
+        };
+      })(),
       addressCorrection: (() => {
+        const run = this.onlineRunFor(eventId);
+        if (run) {
+          if (run.deliveryEventId !== eventId) return null;
+          const history = getShipment(this.store(), run.shipmentId);
+          const last = history?.corrections.at(-1);
+          return history && last
+            ? {
+                fromLabel: history.originalReference.addressClaim,
+                toLabel: last.to.addressClaim,
+                correctedAt: last.correctedAt,
+              }
+            : null;
+        }
         const correction = this.correctionFor(eventId);
         return correction
           ? {
@@ -1218,6 +1470,7 @@ export class OperatorWorkbench {
   }
 
   close(): void {
+    if (this.onlineStore) closeDb(this.onlineStore);
     for (const harness of this.harnesses) {
       closeDb(harness.deps.db);
       rmSync(harness.dir, { recursive: true, force: true });

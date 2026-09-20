@@ -132,6 +132,15 @@ and a detection rate measured on it would stay high even if the rule were nonsen
 basement carpark", "the recipient agrees not to complain". **The detectors compute statistics.**
 If a threshold moves, the generator does not.
 
+**Since session 24 the guard scans every tree under `lib/`, not `lib/generate` alone.** A guard
+pointed at one directory is bypassed by writing the same code in another, and session 24 added
+exactly that: `lib/shipment`, which builds world facts for online shipments. The set is enumerated
+from the filesystem and the exemptions are written down with a reason each — `engine`, `pattern`,
+`gate` own the thresholds; `agent` and `assemble` hand them to the detector and build no world
+facts. A stale exemption fails the test. Verified by injection: a threshold import, a threshold
+name and `Math.random` in `lib/shipment/build.ts`, and a threshold import in a brand-new
+`lib/zzroute/`, each failed naming the file; restored, all pass.
+
 ### 2b. Noise parameters must straddle the rules, never sit under them
 
 The same guard, aimed at the failure mode that is easiest to commit by accident.
@@ -437,6 +446,25 @@ wrong:**
 Instance 3 is the one the other two do not cover: **a check that fails can still be wrong about why.**
 Read the message against the injection, every time.
 
+#### Session 24: both halves in one round
+
+Three of the session's own tests were unreliable, and between them they covered both directions:
+
+| Test | What was wrong | Which half |
+|---|---|---|
+| depot tie-break | asserted each depot is nearest to itself — distance zero, never a tie | **passed without testing**: no tie was ever constructed |
+| duplicate idempotency key | inserted a row whose snapshots did not exist and accepted `/UNIQUE\|FOREIGN KEY/` | **passed without testing**: the foreign key fired first, so the unique index was never reached |
+| append-only triggers, injected | deleted the `CREATE TRIGGER` lines, leaving an empty statement | **failed for the wrong reason**: the migration crashed and 24 unrelated tests failed |
+
+All thirty tests passed on their first run, and that was the signal to look. The fixes: two
+facilities at one coordinate make a real tie, in both orders; the duplicate-key insert uses real
+snapshots and must fail with `UNIQUE constraint failed: shipments.idempotency_key`; the trigger
+injection became inert triggers (`SELECT 1`), which failed exactly the four append-only tests.
+
+> **A first-run pass on new tests is not evidence; it is the moment to inject.** The two halves —
+> a pass that tested nothing, a failure that tested something else — look like opposite problems
+> and have one cause: the probe was never checked against the property it named.
+
 ### 1g. A test suite verifies the invariants someone thought to write
 
 **Found by opening the page, not because anything reported it.**
@@ -595,6 +623,18 @@ somewhere else, and nothing connects the two. Nothing throws; the new member is 
 | 7 | 20 | guard 8 again, one level down | subdirectories: the walk read the top level only |
 | 8 | 16; found in the 2026-09-17 results audit | RESULTS.md's E3 episode table, transcribed separately from the main curve | the main curve was refreshed for identity evidence, but charged-mid-shift and handset-swap rows retained pre-identity counts |
 
+**Instance 8 has a twin, and together they make a rule.** The same session-16 refresh left TWO
+derived things behind: RESULTS.md's E3 episode rows (charged-mid-shift 5→8, handset-swap 1→8) and
+`results/e6-threshold-sensitivity.csv`'s `alerted` column (38 of 1,920 rows, found in session 24 by
+rerunning E6 and diffing). One refresh, two derivatives, neither noticed at the time — the E3 rows
+in the 2026-09-17 audit, the E6 column two sessions later.
+
+> **A rerun must answer "what else was derived from this data?", not only "is the main curve
+> right?"** Nothing connects a result file to the documents, tables and columns computed from it,
+> and that gap has now cost two corrections. When an experiment is rerun, list every artefact that
+> reads it — other CSVs, RESULTS.md tables, landing-page figures — and state for each whether it
+> was refreshed or deliberately left, with the reason.
+
 **Instance 8 is a partial refresh, not a detector change.** The archived reporting CSV
 in `ef4c2f0` contains 8 alerted charged-mid-shift shipments out of 49 (16.3%) and
 8 alerted handset-swap shipments out of 8 (100.0%). The document retained 5/49
@@ -618,6 +658,15 @@ Session 23 applied the rule rather than finding a new instance: the inbox's shor
 table keyed by rule id, and `lib/workbench/inbox.test.ts` enumerates `INCONSISTENCY_RULES`,
 `PATTERN_RULES` and the hard checks' ids read from `hard.ts`, failing with the missing id. Verified by
 deleting `I16`'s label: the failure named `I16`.
+
+**Session 24 applied it a second time, to the anti-circularity guard (rule 2a).** The request was
+"cover the new `lib/shipment` directory"; adding it to the guard would have been a ninth
+hand-maintained list, with the tenth directory uncovered by default. Instead the guard enumerates
+every tree under `lib/` and names its exemptions with a reason each. **Guards enumerate and exclude;
+they do not maintain an inclusion list, and every exclusion states why.** The proof is the
+injection into a directory that did not exist when the guard was written: a threshold import in a
+new `lib/zzroute/` failed naming `zzroute/plan.ts`. Moving code to a new directory is not a way
+around the rule.
 
 **Enumerating found something on its first run.** Guard 9's pattern `\{\s*\w+\.value\s*\}` fired
 on `key={option.value}` in `sender-form.tsx` — an attribute, not rendered content. The pattern had
@@ -843,6 +892,20 @@ the whole point.
 All three are the same class of error as collapsing the three-state `RuleResult` into a boolean
 (rule 4). The console displays what was measured, says what was not, and marks what is
 illustration.
+
+**Checked before it could fail, session 24.** An online shipment's point has no registered
+reference sites, and the obvious risk was the map drawing a serving cell for it anyway — the
+generator's `addressIndexFor` falls back to address 0 for an unknown address, so any code that
+looked sites up by address would have placed address 0's tower beside an arbitrary point. It was
+read before anything was built: `map-model.ts` draws only the cell the EVENT reported, and an
+online scan reports none, so no site is drawn. Looking for where a rule could be broken, rather
+than waiting to find where it was, is the cheaper order.
+
+> **A rule's instance count records DEFECTS FOUND, never checks that passed.** This check found
+> nothing, so 3e still has four instances and this is an application of it. Counting a clean check
+> as an instance would inflate the evidence behind the rule — the tally exists to show how often
+> the failure really happens, and padding it with successes makes it argue for itself. Same
+> discipline as rule 1f's: a probe that fires no failure has told you nothing about the code.
 
 ### 3f. The verdict is a fact; the operator chooses the disposition
 
@@ -1302,6 +1365,13 @@ lib/
     scenarios/           S0-S6 + warm-up history
     identity-cases.ts    experiment-only OTP-channel and replacement-device cases
     ingest.ts            runs a generated scenario through the real agent
+  shipment/              ONLINE SHIPMENTS. Confirmed points in, the same GeneratedScenario out.
+    boundary.ts          service-area check (Turf); no boundary configured -> refuse
+    service-area.ts      loads the sourced boundary file; the store's path on disk
+    depot.ts             nearest of the existing three depots; local stays local
+    store.ts             created / replayed / conflict; append-only corrections
+    build.ts             adapter over lib/generate: exact coordinates, sha256 event
+                         ids, no invented cell/WiFi. Under the anti-circularity guard
   purity.test.ts         guards the I/O ban, the never-summed rule AND
                          the generator/detector separation
   assemble/              WHERE THE I/O IS. Deliberately NOT under the purity test.
@@ -1640,6 +1710,14 @@ Use `taskkill /PID <pid> /F`. Next's own message names the PID to kill:
 - PID:    30064
 ```
 
+**Never give a git worktree a junction to the main `node_modules`, and never `git worktree remove
+--force` one that has it.** Session 24 ran E6 in a worktree at HEAD with `mklink /J node_modules`
+pointing at the main checkout's, to compare against the working tree without reinstalling. The
+comparison worked; removing the worktree then deleted THROUGH the junction and emptied the main
+`node_modules`. Nothing tracked was touched, but the suite, the build and any running dev server
+lost every dependency at once. A worktree that needs dependencies gets its own `npm ci`; if one is
+ever linked anyway, delete the link itself (`rmdir` on the junction) before removing the worktree.
+
 **Read the dev log before concluding an edit did not work.** Both of these failures present as
 "my change is not showing up", and neither is about the change.
 
@@ -1676,6 +1754,51 @@ npm run db:migrate
 ---
 
 ## Session log
+
+### Session 24 — online shipments at a confirmed point, phase one (in progress)
+
+Phase one of arbitrary-location shipments: the backend, the store, the operator's view of the
+location gap, and the API. **No geocoder is called and no code path sends data out or costs
+money**; phase two's provider choice is deliberately not prepared for. `lib/engine`, `lib/pattern`,
+`lib/gate`, `lib/credential` and `lib/generate` are untouched, and cached S1 still carries the GPS
+spoofing demonstration.
+
+**Three corrections to the plan's premises, found by reading the code first (rule 1g):** the
+missing-reference path was already correct (`resolution.missing`, `undefined`, I1 skipped), so the
+work was a location-level explanation, not a fix; `sitesByAddress` serves only the generator, while
+real assembly looks up reported IDs, which is what fixes the Known Limitations wording; and
+`uuidFrom`'s two correlated 32-bit states are why online identity is a server-minted UUID, a unique
+index and a three-state idempotency key rather than a derived string.
+
+**One the plan did not see:** the generator puts a parcel's doorstep 60 m off its geocoded
+centroid. For a point a person confirmed on a map, moving it 60 m silently is the interface lying
+about what was confirmed. The confirmed point is the reference byte for byte; the simulated
+courier's scan is a separate input, stored with `source: simulation`.
+
+**Boundary candidates, none downloaded:** geoBoundaries gbOpen `MYS-ADM1-15666254` is not its own
+survey — its metadata gives the source as "OpenStreetMap, Wambacher", 2017, under **ODbL 1.0**, not
+the CC BY that geoBoundaries is usually cited under; so attribution goes to OpenStreetMap
+contributors and the extracted polygon stays ODbL. The alternatives are the OSM relation for Kuala
+Lumpur directly (ODbL, versioned by relation version) and GADM (licence bars redistribution, so it
+cannot be committed). The choice waits on the licence being confirmed.
+
+**`npm run test:coverage` now allows 20 s per test, matching the suite.** Four workbench tests
+timed out under it at the old 10 s ceiling. Measured before changing anything: 9.66 s with this
+session's code and 9.97 s without, so the cause is v8 instrumentation, not the change — session
+19's phantom-regression shape, with the coverage runner's override left below the suite's own
+`testTimeout: 20_000`. Only the ceiling moved; no assertion did.
+
+**E6's committed CSV was found stale, and my change was cleared by measurement rather than by
+argument.** Rerunning the deterministic experiments left E1, E2 and E3 byte-identical and changed
+38 E6 rows. Running E6 again in a worktree at HEAD, without this session's code, produced a CSV
+byte-identical to mine — so the drift predates the change and belongs to session 16's partial
+refresh (rule 1g). Not refreshed; annotated in RESULTS.md instead. **Removing that worktree deleted
+the main `node_modules` through a junction** — see the Console conventions entry.
+
+Measured and injected: see Known Limitations and rule 2a. Every acceptance test was checked by an
+injection that failed on the test aimed at it — including the triggers, where the first injection
+(deleting the trigger lines) broke the migration and failed 24 tests for the wrong reason, and was
+redone as inert triggers, which failed exactly the four append-only tests (rule 1f).
 
 ### Session 23 — five named UI failures, each checked from a frame (complete)
 
@@ -2067,6 +2190,14 @@ misleading label on it.
 Same instinct as refusing to invent a coordinate for an unlabelled map click, and as refusing to
 route a parcel via a depot it has no reason to visit purely so a leg exists. The address set is
 KL-centric; 32% is what that geography actually implies.
+
+**These are statistics of the CACHED SET, not properties of the router.** 32% local and an 11.8 km
+median describe the 552 routes between the 24 cached addresses. Since session 24 an online shipment
+can start and end anywhere a person confirms, and neither number says anything about where those
+land. Wherever either figure reaches a user or a judge, it carries "measured over the cached address
+set". Online points use the same three depots (11.823 / 19.284 / 7.461 km apart), nearest by
+great-circle distance with ties to the earlier depot, and two points served by one depot are a local
+delivery — never a detour through a second depot to manufacture a line-haul.
 
 #### The scrim shipped early on purpose, and a probe found it was too weak
 
@@ -3668,6 +3799,36 @@ do. `HandoffSummary.stateProvenance` now carries `seeded`, the badge renders
 **"Seeded state · no liveness timer"** wherever it appears, and the detail page no longer claims a
 window expired. The inbox's age column has no warning colour for the same reason: there is no
 threshold to warn against. A real liveness threshold is separate work.
+
+**An online shipment's location has no registered reference sites, so I1 cannot run there.** The
+site registry covers the 24 cached addresses. The engine never searches for towers near a point: it
+looks up the cell ID and BSSIDs the handset REPORTED, so at an arbitrary point the problem is not
+"no tower nearby" but "the IDs the device reports are not in the registry". Assembly records that
+in `resolution.missing`, returns `referenceSites: undefined`, and I1 comes back `not_evaluated` —
+never `clear`. The simulated scan carries no cell or WiFi rather than invented ones: an invented ID
+would mean nothing, and a borrowed one would manufacture the contradiction I1 exists to find.
+Location cross-checking then rests on the checks that remain evaluable, and the count is read from
+each handoff's own result rather than stated for "arbitrary points" in general. **This neither
+promises that a spoof there is detectable nor that it is not.** I7, I8 and the distance rules run
+as usual and are tested at arbitrary points.
+
+**Persisting a location is not persisting the workflow.** Online shipments, their location
+snapshots and their corrections are rows in `data/db/shipments.db`, append-only by trigger. The
+signing keys, the held delivery leg and each shipment's ingest harness are process state. After a
+restart a stored shipment is still readable, and a replayed create returns it with
+`running: false` and says so; nothing resumes it. Restartable workflow is separate work, and no
+surface or document may imply it exists.
+
+**The service area is a labelled placeholder until a sourced boundary is confirmed.** The real
+boundary must be an administrative file with a source, licence and version; candidates are listed
+in the session 24 log and none is used until its licence is confirmed. Until then the check uses a
+**placeholder service radius around the three existing depots**, derived rather than chosen: the
+distance from the farthest cached address to its nearest depot, **17.090 km** (Cyberjaya). It is
+not a rectangle and it is not Kuala Lumpur — it is generous, covers well beyond the city, and the
+Subang Jaya depot's circle is mostly outside KL. Every answer carries
+`boundary: { placeholder: true, label: "Boundary data pending confirmation …" }`, every snapshot is
+stamped `placeholder-depot-radius-v1 (…)`, and the operator's location note shows "Boundary data
+pending confirmation". The tests use their own fixture rectangle, labelled as such.
 
 **Identity is simulated; the signatures are real.** The courier, recipient and operator entry
 routes use hardcoded demo identities rather than authentication. Recipient links are scoped

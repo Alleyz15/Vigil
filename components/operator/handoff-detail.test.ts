@@ -74,5 +74,7 @@ describe("correlated handoff detail presentation", () => {
     expect(shouldShowEvidenceDetails({ flagCount: 0, hasAddressCorrection: false })).toBe(false);
     expect(shouldShowEvidenceDetails({ flagCount: 1, hasAddressCorrection: false })).toBe(true);
     expect(shouldShowEvidenceDetails({ flagCount: 0, hasAddressCorrection: true })).toBe(true);
+    // A clean online delivery has no flags, and still has something to say about its location.
+    expect(shouldShowEvidenceDetails({ flagCount: 0, hasAddressCorrection: false, hasLocationGap: true })).toBe(true);
   });
 });
