@@ -643,6 +643,21 @@ fixed it**, which is the opposite of an upstream that cannot be relied on.
 > whoever wrote it.** Approval records that the account was plausible to two people, not that
 > anyone measured it.
 
+**And the tally belongs on the reviewer's side too, which is why it is written here rather than as
+an author's note.** Three approvals have now been overturned by a later measurement, and none was
+careless:
+
+| Approved | Overturned by |
+|---|---|
+| the hero seam's two colours "do not match" (23) | both rows read 16,24,31 |
+| `smoothstep(t^1.6)` for the transition band (23) | 23% slope 8px above the page; `smootherstep` 4.5% |
+| the tile servers refuse this project's non-browser client (24) | they refuse an unidentified one; one header fixed it |
+
+Two people agreeing is a better filter than one, and it is still a filter on plausibility. **The
+review step catches accounts that do not hang together; it cannot catch one that hangs together
+and is false.** Only the measurement does that, and it is owed by whoever proposes the account —
+before the approval, not after someone notices.
+
 Rule 1g now has instances in **both directions**: a plan approved before the work (session 23's
 seam colours, this session's boundary tolerance) and a diagnosis approved after it. The forward
 case is caught by measuring on the way in. The backward case is caught by reading the upstream's
@@ -662,11 +677,32 @@ implemented three times:
 Two of the three were right **and wrote down why**, and the third still missed it. That is worse
 than a constraint nobody knew: the knowledge was in the repository, in a comment, one directory
 away. **A rule that is satisfied by each caller separately is satisfied until a caller is added.**
+**This is worse than the eight hand-maintained lists, and the difference is the point.** Every one
+of those was a set nobody had written down: the guard's directories, the label table, the derived
+CSV columns. Here the constraint WAS written down — as a comment, in a sibling script, naming the
+policy and why it applies — and the third caller missed it anyway.
+
+> **A comment reaches whoever opens that file, and nobody else.** The author of the next caller has
+> no reason to read a neighbouring directory's comments, so knowledge stored there protects the
+> file it sits in and nothing else. It is documentation of a decision, not enforcement of one.
+
+**The structural fix is named and deliberately not taken yet.** Three call sites do not earn a
+shared HTTP client; the indirection would cost more than it saves. **If the outbound callers ever
+exceed three, bind the identifying agent to one client** so a new caller inherits it rather than
+remembering it — the same move as the attribution riding with the geometry and the guard
+enumerating its trees. Recorded now, with the threshold, so the next session has the condition
+rather than the judgement.
+
 The remaining outbound callers were checked in the same sweep: `anthropic.ts` and `gemini.ts`
 authenticate with a key and their terms ask for no agent; `lib/weather/open-meteo.ts` is the
 nearest analogue — a free service with no key and no agent — and is **deliberately left**, because
 its terms do not require one, its results are cached to a committed file, and changing the request
-would move a contract that has offline tests. Recorded rather than changed.
+would move a contract that has offline tests.
+
+> **Consistency is not a reason to touch something that is not wrong.** The temptation after
+> finding one caller missing a header is to give every caller the header; two of the three do not
+> need it, and one of those two has a tested request contract that the edit would move. A sweep
+> reports what it found; it does not have to change everything it looked at.
 
 #### An approved plan is reasoned, not verified
 
@@ -1951,9 +1987,23 @@ npm run db:migrate
 ### Session 24 — online shipments at a confirmed point, phase one (complete)
 
 **PHASE ONE IS CLOSED.** The map picker, the boundary, the store and the online build layer are
-all in. **Phase two — address search and reverse geocoding — is NOT open**, and a future session
-must not begin it without the reviewer deciding to: it is the part that calls a provider, and the
-whole of phase one was built so that nothing does.
+all in.
+
+**PHASE TWO — address search and reverse geocoding — IS NOT OPEN, AND IT IS A BOUNDARY RATHER THAN
+A TODO.** Every sentence in this section rests on one property: *no code path calls an external
+provider, sends a coordinate out, or costs money*. Opening phase two changes that property, so it
+is not a task a session picks up because the backlog is empty.
+
+**Three decisions must exist, from the reviewer, before any of it is written:**
+
+| Decision | Why it cannot be defaulted |
+|---|---|
+| **which provider** | each has its own licence, attribution and caching terms — the boundary work showed how much that differs between sources that look interchangeable |
+| **a cost ceiling** | a geocoder bills per request, and a demo that loops or retries can spend without anyone watching |
+| **what may leave the machine** | a confirmed coordinate is a place a person typed into this system; sending it to a third party is a disclosure, and the decision about it is not the implementer's |
+
+Absent all three, the honest state of phase two is *not started*, and a session that begins it
+anyway has removed the property phase one exists to hold. **Phase one ends here.**
 
 Phase one of arbitrary-location shipments: the backend, the store, the operator's view of the
 location gap, and the API. **No geocoder is called and no code path sends data out or costs
