@@ -29,6 +29,23 @@ function assertTileServed(url, headers) {
   if (blocked) throw new Error(`Tile server refused ${url}: ${blocked}`);
 }
 
+/**
+ * WHY THIS RECORDER NAMES ITSELF.
+ *
+ * The tile usage policy requires "a valid HTTP User-Agent that clearly
+ * identifies your application", and says plainly that "traffic that uses these
+ * defaults will be blocked because we cannot identify or contact the actual
+ * application". Node's `fetch` sends a default, so every tile this recorder
+ * fetched came back as a refusal — while the browser beside it, sending a
+ * browser agent, was served the real thing. Measured: the same tile URL returns
+ * the "Access blocked" image under curl's default agent and a real tile under
+ * this one.
+ *
+ * The recorder fetches only the tiles the page is actively displaying, which is
+ * what separates it from the bulk downloading the policy forbids.
+ */
+const TILE_USER_AGENT = "Vigil/0.1 (HackAI 2026 prototype; QA screenshot capture; https://github.com/)";
+
 export async function captureStable(chromePath, url, target) {
   const profile = mkdtempSync(join(tmpdir(), "vigil-stable-"));
   const proc = spawn(chromePath, ["--headless=new", "--hide-scrollbars", "--disable-gpu",
@@ -91,7 +108,7 @@ export async function captureStable(chromePath, url, target) {
         } else {
           // Record the real response even if Leaflet cancels this intermediate
           // viewport's request; a later replay must never depend on live tiles.
-          tileReads.push(fetch(request.url).then(async (response) => {
+          tileReads.push(fetch(request.url, { headers: { "User-Agent": TILE_USER_AGENT } }).then(async (response) => {
             if (!response.ok) throw new Error(`QA tile recording failed (${response.status}): ${request.url}`);
             assertTileServed(request.url, response.headers);
             const bytes = Buffer.from(await response.arrayBuffer());
@@ -127,7 +144,21 @@ export async function captureStable(chromePath, url, target) {
     await send("Page.enable");
     await send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
     await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
-    await send("Page.navigate", { url });
+    /**
+     * A FAILED NAVIGATION STILL RENDERS A PAGE, and that page has an <h1>.
+     *
+     * With no server listening, Chrome shows "This site can't be reached" —
+     * `document.readyState` is `complete`, `document.querySelector('main, h1')`
+     * matches its heading, the fonts load, nothing animates, and three
+     * consecutive frames are identical. Every condition below is satisfied, and
+     * the script writes that error page out under the filename of the surface it
+     * claims to show. Measured, not imagined: it did exactly that here.
+     *
+     * `Page.navigate` reports the failure in `errorText`; the script simply was
+     * not reading it.
+     */
+    const navigation = await send("Page.navigate", { url });
+    if (navigation.errorText) throw new Error(`Navigation failed for ${url}: ${navigation.errorText}`);
     let previous, stable = 0, lastState;
     const started = Date.now();
     while (Date.now() - started < 60_000) {
@@ -137,7 +168,14 @@ export async function captureStable(chromePath, url, target) {
         fonts: document.fonts.status,
         reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
         loadingTiles: [...document.querySelectorAll('.leaflet-tile')].filter(i => !i.complete || !i.naturalWidth).length,
-        loadingMap: (document.body?.innerText ?? '').includes('Loading route map'),
+        // ANY map still loading, not one page's wording. This matched the literal
+        // string 'Loading route map' — the operator's map — so when the sender
+        // gained one saying 'Loading the service-area map', the check could not
+        // see it: the predicate below only demands tiles IF a map is already
+        // mounted, so a frame taken while the panel still read "loading" passed
+        // every assertion. A capture must not photograph a page that is still
+        // arriving.
+        loadingMap: /loading[^.\\n]{0,40}map/i.test(document.body?.innerText ?? ''),
         mapTiles: document.querySelectorAll('.leaflet-tile').length,
         mapPresent: !!document.querySelector('.leaflet-container'),
         tileUrls: [...document.querySelectorAll('.leaflet-tile')].map(i => i.src).sort(),

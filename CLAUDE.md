@@ -468,7 +468,7 @@ injection became inert triggers (`SELECT 1`), which failed exactly the four appe
 > a pass that tested nothing, a failure that tested something else — look like opposite problems
 > and have one cause: the probe was never checked against the property it named.
 
-#### Session 24, the map picker: the instrument was wrong twice more
+#### Session 24, the map picker: four more instrument defects, and a new failure mode
 
 | What happened | Which failure mode |
 |---|---|
@@ -476,15 +476,35 @@ injection became inert triggers (`SELECT 1`), which failed exactly the four appe
 | the first run of the new blocked-tile guard "passed" | **the probe measured the old code**: it ran a scratchpad copy of `stable-capture.mjs` taken before the guard was added, and recorded twenty blocked tiles without a word |
 | five injections into `picker.ts`, each failing the one test aimed at it | the half that worked — snapped coordinate, four-decimal display, "Klang Valley", a refusal naming no member, a guessed address |
 | a sixth injection produced `Tests no tests` | **a failure for the wrong reason**: it broke the file's syntax rather than its behaviour, and was redone as a valid edit that failed naming `Kuala Lumpur` |
+| the settle check could not see the new map loading | it tested for the literal string `Loading route map` — the OPERATOR's map. The sender's says "Loading the service-area map", and the predicate only demands tiles IF a map is already mounted, so a frame taken while the panel still read "loading" satisfied everything |
+| a capture wrote a frame of Chrome's `ERR_CONNECTION_REFUSED` page | **the worst of the set**: with the dev server down, `readyState` is `complete`, `document.querySelector('main, h1')` matches the error page's heading, fonts load, nothing animates and three frames are identical. It wrote that out under the filename of the surface it claimed to show. `Page.navigate` returns `errorText`; the script was not reading it |
 
-The first is the sharpest of the four, because nothing anywhere was broken: the server answered,
-the image loaded, the assertion held, and the frame was a picture of a refusal. `stable-capture.mjs`
-now reads the `x-blocked` header the server sends and fails rather than writing that frame —
-verified by running it against the live refusal, which named the tile URL and the policy.
+**The first is a failure mode this rule did not have, and it deserves its own sentence.** The other
+instances are a test that passed without testing, or one that failed for the wrong reason. This one
+is neither: **the test passed, every assertion genuinely held, and what the instrument recorded was
+fake.** Twenty tiles, each a valid PNG, each fetched successfully, each cached and replayed — and
+every one of them a picture of the words "Access blocked".
 
-> **A response that arrives, parses and renders can still be a refusal.** `ok` is the transport's
-> opinion; whether the thing you asked for came back is a different question, and on a picture it
-> has to be asked deliberately.
+**The root cause is worth more than the symptom.** The cache RECORDED through Node's `fetch` and
+REPLAYED through the browser: two different clients, and the upstream treats them differently. The
+recorder sent Node's default user agent, which the tile policy says outright will be blocked; the
+browser beside it sent a browser agent and was served real tiles. The instrument was never
+measuring what the page measures.
+
+> **An instrument that reaches the thing it measures by a different path is not measuring that
+> thing.** Whenever a probe, a cache or a fixture fetches something the product also fetches, the
+> two must travel the same route — same client, same headers, same auth — or the probe is
+> describing its own path.
+
+And the narrower form the other three share:
+
+> **A response that arrives, parses and renders can still be a refusal, and a page that loads can
+> still be an error page.** `ok` is the transport's opinion, `readyState` is the renderer's;
+> neither says the thing you asked for came back. On a picture that has to be asked deliberately.
+
+All three are fixed and each fix was verified against the real failure: the `x-blocked` header
+fails the capture naming the tile URL and the policy; the loading check matches any "loading … map"
+wording; a refused navigation fails naming `net::ERR_CONNECTION_REFUSED` and writes no file.
 
 ### 1g. A test suite verifies the invariants someone thought to write
 
@@ -905,6 +925,12 @@ Two ways the console could lie without a word of it being false, both banned:
   a marker, circle or polygon. Evidence without measured coordinates stays unlinked. Guessing a
   location so every flag can pulse on the map would turn an absent measurement into a spatial
   claim, exactly like plotting `not_evaluated` at zero.
+- **Displaying a value that is not the one stored.** A map click yields fifteen digits; showing six
+  of them while keeping all fifteen means the number on screen is not the number on file. It is
+  invisible, it is only centimetres, and it is still the interface stating something that is not
+  so. The confirmed coordinate is therefore rounded ONCE, at the click, and the rounded value is
+  what is shown, stored, sent and measured against — see `COORDINATE_DECIMALS`. The general form:
+  **when a view formats a value, ask whether it is formatting the stored value or replacing it.**
 
 #### The inverse case: an empty-looking result that is the opposite of empty
 
@@ -957,6 +983,14 @@ The service area is therefore named by LISTING its members, in the file, the cod
 UI. That has a second property worth copying: **the name is the list**, so a future session that
 adds a district without updating it produces a mismatch rather than a quietly wider claim — the
 inverse of a hand-maintained list, where the list is the identifier instead of a copy of it.
+
+**And the over-claiming name was already in the code.** `registered-address-map.tsx` had been
+printing **"Klang Valley"** on `/sender` since session 20 — decided long before anyone reasoned
+about coverage, and found only because the picker put a correct name on the same page. Choosing the
+right name does not remove the wrong one.
+
+> **After settling on a correct name, go and find where the old one still is.** A decision about a
+> label is not finished until the repository has been searched for the label it replaces.
 
 **A licence condition that each surface has to remember is a licence condition waiting to be
 breached.** ODbL requires the credit wherever the data is used, so the attribution string travels
@@ -1703,6 +1737,15 @@ from the workbench API at capture time; the script hardcodes no event id and fab
 fixture. **It needs a fresh dev-server process** — it drives real state forward and there is
 deliberately no reset — and says so rather than capturing a stale state if run twice.
 
+**A refresh of the evidence set is committed WITH the change it records, or not at all.** The
+frames are captured from whatever is in the working tree, so a run taken while someone else's
+unfinished work sits uncommitted photographs that work too. Session 24 hit exactly this: the ten
+frames came back carrying another session's in-progress identity bar on three of the four surfaces,
+and were reverted rather than committed. **Putting another session's unfinished UI into the
+evidence set is the same act as committing their files**, one carrier along — the same error this
+project keeps finding in labels, coordinates and coverage areas. So either the capture and the
+change it documents land in one commit, or the frames go back.
+
 Two frames cannot exist at boot, so the script has a **stateful sequence runner**
 (`runSequence`): `post` a real endpoint, `expect` the state the next frame's filename will claim
 (failing loudly if it does not hold), then `capture`. The stale-record sequence dispatches,
@@ -1798,6 +1841,16 @@ ever linked anyway, delete the link itself (`rmdir` on the junction) before remo
 
 **Read the dev log before concluding an edit did not work.** Both of these failures present as
 "my change is not showing up", and neither is about the change.
+
+**And the suite's timeout failures are usually the machine, not the code — including when the load
+is not yours.** Session 19 recorded this as "a dev server and a headless Chrome running alongside".
+Session 24 met it with the dev server stopped and no capture running: 21 of the USER's own Chrome
+processes at 82% CPU and 2.4 GB free, and three workbench tests timed out at the 20 s ceiling. The
+three tells, in order of cheapness: the failing set CHANGES between runs (three, then five, then
+three); every failure is `Test timed out`, never an assertion; and the files pass when run together
+on their own — 20/20 in 22.76 s. Cheapest proof of all is `git diff --name-only HEAD`, which named
+only a QA script no test imports. **Do not touch processes you did not start** to make a suite pass;
+say the machine was loaded and show the isolated run.
 
 **Entries are keyed by event id, and generated event ids are not as unique as they look.**
 `uuidFrom` derives the id from the scenario name and leg alone (`"S1-delivery"`), so the world
@@ -1912,10 +1965,17 @@ controls, no sidebar, and a 386x432 centred ink box in a 1920x1080 frame.
 
 **Two things this round deliberately did not do.** The picker has no entry in the sender sidebar,
 because `components/shells/sender-shell.tsx` carries another session's uncommitted identity-bar
-work and was not touched; the section is reachable by scrolling and by `#confirm-a-point`. And
-`npm run qa:capture` wrote its ten frames, which were then **reverted rather than committed** — a
-capture taken from this working tree shows that same unfinished identity bar on three of the four
-surfaces, and committing it would put another session's in-progress UI into the evidence set.
+work and was not touched; the section is reachable by scrolling and by `#confirm-a-point`.
+**Fold-back condition:** the first session after the identity-bar work is committed adds a
+`#confirm-a-point` item to `SenderShell`'s nav beside "Create shipment" and "Pending deliveries".
+And `npm run qa:capture` wrote its ten frames, which were then **reverted rather than committed** —
+see *A refresh of the evidence set* in Console conventions.
+
+**The suite ends this round at 826 passing, 7 skipped, and three environment timeouts.** The three
+are `lib/workbench/built`, `correction` and `inbox`; they pass together on their own, 20/20 in
+22.76 s, and the only files changed since the commit that ran 829 green are a QA script no test
+imports and another session's shells. The machine was carrying 21 of the user's own Chrome
+processes at 82% CPU. Reported as load rather than quietly rerun until green.
 
 Measured and injected: see Known Limitations and rule 2a. Every acceptance test was checked by an
 injection that failed on the test aimed at it — including the triggers, where the first injection
@@ -3989,20 +4049,43 @@ not the same statement as "every member matched".
 problem with the real boundary can be stepped around without a deploy, and the two are compared in
 the suite on points where they genuinely disagree.
 
-**OpenStreetMap's tile servers refuse this project's non-browser client, and that is a demo-day
-risk.** A tile request from Node's `fetch` or from curl comes back HTTP 200 carrying an
-**"Access blocked"** image, `x-blocked: Access denied` and `x-totp: INVALID`; headless Chrome, with
-a browser user agent and a referer, is served real tiles. So `npm run qa:capture` works — it runs
-live — and `VIGIL_QA_TILE_CACHE` **cannot currently be recorded**, because the recorder fetches
-each tile itself and would cache the refusal. `stable-capture.mjs` now fails on that header rather
-than caching a refusal notice as a map.
+**The basemap comes from OpenStreetMap's volunteer tile servers, and what they refuse is an
+UNIDENTIFIED client — not a non-browser one.** The first diagnosis here was wrong and is recorded
+because the correction is the useful part. A tile fetched with Node's or curl's default user agent
+comes back HTTP 200 carrying an **"Access blocked"** image and `x-blocked: Access denied`; the same
+URL with a user agent naming this project returns a real tile. The policy says so in as many words
+— *"Send a valid HTTP User-Agent that clearly identifies your application"*, and *"traffic that
+uses these defaults will be blocked because we cannot identify or contact the actual
+application"*. Measured on one tile, three ways: default agent → the refusal image; identifying
+agent → a real tile; identifying agent plus referer → the same real tile. (`x-totp: INVALID` also
+rides on the refusal and appears nowhere in the policy; it is not what decided the outcome.)
 
-Two consequences worth stating before submission. The demo's basemap depends on a volunteer service
-that may refuse at any time, and the operator's route map and the sender's service-area map would
-both go blank-but-loaded if it did. **The boundary geometry is unaffected**: it is committed to the
-repository and nothing fetches it at runtime, so an outline, its four members and the ODbL credit
-still render with no basemap at all. Choosing a tile source that permits this use — with its own
-licence and attribution — is a decision that has not been made.
+**So the fault was ours and it is fixed.** `stable-capture.mjs` now names the project in its tile
+requests, and `VIGIL_QA_TILE_CACHE` records real tiles again — verified: 20 distinct bodies, none
+of them the refusal image. It also still fails on `x-blocked`, because a guard that caught this
+once should stay.
+
+**What the policy permits, in its own words, because the next session will want to cache tiles into
+the repository:** *"Bulk downloading is any pre-emptive fetching of tiles other than those a user is
+actively viewing."* The QA cache fetches only the tiles the capture page is displaying, so it is not
+bulk downloading; *"cache tiles locally according to HTTP caching headers (or at least 7 days if
+your cache cannot read them)"* sets a floor, not a ceiling. **What is NOT resolved is
+redistribution**: committing rendered tile images to a public repository is a licence question about
+the rendered cartography, separate from the service policy, and nobody has answered it. Do not
+commit tiles until someone has.
+
+**The residual risk, and the three ways out.** The demo's basemap depends on a volunteer service
+that can refuse at any time:
+
+| Option | Cost |
+|---|---|
+| **Keep OpenStreetMap** (current) | none; a refusal on the day leaves both maps blank-but-loaded |
+| **A provider with terms for this use** (CARTO, Stadia and similar free tiers) | registration, reading the terms, and a different attribution string — which travels with the boundary, so it is one value, not an edit per surface |
+| **Commit the demo's few viewports** | permitted as fetching, since those are tiles a viewer is actively looking at — but blocked on the redistribution question above |
+
+**The boundary geometry is unaffected by all of this.** It is committed and nothing fetches it at
+runtime, so the outline, its four members and the ODbL credit still render with no basemap at all.
+**The map gets uglier; it does not get less true.**
 
 **Identity is simulated; the signatures are real.** The courier, recipient and operator entry
 routes use hardcoded demo identities rather than authentication. Recipient links are scoped
