@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { osmUserAgent } from "../../lib/osm/agent.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const tileCache = process.env.VIGIL_QA_TILE_CACHE;
@@ -44,7 +45,7 @@ function assertTileServed(url, headers) {
  * The recorder fetches only the tiles the page is actively displaying, which is
  * what separates it from the bulk downloading the policy forbids.
  */
-const TILE_USER_AGENT = "Vigil/0.1 (HackAI 2026 prototype; QA screenshot capture; https://github.com/)";
+const TILE_USER_AGENT = osmUserAgent("QA screenshot capture");
 
 export async function captureStable(chromePath, url, target) {
   const profile = mkdtempSync(join(tmpdir(), "vigil-stable-"));

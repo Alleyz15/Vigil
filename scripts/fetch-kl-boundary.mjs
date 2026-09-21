@@ -39,6 +39,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as turf from "@turf/turf";
+import { osmUserAgent } from "../lib/osm/agent.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, "..", "lib", "shipment", "data", "service-area.json");
@@ -47,7 +48,7 @@ const ADDRESSES = join(HERE, "..", "lib", "generate", "data", "kl-addresses.json
 const OVERPASS = "https://overpass-api.de/api/interpreter";
 
 /** Identifies the project to the endpoint operator, as their usage policy asks. */
-const USER_AGENT = "Vigil/0.1 (HackAI 2026 prototype; one-off service-area extraction)";
+const USER_AGENT = osmUserAgent("one-off service-area extraction");
 
 /**
  * The members, with the tags each must still carry and the published area each

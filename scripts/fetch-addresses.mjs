@@ -21,6 +21,7 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { osmUserAgent } from "../lib/osm/agent.mjs";
 
 const OUT = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -31,8 +32,10 @@ const OUT = join(
   "kl-addresses.json",
 );
 
-const USER_AGENT =
-  "Vigil/0.1 (HackAI 2026 Track 02 student project; synthetic logistics dataset; contact: kflee15@gmail.com)";
+// The repository is the contact, from the one shared agent (lib/osm/agent.mjs).
+// This script once carried a personal address; it was committed to a public
+// repository, so the repository URL replaces it.
+const USER_AGENT = osmUserAgent("one-off address cache refresh");
 
 /** Places to look up. Real streets and landmarks across the Klang Valley. */
 const QUERIES = [
