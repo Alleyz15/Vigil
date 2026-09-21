@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "provider": "nominatim",
+  "kind": "search",
+  "query": {
+    "q": "menara kuala lumpur"
+  },
+  "fetchedAt": "2026-09-21T03:12:41.648Z",
+  "candidates": [
+    {
+      "ref": "node/5839389988",
+      "label": "Kuala Lumpur Tower, 2, Jalan Puncak, Kampung Cendana, Kuala Lumpur, 50250, Malaysia",
+      "latitude": 3.152859,
+      "longitude": 101.70376
+    },
+    {
+      "ref": "node/11832151817",
+      "label": "Kuala Lumpur Tower, Jalan Puncak, Kampung Cendana, Kuala Lumpur, 50250, Malaysia",
+      "latitude": 3.152664,
+      "longitude": 101.703578
+    },
+    {
+      "ref": "node/10621852785",
+      "label": "Kuala Lumpur Tower, Jalan Raja Chulan, Bukit Bintang, Kuala Lumpur, 50250, Malaysia",
+      "latitude": 3.150343,
+      "longitude": 101.705119
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "provider": "nominatim",
+  "kind": "search",
+  "query": {
+    "q": "ipoh"
+  },
+  "fetchedAt": "2026-09-21T03:12:46.046Z",
+  "candidates": [
+    {
+      "ref": "relation/18225051",
+      "label": "Ipoh, Kinta, Perak, Malaysia",
+      "latitude": 4.598682,
+      "longitude": 101.090024
+    }
+  ]
+}

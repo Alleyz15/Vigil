@@ -3,6 +3,7 @@ import { asc, eq, TransactionRollbackError } from "drizzle-orm";
 import type { VigilDb } from "@/lib/db/client";
 import { locationCorrections, locationSnapshots, shipments } from "@/lib/db/schema";
 import { canonicalHash } from "@/lib/ledger/canonical";
+import type { ResolvedLabel } from "@/lib/geocode/attach";
 import { checkPoint, type ServiceBoundary } from "./boundary";
 import { COORDINATE_DECIMALS } from "./picker";
 import { routeBetween, type Point } from "./depot";
@@ -36,15 +37,35 @@ export type LocationInput = Point & {
    * What the sender typed for this point, if anything. Stored verbatim; nothing
    * parses it, and nothing supplies one when it is absent.
    *
-   * OPTIONAL, BECAUSE NO GEOCODER RUNS. A confirmed coordinate has no resolved
-   * address — asking a person to type one before they may dispatch would make
-   * the field look like a lookup that succeeded. Absent is stored as the empty
+   * OPTIONAL. A confirmed coordinate need not have an address — asking a person
+   * to type one before they may dispatch would make the field look like a
+   * lookup that succeeded. (Phase two's geocoder does not change this: what it
+   * finds goes in `resolved`, never here.) Absent is stored as the empty
    * string, which is not a claim anyone can type: `normaliseClaim` trims, so a
    * claim is non-empty by construction. Read it back through `addressClaimOf`
    * rather than testing for `""` at each call site.
    */
   addressClaim?: string;
+  /**
+   * What the GEOCODER said about the point, verified server-side against its
+   * cache (`verifyResolution`) — never text a client supplied. Kept apart from
+   * `addressClaim` all the way to the screen: one is the sender's words, the
+   * other a provider's label, and a single field holding either would let each
+   * pass for the other.
+   */
+  resolved?: ResolvedLabel;
 };
+
+/** The geocoder's label on a stored snapshot, or `null` where nothing was resolved. */
+export function resolvedOf(snapshot: {
+  resolvedLabel: string | null;
+  resolvedBy: "search" | "reverse" | null;
+  resolvedRef: string | null;
+}): ResolvedLabel | null {
+  return snapshot.resolvedLabel && snapshot.resolvedBy && snapshot.resolvedRef
+    ? { label: snapshot.resolvedLabel, by: snapshot.resolvedBy, ref: snapshot.resolvedRef }
+    : null;
+}
 
 /** The claim on a stored snapshot, or `null` where nobody made one. */
 export function addressClaimOf(snapshot: { addressClaim: string }): string | null {
@@ -99,6 +120,9 @@ function normalised(request: ShipmentRequest) {
     // rather than two hashes — a retry that drops an empty field is still the
     // same shipment (rule 5's reasoning, at the field level).
     addressClaim: location.addressClaim?.trim() || null,
+    // Present ONLY when resolved, so a request with no resolution hashes exactly
+    // as it did before phase two: a shipment created then still replays now.
+    ...(location.resolved ? { resolved: location.resolved } : {}),
   });
   return {
     origin: point(request.origin),
@@ -238,6 +262,9 @@ function snapshotRow(
     latitude: location.latitude,
     longitude: location.longitude,
     addressClaim: location.addressClaim?.trim() ?? "",
+    resolvedLabel: location.resolved?.label ?? null,
+    resolvedBy: location.resolved?.by ?? null,
+    resolvedRef: location.resolved?.ref ?? null,
     source: "map_confirmed" as const,
     confirmedAt: nowIso,
     boundaryVersion,
@@ -325,6 +352,9 @@ export function recordSimulatedScan(
     latitude: input.point.latitude,
     longitude: input.point.longitude,
     addressClaim: "(simulated courier position — not a claimed address)",
+    resolvedLabel: null,
+    resolvedBy: null,
+    resolvedRef: null,
     source: "simulation" as const,
     confirmedAt: input.nowIso,
     boundaryVersion: "unchecked",

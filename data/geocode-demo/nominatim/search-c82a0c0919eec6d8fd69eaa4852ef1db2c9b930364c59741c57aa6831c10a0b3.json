@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "provider": "nominatim",
+  "kind": "search",
+  "query": {
+    "q": "putrajaya"
+  },
+  "fetchedAt": "2026-09-21T03:12:44.569Z",
+  "candidates": [
+    {
+      "ref": "relation/4443881",
+      "label": "Putrajaya, Malaysia",
+      "latitude": 2.938438,
+      "longitude": 101.69223
+    },
+    {
+      "ref": "node/2872238032",
+      "label": "Putrajaya, 62618, Malaysia",
+      "latitude": 2.917973,
+      "longitude": 101.68408
+    }
+  ]
+}

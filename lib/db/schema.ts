@@ -491,8 +491,24 @@ export const locationSnapshots = sqliteTable(
     longitude: real("longitude").notNull(),
     /** The address text the sender typed. A claim, stored as written, never parsed. */
     addressClaim: text("address_claim").notNull(),
-    /** How the coordinate was obtained. No geocoder exists in this phase. */
+    /**
+     * How the coordinate was obtained. `map_confirmed` means a person confirmed it on
+     * the picker — whether they clicked it or chose a search result shown there;
+     * `resolved_by` says which.
+     */
     source: text("source", { enum: ["map_confirmed", "simulation"] }).notNull(),
+    /**
+     * WHAT THE GEOCODER SAID, KEPT APART FROM WHAT THE SENDER SAID. `address_claim`
+     * is the sender's own words; this is Nominatim's label for the point. Two
+     * columns because they are two sources, and one field holding either would
+     * make a provider's text read as the sender's claim (or the reverse). NULL
+     * where nothing was resolved — never a guessed street.
+     */
+    resolvedLabel: text("resolved_label"),
+    /** `search`: the coordinate came from a chosen candidate. `reverse`: a label looked up after a click. */
+    resolvedBy: text("resolved_by", { enum: ["search", "reverse"] }),
+    /** The OSM object the label came from, e.g. `way/123456`. */
+    resolvedRef: text("resolved_ref"),
     confirmedAt: text("confirmed_at").notNull(),
     /** The boundary file's version the point was checked against, or `unchecked` for a simulated scan. */
     boundaryVersion: text("boundary_version").notNull(),

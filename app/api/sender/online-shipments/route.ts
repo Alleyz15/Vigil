@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getWorkbench } from "@/lib/workbench";
-import { ConfirmedPoint } from "./schema";
+import { ConfirmedPoint, toLocationInput } from "./schema";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +45,18 @@ export async function POST(request: globalThis.Request) {
     return NextResponse.json({ error: "invalid shipment", issues: parsed.error.issues }, { status: 400 });
   }
 
+  // Both ends are verified before anything is written, as the boundary check is.
+  const origin = await toLocationInput(parsed.data.origin);
+  if (!origin.ok) return NextResponse.json({ status: "rejected", field: "origin", code: "unverified_address", reason: origin.reason }, { status: 422 });
+  const destination = await toLocationInput(parsed.data.destination);
+  if (!destination.ok) {
+    return NextResponse.json({ status: "rejected", field: "destination", code: "unverified_address", reason: destination.reason }, { status: 422 });
+  }
+
   const workbench = await getWorkbench();
-  const result = await workbench.createOnlineShipment(parsed.data, key);
+  const result = await workbench.createOnlineShipment(
+    { ...parsed.data, origin: origin.location, destination: destination.location },
+    key,
+  );
   return NextResponse.json(result, { status: STATUS[result.status] });
 }

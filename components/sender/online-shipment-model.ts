@@ -39,9 +39,62 @@ export type PickedPoint = {
   latitude: number;
   longitude: number;
   inside: boolean;
-  /** What the sender typed for it, or null: no geocoder resolved anything. */
+  /** What the sender typed for it, or null. Never filled in from the geocoder. */
   claim: string | null;
+  /**
+   * What the geocoder said about THIS coordinate, or null. A search pick sets it
+   * together with the coordinate; a reverse lookup sets it afterwards and never
+   * touches the coordinate.
+   */
+  resolved: ResolvedView | null;
 };
+
+/** A geocoder's label as the page holds it, with what is needed to have the server verify it. */
+export type ResolvedView =
+  | { by: "search"; label: string; ref: string; query: string }
+  | { by: "reverse"; label: string; ref: string };
+
+/**
+ * The resolution the SERVER is asked to verify. The label itself is not sent:
+ * the server reads it back from the geocode cache, so it can only store what
+ * the geocoder actually returned.
+ */
+export function resolutionFor(point: PickedPoint) {
+  if (!point.resolved) return undefined;
+  return point.resolved.by === "search"
+    ? { kind: "search" as const, query: point.resolved.query, ref: point.resolved.ref }
+    : { kind: "reverse" as const };
+}
+
+/** The confirmed point as the create route takes it. */
+export function bodyPoint(point: PickedPoint) {
+  const resolution = resolutionFor(point);
+  return {
+    latitude: point.latitude,
+    longitude: point.longitude,
+    ...(point.claim ? { addressClaim: point.claim } : {}),
+    ...(resolution ? { resolution } : {}),
+  };
+}
+
+/**
+ * Attach a reverse answer to the pending point — ONLY if the answer is about the
+ * point still pending, and WITHOUT changing its coordinate.
+ *
+ * A person who clicks twice quickly gets two lookups; the first answer to come
+ * back must not label the second point. And the coordinate is copied from the
+ * pending point, never from the answer: a reverse lookup describes a pin, it
+ * does not move one.
+ */
+export function withReverseLabel(
+  pending: PickedPoint | null,
+  answer: { at: { latitude: number; longitude: number }; label: string; ref: string },
+): PickedPoint | null {
+  if (!pending) return pending;
+  if (pending.latitude !== answer.at.latitude || pending.longitude !== answer.at.longitude) return pending;
+  if (pending.resolved?.by === "search") return pending;
+  return { ...pending, resolved: { by: "reverse", label: answer.label, ref: answer.ref } };
+}
 
 export type SlotName = "origin" | "destination";
 
@@ -54,9 +107,9 @@ export const SLOT_LABEL: Record<SlotName, string> = {
  * Whether the pending point may be confirmed into a slot.
  *
  * An outside point is NOT confirmable, and the surface says why in words rather
- * than greying a control: see `outsideMessage`. A missing address claim is no
- * obstacle at all — there is no geocoder, so an unresolved point is the normal
- * case, not an incomplete form.
+ * than greying a control: see `outsideMessage`. A missing address — typed or
+ * resolved — is no obstacle at all: an unresolved point is the honest state of
+ * an arbitrary click, not an incomplete form.
  */
 export function canConfirm(pending: PickedPoint | null): boolean {
   return pending !== null && pending.inside;

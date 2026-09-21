@@ -50,6 +50,10 @@ next-env.d.ts
 /data/db/*.db-wal
 /data/db/*.db-shm
 
+# The RUNTIME geocode cache: whatever anyone searched. The committed demo set lives
+# in a different directory (data/geocode-demo/), not in an exception to this rule.
+/data/geocode/
+
 
 AGENTS.md
 

@@ -10,7 +10,13 @@ describe("the production explanation prompt boundary", () => {
         known: true,
         recipientName: injected,
         addressDisplay: injected,
+        // Phase two's geocoder label, and the snapshot it is stored on. Named
+        // here EXPLICITLY: the key list below is an allowlist, so a field not
+        // injected would be "omitted" rather than shown to be excluded.
+        resolvedLabel: injected,
+        resolvedAddress: { label: injected, by: "search", ref: "way/1" },
       },
+      locationSnapshot: { addressClaim: injected, resolvedLabel: injected },
       event: {
         deliveryNote: injected,
         photoFilename: injected,

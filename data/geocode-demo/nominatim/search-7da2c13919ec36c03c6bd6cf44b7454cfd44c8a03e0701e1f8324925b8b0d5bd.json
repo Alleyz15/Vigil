@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "provider": "nominatim",
+  "kind": "search",
+  "query": {
+    "q": "mid valley megamall"
+  },
+  "fetchedAt": "2026-09-21T03:12:42.081Z",
+  "candidates": [
+    {
+      "ref": "way/922804567",
+      "label": "Mid Valley Megamall, Mid Valley City, Lingkaran Syed Putra, Mid Valley City, Seputeh, Kuala Lumpur, 59200, Malaysia",
+      "latitude": 3.117655,
+      "longitude": 101.677374
+    }
+  ]
+}

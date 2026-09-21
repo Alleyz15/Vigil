@@ -111,22 +111,48 @@ export function boundaryStamp(
   };
 }
 
+/** The heading over a geocoder's label. Names the provider, so the line cannot pass for the sender's. */
+export const RESOLVED_HEADING = "Resolved by OpenStreetMap Nominatim";
+/** The heading over the sender's own text. */
+export const CLAIM_HEADING = "The sender's own words";
+
+export type AddressLines = {
+  /** What the geocoder said, or null where nothing was resolved. */
+  resolved: { heading: string; label: string; by: "search" | "reverse" } | null;
+  /** What the sender typed, or null. */
+  claim: { heading: string; text: string } | null;
+  /** The sentence shown when the geocoder resolved nothing. Null when it did. */
+  unresolved: string | null;
+};
+
 /**
- * What a point's address line says.
+ * What a point's address says — as TWO LINES FROM TWO SOURCES, never one.
  *
- * AN EMPTY ADDRESS IS A FACT, NOT A BLANK FIELD. No geocoder ran, so nothing
- * resolved this coordinate to a street; saying so is a stronger statement than
- * an empty box, and inventing a plausible address for an arbitrary click would
- * be the fabrication rule 3e bans in a different carrier (rule 4f: the absence
- * is the observation).
+ * The geocoder's label and the sender's words are kept apart in the store, and
+ * they are kept apart here too: each carries its own heading, so a screen that
+ * renders this cannot print a provider's text as the sender's claim or the
+ * sender's text as a resolved address. Separate columns shown as one line would
+ * undo the separation at the last step.
+ *
+ * AN UNRESOLVED ADDRESS IS A FACT, NOT A BLANK FIELD (rule 4f). Where the
+ * geocoder found nothing the line says so; nothing is guessed in its place —
+ * a plausible street invented for an arbitrary click is rule 3e's fabrication
+ * in a different carrier.
  */
-export function addressLine(claim: string | null): { resolved: false; text: string; claim: string | null } {
+export function addressLines(input: {
+  claim: string | null;
+  resolved: { label: string; by: "search" | "reverse" } | null;
+}): AddressLines {
+  const claim = input.claim ? { heading: CLAIM_HEADING, text: input.claim } : null;
+  if (input.resolved) {
+    return { resolved: { heading: RESOLVED_HEADING, ...input.resolved }, claim, unresolved: null };
+  }
   return {
-    resolved: false,
-    text: claim
-      ? "Address not resolved — this is the sender's own description of the point"
-      : "Address not resolved — no geocoder was called, and none is guessed",
+    resolved: null,
     claim,
+    unresolved: claim
+      ? "Address not resolved — the line above is the sender's own description, not a lookup"
+      : "Address not resolved — no address is guessed",
   };
 }
 

@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "provider": "nominatim",
+  "kind": "search",
+  "query": {
+    "q": "sunway pyramid"
+  },
+  "fetchedAt": "2026-09-21T03:12:44.261Z",
+  "candidates": [
+    {
+      "ref": "way/133076254",
+      "label": "Sunway Pyramid, 3, Jalan PJS 11/15, Sunway City, PJS 11, Sunway City, Petaling Jaya, Petaling, Selangor, 47500, Malaysia",
+      "latitude": 3.072485,
+      "longitude": 101.60655
+    },
+    {
+      "ref": "node/11901718875",
+      "label": "Sunway Pyramid (Opp), New Pantai Expressway, Taman Dato' Hormat, Sunway City, Subang Jaya City Council, Petaling, Selangor, 46150, Malaysia",
+      "latitude": 3.074087,
+      "longitude": 101.605804
+    },
+    {
+      "ref": "node/9223854465",
+      "label": "Sunway Pyramid, Jalan PJS 11/15, Sunway City, PJS 11, Sunway City, Subang Jaya City Council, Petaling, Selangor, 46150, Malaysia",
+      "latitude": 3.073616,
+      "longitude": 101.605867
+    }
+  ]
+}

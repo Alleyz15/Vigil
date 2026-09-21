@@ -17,9 +17,12 @@ import { ADDRESSES } from "@/lib/generate/world";
 import { depotFor, routeBetween } from "./depot";
 import { buildOnlineScenario, eventIdFor, UNREGISTERED_LOCATION_GAP } from "./build";
 import {
+  addressClaimOf,
   appendCorrection,
   createShipment,
   getShipment,
+  requestHashOf,
+  resolvedOf,
   type ShipmentRequest,
 } from "./store";
 
@@ -302,6 +305,63 @@ describe("corrections append; the original reference is never overwritten", () =
     appendCorrection(db, { shipmentId: history.shipment.shipmentId, to: NEAR_BANGSAR_B, boundary: FIXTURE_BOUNDARY, nowIso: NOW });
     expect(() => mutate(db)).toThrow(/append-only/);
     expect(getShipment(db, history.shipment.shipmentId)!.originalReference).toEqual(history.originalReference);
+  });
+});
+
+describe("a resolved address and the sender's claim are two things", () => {
+  const RESOLVED = { label: "Jalan Ampang, Kuala Lumpur, Malaysia", by: "search" as const, ref: "way/123456" };
+
+  /**
+   * TWO COLUMNS, NEVER ONE. The geocoder's label is stored beside the sender's
+   * words and does not replace them, and a snapshot with no resolution has
+   * NULL there — not an empty string that could pass for an answer.
+   */
+  it("stores the geocoder's label in its own columns and leaves the claim as typed", () => {
+    const db = freshDb();
+    const history = created(db, "k-resolved", {
+      ...REQUEST,
+      destination: { ...NEAR_AMPANG, resolved: RESOLVED },
+    });
+    expect(resolvedOf(history.originalReference)).toEqual(RESOLVED);
+    expect(addressClaimOf(history.originalReference)).toBe(NEAR_AMPANG.addressClaim);
+    expect(history.originalReference.addressClaim).not.toContain(RESOLVED.label);
+    expect(history.origin.resolvedLabel).toBeNull();
+    expect(resolvedOf(history.origin)).toBeNull();
+  });
+
+  /**
+   * A VALUE CARRIED FROM BEFORE THE CHANGE (rule 1f). This hash was computed by
+   * the committed store, before phase two added `resolved`, and by the new one:
+   * both gave this string. A shipment created before phase two therefore still
+   * replays rather than coming back as a conflict.
+   */
+  it("hashes a request with no resolution exactly as it did before phase two", () => {
+    const before = {
+      origin: { latitude: 3.13, longitude: 101.67, addressClaim: "12 Jalan Contoh, Bangsar" },
+      destination: { latitude: 3.165, longitude: 101.73 },
+      declaredValueSen: 12000,
+      recipientChannel: "+60111234567",
+    };
+    expect(requestHashOf(before)).toBe("b24047a60786d6120c0cdafd3a3dfecef7133951c07db58ef4ca68bb75ccc259");
+  });
+
+  it("counts a resolution as part of the request, so a key reused with a different label conflicts", () => {
+    const db = freshDb();
+    create(db, "k-label", { ...REQUEST, destination: { ...NEAR_AMPANG, resolved: RESOLVED } });
+    const other = { ...REQUEST, destination: { ...NEAR_AMPANG, resolved: { ...RESOLVED, ref: "way/9" } } };
+    expect(create(db, "k-label", other).status).toBe("conflict");
+  });
+
+  /**
+   * PROVIDER TEXT STAYS OUT OF THE PARCEL. The online scenario's recipient
+   * address — which the generator and the engine's world read — is built from
+   * the sender's claim or the coordinate, never from Nominatim's label.
+   */
+  it("keeps the geocoder's label out of the built parcel", () => {
+    const db = freshDb();
+    const history = created(db, "k-parcel", { ...REQUEST, destination: { ...NEAR_AMPANG, resolved: RESOLVED } });
+    const { scenario } = buildOnlineScenario(history, { world: WORLD, startMs: START_MS });
+    expect(JSON.stringify(scenario)).not.toContain(RESOLVED.label);
   });
 });
 

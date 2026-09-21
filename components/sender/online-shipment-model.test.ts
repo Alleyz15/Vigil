@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { canConfirm, newIdempotencyKey, SLOT_LABEL, submitRefusal, type PickedPoint } from "./online-shipment-model";
+import {
+  bodyPoint,
+  canConfirm,
+  newIdempotencyKey,
+  SLOT_LABEL,
+  submitRefusal,
+  withReverseLabel,
+  type PickedPoint,
+} from "./online-shipment-model";
 
-const inside: PickedPoint = { latitude: 3.139, longitude: 101.6869, inside: true, claim: null };
-const outside: PickedPoint = { latitude: 4.5975, longitude: 101.0901, inside: false, claim: null };
+const inside: PickedPoint = { latitude: 3.139, longitude: 101.6869, inside: true, claim: null, resolved: null };
+const outside: PickedPoint = { latitude: 4.5975, longitude: 101.0901, inside: false, claim: null, resolved: null };
 
 describe("confirming a clicked point", () => {
   it("accepts a point inside the area, with or without an address claim", () => {
@@ -61,5 +69,51 @@ describe("the two slots", () => {
   it("are labelled for a person, not named after the API field", () => {
     expect(SLOT_LABEL.origin).toBe("Collection point");
     expect(SLOT_LABEL.destination).toBe("Delivery point");
+  });
+});
+
+describe("a reverse lookup labels the pin and never moves it", () => {
+  const clicked: PickedPoint = { latitude: 3.139013, longitude: 101.686855, inside: true, claim: null, resolved: null };
+
+  /** BIT-IDENTICAL: the coordinate before and after the label is attached is the same number. */
+  it("keeps the confirmed coordinate bit-identical", () => {
+    const labelled = withReverseLabel(clicked, {
+      at: { latitude: 3.139013, longitude: 101.686855 },
+      label: "Jalan Tun Razak, Kuala Lumpur",
+      ref: "way/9",
+    })!;
+    expect(Object.is(labelled.latitude, clicked.latitude)).toBe(true);
+    expect(Object.is(labelled.longitude, clicked.longitude)).toBe(true);
+    expect(labelled.resolved).toEqual({ by: "reverse", label: "Jalan Tun Razak, Kuala Lumpur", ref: "way/9" });
+  });
+
+  /** Two quick clicks, two lookups: the first answer must not label the second point. */
+  it("ignores an answer about a point that is no longer pending", () => {
+    const stale = withReverseLabel(clicked, { at: { latitude: 3.1, longitude: 101.6 }, label: "elsewhere", ref: "way/1" });
+    expect(stale).toBe(clicked);
+  });
+
+  it("does not overwrite a search pick's label with a reverse one", () => {
+    const picked: PickedPoint = { ...clicked, resolved: { by: "search", label: "Chosen", ref: "way/2", query: "chosen" } };
+    expect(withReverseLabel(picked, { at: clicked, label: "other", ref: "way/3" })).toBe(picked);
+  });
+});
+
+describe("what the create request carries for an address", () => {
+  /**
+   * THE LABEL IS NOT SENT. The server is told which lookup produced it and
+   * reads the label back from its own cache — a client cannot type one in.
+   */
+  it("sends a reference to the lookup, never the label text", () => {
+    const body = bodyPoint({ ...inside, claim: "Gate B", resolved: { by: "search", label: "Jalan X", ref: "way/7", query: "jalan x" } });
+    expect(body).toEqual({
+      latitude: inside.latitude,
+      longitude: inside.longitude,
+      addressClaim: "Gate B",
+      resolution: { kind: "search", query: "jalan x", ref: "way/7" },
+    });
+    expect(JSON.stringify(body)).not.toContain("Jalan X");
+    expect(bodyPoint({ ...inside, resolved: { by: "reverse", label: "Jalan Y", ref: "way/8" } }).resolution).toEqual({ kind: "reverse" });
+    expect(bodyPoint(inside)).not.toHaveProperty("resolution");
   });
 });

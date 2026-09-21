@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  addressLine,
+  addressLines,
+  CLAIM_HEADING,
+  RESOLVED_HEADING,
   boundaryStamp,
   confirmPoint,
   COORDINATE_DECIMALS,
@@ -121,21 +123,35 @@ describe("what the map prints in its corner", () => {
 
 describe("the address of a confirmed point", () => {
   /**
-   * NO GEOCODER RAN, so there is no resolved address — and the absence is the
-   * observation, not a blank field (rule 4f). A plausible street invented for
-   * an arbitrary click would be rule 3e's fabrication in a different carrier.
+   * An unresolved address is the observation, not a blank field (rule 4f): the
+   * line says so, and nothing is guessed in its place.
    */
   it("is unresolved with or without a claim, and says which", () => {
-    expect(addressLine(null)).toEqual({
-      resolved: false,
+    expect(addressLines({ claim: null, resolved: null })).toEqual({
+      resolved: null,
       claim: null,
-      text: "Address not resolved — no geocoder was called, and none is guessed",
+      unresolved: "Address not resolved — no address is guessed",
     });
-    expect(addressLine("Block B lobby")).toMatchObject({
-      resolved: false,
-      claim: "Block B lobby",
+    const claimed = addressLines({ claim: "Block B lobby", resolved: null });
+    expect(claimed.claim).toEqual({ heading: CLAIM_HEADING, text: "Block B lobby" });
+    expect(claimed.unresolved).toMatch(/sender's own description, not a lookup/);
+  });
+
+  /**
+   * TWO SOURCES, TWO HEADINGS. The store keeps the geocoder's label and the
+   * sender's words in separate columns; this is what stops a screen printing
+   * them as one line — each arrives with a heading naming who said it.
+   */
+  it("keeps a resolved label and a claim apart, each under its own source", () => {
+    const both = addressLines({
+      claim: "Leave at the guardhouse",
+      resolved: { label: "Jalan Tun Razak, Kuala Lumpur", by: "search" },
     });
-    expect(addressLine("Block B lobby").text).toMatch(/sender's own description/);
+    expect(both.resolved).toEqual({ heading: RESOLVED_HEADING, label: "Jalan Tun Razak, Kuala Lumpur", by: "search" });
+    expect(both.claim).toEqual({ heading: CLAIM_HEADING, text: "Leave at the guardhouse" });
+    expect(both.unresolved).toBeNull();
+    expect(RESOLVED_HEADING).toMatch(/Nominatim/);
+    expect(CLAIM_HEADING).not.toBe(RESOLVED_HEADING);
   });
 
   it("treats whitespace as no claim at all", () => {

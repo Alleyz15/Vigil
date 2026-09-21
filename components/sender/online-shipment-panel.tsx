@@ -5,10 +5,13 @@ import { booleanPointInPolygon } from "@turf/turf";
 import { Crosshair, MapPinned, PackagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
-import { addressLine, confirmPoint, formatCoordinate, normaliseClaim } from "@/lib/shipment/picker";
+import { GEOCODE_ATTRIBUTION } from "@/lib/geocode/messages";
+import { addressLines, confirmPoint, formatCoordinate, normaliseClaim } from "@/lib/shipment/picker";
 import { cn } from "@/lib/utils";
+import { AddressSearch, type SearchCandidate } from "./address-search";
 import { ServiceAreaMap } from "./service-area-map";
 import {
+  bodyPoint,
   canConfirm,
   newIdempotencyKey,
   SLOT_LABEL,
@@ -16,6 +19,7 @@ import {
   type PickedPoint,
   type ServiceAreaView,
   type SlotName,
+  withReverseLabel,
 } from "./online-shipment-model";
 
 /**
@@ -28,10 +32,13 @@ import {
  *   - the coordinate shown is the coordinate stored, rounded once at the click
  *     (about 11 cm) rather than displayed short and kept long;
  *   - nothing snaps it to a road, a building or a cached address;
- *   - no geocoder is called, so the address is NOT RESOLVED and says so — an
- *     invented street for an arbitrary click would be the fabrication rule 3e
- *     bans, and the sender's own words are stored as a claim, never as a
- *     resolved address;
+ *   - a SEARCH (phase two) only proposes points: its candidates wait for a
+ *     person to choose one, and the chosen one still has to be confirmed;
+ *   - a REVERSE lookup after a click adds a label and never moves the pin; when
+ *     it finds nothing the address is NOT RESOLVED and says so — an invented
+ *     street would be the fabrication rule 3e bans;
+ *   - the geocoder's label and the sender's own words are shown as two lines
+ *     under two headings, as they are stored in two columns;
  *   - the generator's 60 m doorstep jitter is not applied: moving a confirmed
  *     point silently is the interface lying about what was confirmed;
  *   - an outside click is answered with the reason and the units that ARE
@@ -52,6 +59,8 @@ export function OnlineShipmentPanel() {
   const [valueRinggit, setValueRinggit] = useState("180.00");
   const [channel, setChannel] = useState("+60119990007");
   const [recipientName, setRecipientName] = useState("");
+
+  const [reverseNote, setReverseNote] = useState<ReverseNote | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -79,9 +88,61 @@ export function OnlineShipmentPanel() {
     // immediately rather than after submitting. `createShipment` checks the
     // same boundary server-side and that answer is the one that decides.
     const inside = booleanPointInPolygon([point.longitude, point.latitude], area.area);
-    setPending({ ...point, inside, claim: null });
+    setPending({ ...point, inside, claim: null, resolved: null });
     setClaimDraft("");
     setOutcome(null);
+    setReverseNote(null);
+    // Only a point that could be confirmed is worth a request. A click is a
+    // deliberate act, not typing, so this is not autocomplete — and the server's
+    // one queue and its cache still decide whether anything is actually sent.
+    if (inside) void lookUpAddress(point);
+  };
+
+  const lookUpAddress = async (at: { latitude: number; longitude: number }) => {
+    setReverseNote({ at, kind: "looking", text: "Looking up the address at this point…" });
+    let note: ReverseNote;
+    try {
+      const response = await fetch("/api/sender/geocode/reverse", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(at),
+      });
+      const body = await response.json().catch(() => null);
+      if (body?.status === "found") {
+        // The label is attached to the pending point only if it is still THIS
+        // point, and the coordinate is kept from the point, not the answer.
+        setPending((current) => withReverseLabel(current, { at, label: body.label, ref: body.ref }));
+        note = { at, kind: "done", text: "" };
+      } else {
+        note = {
+          at,
+          kind: "failed",
+          text: body?.message ?? "The address lookup could not be sent to this server. The coordinate is unchanged.",
+        };
+      }
+    } catch {
+      note = { at, kind: "failed", text: "The address lookup could not be sent to this server. The coordinate is unchanged." };
+    }
+    setReverseNote((current) =>
+      current && current.at.latitude === at.latitude && current.at.longitude === at.longitude ? note : current,
+    );
+  };
+
+  const choose = (candidate: SearchCandidate & { selectable: true }, query: string) => {
+    if (!area) return;
+    // The candidate's coordinate is already the six-decimal value; the browser
+    // re-checks it as a courtesy exactly as it does a click.
+    const inside = booleanPointInPolygon([candidate.longitude, candidate.latitude], area.area);
+    setPending({
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
+      inside,
+      claim: null,
+      resolved: { by: "search", label: candidate.label, ref: candidate.ref, query },
+    });
+    setClaimDraft("");
+    setOutcome(null);
+    setReverseNote(null);
   };
 
   const confirmInto = (slot: SlotName) => {
@@ -153,12 +214,13 @@ export function OnlineShipmentPanel() {
     <section id="confirm-a-point" className="mt-12 scroll-mt-6">
       <h2 className="text-2xl font-semibold">Dispatch to a point on the map</h2>
       <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">
-        Click anywhere inside the outlined area, check the coordinate, and confirm it. The point you
-        confirm is the point the courier is measured against — it is not moved, snapped or looked up.
+        Search for an address or click anywhere inside the outlined area, check the coordinate, and
+        confirm it. The point you confirm is the point the courier is measured against — a lookup can
+        label it, but nothing moves or snaps it.
       </p>
 
       <div className="mt-4">
-        <ProvenanceLabel>Confirmed coordinate · no geocoder · no address is guessed</ProvenanceLabel>
+        <ProvenanceLabel>Confirmed coordinate · addresses from Nominatim are labels · nothing is guessed</ProvenanceLabel>
       </div>
 
       {areaError && (
@@ -169,12 +231,18 @@ export function OnlineShipmentPanel() {
 
       <div className="sender-workspace mt-6">
         <section className="min-w-0 rounded-lg border bg-card p-5">
-          <h3 className="text-sm font-semibold">The point you clicked</h3>
+          <h3 className="text-sm font-semibold">Find an address</h3>
+          <div className="mt-3">
+            <AddressSearch onChoose={choose} />
+          </div>
+
+          <h3 className="mt-6 border-t pt-5 text-sm font-semibold">The pending point</h3>
           {area ? (
             pending ? (
               <PendingPoint
                 point={pending}
                 area={area}
+                reverseNote={reverseNote}
                 claimDraft={claimDraft}
                 onClaimChange={setClaimDraft}
                 onConfirm={confirmInto}
@@ -182,8 +250,8 @@ export function OnlineShipmentPanel() {
             ) : (
               <p className="mt-4 flex items-start gap-2 text-sm leading-6 text-muted-foreground">
                 <Crosshair aria-hidden="true" className="mt-1 size-4 shrink-0" />
-                Nothing is selected. Click the map to place a point; its latitude and longitude appear
-                here before anything is submitted.
+                Nothing is selected. Choose a search result or click the map; the latitude and longitude
+                appear here before anything is submitted.
               </p>
             )
           ) : (
@@ -282,13 +350,8 @@ export function OnlineShipmentPanel() {
   );
 }
 
-function bodyPoint(point: PickedPoint) {
-  return {
-    latitude: point.latitude,
-    longitude: point.longitude,
-    ...(point.claim ? { addressClaim: point.claim } : {}),
-  };
-}
+/** The state of the reverse lookup for the pending point. */
+type ReverseNote = { at: { latitude: number; longitude: number }; kind: "looking" | "failed" | "done"; text: string };
 
 type Outcome =
   | {
@@ -318,17 +381,23 @@ async function storedReference(shipmentId: string): Promise<{ latitude: number; 
 function PendingPoint({
   point,
   area,
+  reverseNote,
   claimDraft,
   onClaimChange,
   onConfirm,
 }: {
   point: PickedPoint;
   area: ServiceAreaView;
+  reverseNote: ReverseNote | null;
   claimDraft: string;
   onClaimChange: (value: string) => void;
   onConfirm: (slot: SlotName) => void;
 }) {
-  const address = addressLine(normaliseClaim(claimDraft));
+  const lines = addressLines({ claim: normaliseClaim(claimDraft), resolved: point.resolved });
+  const note =
+    reverseNote && reverseNote.at.latitude === point.latitude && reverseNote.at.longitude === point.longitude
+      ? reverseNote
+      : null;
   return (
     <div className="mt-4">
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
@@ -342,18 +411,27 @@ function PendingPoint({
         building, and the 60 m doorstep offset the seeded generator uses is not applied here.
       </p>
 
-      <p
-        className={cn(
-          "mt-4 text-sm leading-6",
-          point.inside ? "text-muted-foreground" : "text-amber-800 dark:text-amber-300",
-        )}
-      >
-        {point.inside ? address.text : area.outsideMessage}
-      </p>
+      {point.inside ? (
+        <div className="mt-4">
+          {lines.resolved ? (
+            <ResolvedLine heading={lines.resolved.heading} label={lines.resolved.label} by={lines.resolved.by} />
+          ) : note?.kind === "looking" ? (
+            <p className="text-sm leading-6 text-muted-foreground">{note.text}</p>
+          ) : note?.kind === "failed" ? (
+            <p role="status" className="text-sm leading-6 text-amber-800 dark:text-amber-300">
+              {note.text}
+            </p>
+          ) : (
+            <p className="text-sm leading-6 text-muted-foreground">{lines.unresolved}</p>
+          )}
+        </div>
+      ) : (
+        <p className="mt-4 text-sm leading-6 text-amber-800 dark:text-amber-300">{area.outsideMessage}</p>
+      )}
 
       {point.inside && (
         <>
-          <Labelled label="Address (optional — nothing is looked up)" className="mt-4">
+          <Labelled label="Your own words (optional — stored as written, never looked up)" className="mt-4">
             <input
               aria-label="Address claim for the confirmed point"
               value={claimDraft}
@@ -364,8 +442,8 @@ function PendingPoint({
             />
           </Labelled>
           <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
-            Stored as your own words and never parsed. Left empty, the point travels with no address at
-            all — which is the truth about it.
+            Kept apart from any resolved address: this line is yours, the one above is the geocoder&apos;s.
+            Left empty, nothing is stored in its place.
           </p>
         </>
       )}
@@ -397,7 +475,7 @@ function Slot({ name, point, onClear }: { name: SlotName; point: PickedPoint | n
           <p className="mt-1 font-mono text-sm tabular-nums">
             {formatCoordinate(point.latitude)}, {formatCoordinate(point.longitude)}
           </p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{point.claim ?? "Address not resolved"}</p>
+          <SlotAddress point={point} />
           <button type="button" onClick={onClear} className="mt-2 text-xs underline underline-offset-2">
             Clear
           </button>
@@ -405,6 +483,44 @@ function Slot({ name, point, onClear }: { name: SlotName; point: PickedPoint | n
       ) : (
         <p className="mt-1 text-sm text-muted-foreground">Not confirmed yet</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * THE GEOCODER'S LINE. Headed with the provider's name and set in its own
+ * treatment, so it cannot be read as something the sender wrote.
+ */
+function ResolvedLine({ heading, label, by }: { heading: string; label: string; by: "search" | "reverse" }) {
+  return (
+    <div className="border-l-2 border-emerald-700/50 pl-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        {heading} · {by === "search" ? "chosen search result" : "looked up at this point"}
+      </p>
+      <p className="mt-0.5 text-sm leading-6">{label}</p>
+      <p className="text-xs leading-5 text-muted-foreground">{GEOCODE_ATTRIBUTION}</p>
+    </div>
+  );
+}
+
+/** A confirmed slot's address: the resolved line and the claim, each under its own heading. */
+function SlotAddress({ point }: { point: PickedPoint }) {
+  const lines = addressLines({ claim: point.claim, resolved: point.resolved });
+  return (
+    <div className="mt-1 space-y-1.5 text-xs leading-5">
+      {lines.resolved && (
+        <p className="border-l-2 border-emerald-700/50 pl-2" data-line="resolved">
+          <span className="block text-muted-foreground">{lines.resolved.heading}</span>
+          <span>{lines.resolved.label}</span>
+        </p>
+      )}
+      {lines.claim && (
+        <p className="border-l-2 border-dashed border-amber-700/60 pl-2" data-line="claim">
+          <span className="block text-muted-foreground">{lines.claim.heading}</span>
+          <span className="italic">&ldquo;{lines.claim.text}&rdquo;</span>
+        </p>
+      )}
+      {lines.unresolved && <p className="text-muted-foreground">{lines.unresolved}</p>}
     </div>
   );
 }
