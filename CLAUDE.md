@@ -572,6 +572,7 @@ decision. Before relying on a property of code you did not just write, go and re
 | 4 | `uuidFrom` ignoring the world seed (session 17B) | **invariant no test expressed** |
 | 5 | `npm run qa:capture` broken by reserving S1's leg (session 17B) | code no test could reach |
 | 6 | `fetch_route_history` and `lookup_recipient_history` selecting nothing (session 18) | **code no test could reach — and the most consequential yet** |
+| 7 | `verifyResolution` handing the route's whole point to a strict reverse query (session 25) | **invariant no test expressed** — every unit test passed a tidy `{latitude, longitude}`; the route passes claim and resolution too, and the first real create threw. Found by creating a shipment in the browser |
 
 **Number 6 is the one that cost the most.** Two of the plan node's three tools had **no
 implementation at all**. They were in the closed enum, in the deterministic heuristic, and named
@@ -673,6 +674,7 @@ implemented three times:
 | `scripts/fetch-addresses.mjs` | Nominatim | yes — and its comment states the policy requires it |
 | `scripts/fetch-kl-boundary.mjs` | Overpass | yes |
 | `scripts/qa/stable-capture.mjs` | tile servers | **no, until this session** |
+| `lib/geocode/nominatim.ts` (session 25) | Nominatim, at runtime | yes — from the shared agent below |
 
 Two of the three were right **and wrote down why**, and the third still missed it. That is worse
 than a constraint nobody knew: the knowledge was in the repository, in a comment, one directory
@@ -686,12 +688,23 @@ policy and why it applies — and the third caller missed it anyway.
 > no reason to read a neighbouring directory's comments, so knowledge stored there protects the
 > file it sits in and nothing else. It is documentation of a decision, not enforcement of one.
 
-**The structural fix is named and deliberately not taken yet.** Three call sites do not earn a
-shared HTTP client; the indirection would cost more than it saves. **If the outbound callers ever
-exceed three, bind the identifying agent to one client** so a new caller inherits it rather than
-remembering it — the same move as the attribution riding with the geometry and the guard
-enumerating its trees. Recorded now, with the threshold, so the next session has the condition
-rather than the judgement.
+**The structural fix was named with a threshold, and session 25 crossed it.** Three call sites did
+not earn a shared client; the rule recorded here was *past three, bind the identifying agent to one
+place so a new caller inherits it rather than remembering it*. Phase two's runtime geocoder is the
+fourth, so the agent now lives in **`lib/osm/agent.mjs`** — `.mjs` so the node scripts and the
+TypeScript app import one file — and **`lib/osm/agent.test.ts` enumerates every file under `app`,
+`components`, `lib` and `scripts` that names an OSM host** and fails unless it imports that module.
+The two Leaflet map clients are the written exclusions: the viewer's browser fetches those tiles
+with its own agent, and this code sends no header there. Injected: dropping the import from
+`fetch-kl-boundary.mjs` failed naming that file; a host named in a brand-new `lib/zzosm/probe.ts`
+failed naming it. **The threshold was decided before the fourth caller existed, which is what made
+acting on it a rule rather than a judgement.**
+
+Binding it also corrected two agents that looked right. The boundary extractor's named the project
+and gave no contact; the capture script's contact was `https://github.com/` — a website, not a
+project anyone could reach. Both now carry the repository URL. The capture's new agent was checked
+against the real tile server rather than read: a Kuala Lumpur tile came back 46 KB of map, and the
+same URL under curl's default agent came back `x-blocked`.
 
 The remaining outbound callers were checked in the same sweep: `anthropic.ts` and `gemini.ts`
 authenticate with a key and their terms ask for no agent; `lib/weather/open-meteo.ts` is the
@@ -1581,7 +1594,19 @@ lib/
     build.ts             adapter over lib/generate: exact coordinates, sha256 event
                          ids, no invented cell/WiFi. Under the anti-circularity guard
     picker.ts            what the map picker SAYS, derived: the members sentence, the
-                         out-of-area reason, the ODbL stamp, the click's rounding
+                         out-of-area reason, the ODbL stamp, the click's rounding,
+                         and the two address lines (resolved / the sender's words)
+  geocode/               PHASE TWO. Public Nominatim, server-side only. Never a verdict input.
+    types.ts             queries hold only query text or a coordinate; six failure reasons;
+                         a reverse answer has NO coordinate of its own
+    queue.ts             one request in flight, starts >= 1.1 s apart, bounded backlog
+    nominatim.ts         fixed origin, shared agent, cache BEFORE queue, one retry on
+                         no-answer only, a pause after 429, whole-or-nothing parsing
+    runtime.ts           the process's one queue on globalThis; two cache directories
+    attach.ts            a label reaches the store only by reference, verified from cache
+    messages.ts          client-safe: normal form, phone refusal, six sentences, credit
+  osm/
+    agent.mjs            the ONE identifying User-Agent for every OSM caller (see 1g)
   purity.test.ts         guards the I/O ban, the never-summed rule AND
                          the generator/detector separation
   assemble/              WHERE THE I/O IS. Deliberately NOT under the purity test.
@@ -1976,6 +2001,7 @@ npm run lint
 npm run test:coverage # engine + pattern + gate; must stay at 100% branch
 node scripts/fetch-addresses.mjs  # refresh the geocoded address cache (one-off)
 npm run weather:cache:s6 # fill/check the fixed S6 Open-Meteo archive cache
+npm run geocode:cache:demo # pre-warm the committed Nominatim demo set (sends the listed queries)
 npm run db:generate  # regenerate migrations after editing lib/db/schema.ts
 npm run db:migrate
 ```
@@ -1984,15 +2010,89 @@ npm run db:migrate
 
 ## Session log
 
+### Session 25 — phase two: address search and reverse geocoding (complete)
+
+**Opened on the reviewer's three decisions**, recorded here because phase one made them the
+condition: provider **public Nominatim**; cost **none**, bound by its usage policy; data **only the
+address text a person typed, and a coordinate they clicked** — never a name, a number or a shipment.
+Nominatim over a paid provider because coordinates are stored permanently in shipment records:
+Mapbox's temporary mode forbids storage and its permanent mode costs money, while Nominatim permits
+storage and forbids autocomplete. **A search button rather than search-as-you-type is the policy,
+not a design preference.**
+
+`lib/engine`, `lib/pattern`, `lib/gate`, `lib/credential` and `lib/generate` have no diff. The seven
+scenarios still hash `998918b7c13e`; E1, E2 and E3 reran with `results/` byte-identical (E4/E5 call
+live models and were not run; E6's committed CSV was already known stale from session 24).
+
+#### What phase two guarantees, and where each guarantee lives
+
+| Guarantee | Where it is structural | The test, injected |
+|---|---|---|
+| no request while typing | `onChange` sets state; one `fetch`, in the form's submit | a request added to `onChange` failed the keystroke-counting test |
+| one request a second, app-wide | `createSerialQueue`: serial AND start-spaced, one per process on `globalThis`, shared by search and reverse | removing the spacing, or the serialisation, each failed both the fake-clock test and the real-runtime test |
+| a cache hit sends nothing | the cache is read BEFORE the queue is touched | touching the queue first failed "never touches the queue on a hit" (a queue that throws on use) |
+| the agent is on the wire | `osmUserAgent()`, read by a local HTTP server off a real `fetch` | dropping the header: the server received `"node"` |
+| six failures stay six | `FailureReason`, one sentence each, nothing cached but `no_results` | retrying a 429 failed the rate-limited cases |
+| no result is adopted by itself | a candidate only becomes the PENDING point, which still needs "Confirm as…" | auto-choosing a lone match failed |
+| an outside candidate is refused with the reason | checked server-side against the create route's boundary; no button in its row | — (asserted: four members named, no button) |
+| reverse never moves the pin | the reverse answer has no coordinate field; the page copies the label only onto the point still pending | nudging `at` by 1e-6 failed; dropping the staleness check failed |
+| a label is only stored if a lookup produced it | the client sends a REFERENCE (`query` + `ref`, or "reverse"); the server re-reads it cache-only and requires the search candidate's coordinate to match exactly | in the browser: a search nobody ran → 422, a point moved 1e-6° → 422, a label sent as text → 400 |
+| resolved and claimed stay two things | `resolved_label/by/ref`, nullable, migration 0007 (`ADD COLUMN`, no rebuild); `addressLines` gives each its own heading | writing the label into the claim failed two store tests |
+| provider text stays out of the model and the parcel | the explain prompt's allowlist; `build.ts` reads the claim only | a `resolvedAddress` key in the prompt failed the prompt test |
+| `lib/geocode` is under the anti-circularity guard | enumerated by `guardedTrees()` | a threshold import and `Math.random` each failed naming the file |
+
+All thirteen injections failed the test aimed at them, and the three whose MESSAGE matters were read:
+the socket received `"node"`; the guard named `geocode/queue.ts`; the new resolution test failed with
+the browser's own ZodError. **A shipment created before phase two still replays**: its request hash
+was computed by the committed `store.ts` and by the new one, both `b24047a6…`, and the test pins
+that value rather than rerunning current code against itself (rule 1f: only a value carried from before the change shows the code is unchanged).
+
+#### Measured in the browser, end to end
+
+Nineteen real keystrokes, zero geocode requests; one on Search (the positive control that shows the
+recorder was recording). "Ipoh" came back with the reason naming the four districts and no button.
+A chosen Mid Valley candidate became pending at `3.117655, 101.677374`, its own coordinate, with both
+slots still unconfirmed. A live reverse lookup on a map click read `3.052754, 101.604309` before and
+after the label arrived, and the returned address was a real one — the runtime agent was accepted by
+the upstream. The created shipment stored exactly those coordinates, the claim in `address_claim`,
+Nominatim's label in `resolved_label`, `resolved_by` `search`/`reverse`. The refusals afterwards
+left the runtime cache at one file: they were answered with the network forbidden.
+
+#### Two contact rules, one policy requirement
+
+**A one-off script and a runtime caller answer "how can you be contacted" differently.** A script
+runs once, with its author present, so an author's address is proportionate. A runtime caller sends
+its agent on every request anyone makes, at any time, and the header lands in upstream logs, in
+captures, and in every fork's traffic — so it names the repository, whose issue tracker is the
+contact. The policy requirement is the same; the correct answer differs by who is sending. The
+address the one-off script carried had already been committed to a public repository; it is
+replaced in the tree, **and it remains in git history**, which this session did not rewrite.
+
+#### Two caches, two directories
+
+The runtime cache (`data/geocode/nominatim/`, whatever anyone searched) is ignored. The demo set
+(`data/geocode-demo/nominatim/`, written only by `npm run geocode:cache:demo` from queries listed in
+the script) is committed and read first. **The boundary is the directory, not a gitignore
+exception** — an ignore rule is a list, and a list is one more thing to keep in step (rule 1g,
+the hand-maintained lists). Five demo queries: three inside the area, Putrajaya and Ipoh outside.
+
+#### The fourth outbound caller fired a recorded threshold
+
+See rule 1g: the identifying agent is now one module, enumerated by a guard. That was decided in
+session 24 with the number three written down, which is why doing it here was following a rule
+rather than widening scope.
+
 ### Session 24 — online shipments at a confirmed point, phase one (complete)
 
 **PHASE ONE IS CLOSED.** The map picker, the boundary, the store and the online build layer are
 all in.
 
-**PHASE TWO — address search and reverse geocoding — IS NOT OPEN, AND IT IS A BOUNDARY RATHER THAN
-A TODO.** Every sentence in this section rests on one property: *no code path calls an external
-provider, sends a coordinate out, or costs money*. Opening phase two changes that property, so it
-is not a task a session picks up because the backlog is empty.
+**PHASE TWO — address search and reverse geocoding — WAS A BOUNDARY, NOT A TODO, and session 25
+opened it only once the reviewer had made all three decisions below** (public Nominatim; no cost;
+only the typed query text and a clicked coordinate leave the machine). The paragraph is kept as
+written because the rule it states still holds for any further provider: every sentence of phase
+one rested on *no code path calls an external provider, sends a coordinate out, or costs money*,
+and changing that property is the reviewer's decision, not a backlog item.
 
 **Three decisions must exist, from the reviewer, before any of it is written:**
 
@@ -4121,10 +4221,11 @@ each handoff's own result rather than stated for "arbitrary points" in general. 
 promises that a spoof there is detectable nor that it is not.** I7, I8 and the distance rules run
 as usual and are tested at arbitrary points.
 
-**An online point's address claim is optional, and absence is stored as the empty string.** There
-is no geocoder, so a confirmed coordinate has no resolved address; requiring one would make an
-empty box look like a lookup that failed and would push a sender into typing something so the form
-would submit. NULL would be the better column, and `location_snapshots.address_claim` is `NOT NULL`
+**An online point's address claim is optional, and absence is stored as the empty string.** A
+confirmed coordinate need not have an address; requiring one would make an empty box look like a
+lookup that failed and would push a sender into typing something so the form would submit. (Since
+session 25 a geocoder exists, and what it finds goes in the separate, NULLABLE `resolved_*` columns
+— never into the claim.) NULL would be the better column, and `location_snapshots.address_claim` is `NOT NULL`
 in a migration already committed: SQLite cannot relax that without rebuilding the table, and the
 rebuild is not available here — `foreign_keys` is ON, the rebuild's `DROP TABLE` performs an
 implicit delete against two referencing tables, and a migration runs inside a transaction where the
@@ -4133,6 +4234,22 @@ non-empty by construction (`normaliseClaim` trims). It is read back through `add
 rendered through `addressLabelOf` — one place each, rather than a `=== ""` test every caller has to
 remember. **The less severe failure, chosen deliberately and written down** (the `seedDraftIdentity`
 rule).
+
+**Address search depends on a volunteer service, and the limit is per PROCESS.** Public Nominatim
+allows one request a second for the whole application. The queue that enforces it is one per Node
+process, hung on `globalThis` so Next's per-route bundles share it — two server processes would be
+two queues and could reach two a second between them. The demo runs one process, which is why this
+is a limitation rather than a defect; a multi-process deployment needs the queue moved out of
+process (or a provider with its own quota). The committed demo set (`data/geocode-demo/`) means the
+recording does not depend on Nominatim being up; a live search beyond that set does.
+
+**A resolved label is a label, not a verification.** Nominatim's `display_name` describes the OSM
+object nearest a query; it says nothing about whether anyone lives there or receives parcels there.
+It is shown under a heading naming the provider, stored apart from the sender's claim, kept out of
+the parcel, the engine and the explain prompt, and moves no verdict. **Pressing Enter in the search
+box was not verified in the browser pane**: the pane's key dispatch did not submit even a plain
+control form on the same page, so the tool, not the component, was what failed; the Search button
+was verified.
 
 **Persisting a location is not persisting the workflow.** Online shipments, their location
 snapshots and their corrections are rows in `data/db/shipments.db`, append-only by trigger. The
