@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { rmSync } from "node:fs";
-import { buildWorld, HUBS } from "./world";
+import { buildWorld, HUBS, prefixFor } from "./world";
 import { buildRequestedScenario, runIdFor, type BuildRequest, type BuiltFault } from "./builder";
 import { createHarness, ingestScenario, type IngestHarness } from "./ingest";
 import { buildScenario } from "./scenarios";
@@ -166,6 +166,26 @@ describe("built shipments are reproducible", () => {
     );
 
     expect(ids.size).toBe(5);
+  });
+
+  it("gives two shipments on the same route distinct parcel identities without leaving the mandate", async () => {
+    const ordinary = build("none");
+    const spoofed = build("gps_spoof");
+    const ordinaryParcel = ordinary.scenario.parcels[0];
+    const spoofedParcel = spoofed.scenario.parcels[0];
+
+    expect(ordinaryParcel.waybillNo).not.toBe(spoofedParcel.waybillNo);
+    expect(ordinaryParcel.epc).not.toBe(spoofedParcel.epc);
+    expect(ordinaryParcel.epc.startsWith(prefixFor(1))).toBe(true);
+    expect(spoofedParcel.epc.startsWith(prefixFor(1))).toBe(true);
+
+    const clean = await run("none");
+    expect(clean.ingested.legs.at(-1)?.engineResult?.hardFailures.map((failure) => failure.id)).not.toContain("H2");
+  });
+
+  it("keeps the deliberate out-of-scope fault outside the courier mandate", async () => {
+    const { ingested } = await run("out_of_scope");
+    expect(ingested.legs.at(-1)?.engineResult?.hardFailures.map((failure) => failure.id)).toContain("H2");
   });
 });
 

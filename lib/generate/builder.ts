@@ -168,7 +168,7 @@ export function buildRequestedScenario(
     destinationIndex: request.destinationIndex,
   });
 
-  const parcel = parcelFor(request, route, rng.derive("parcel"), courierParcels[0]);
+  const parcel = parcelFor(request, route, rng.derive("parcel"), courierParcels[0], runId);
 
   // Timed against the doorstep the courier is actually driving to, not the
   // address label's centroid.
@@ -253,10 +253,14 @@ function parcelFor(
   route: Route,
   rng: Rng,
   template: GeneratedParcel,
+  runId: BuiltScenarioId,
 ): GeneratedParcel {
+  const identity = parseInt(createHash("sha256").update(runId).digest("hex").slice(0, 8), 16);
   return {
-    epc: epcFor(BUILDER_COURIER_INDEX, 900 + (request.destinationIndex % 40)),
-    waybillNo: `WB-BUILT-${String(request.originIndex).padStart(2, "0")}${String(request.destinationIndex).padStart(2, "0")}`,
+    // The serial changes per shipment while the courier-owned prefix remains
+    // unchanged. H2 authorises the prefix; identity lives in the serial.
+    epc: epcFor(BUILDER_COURIER_INDEX, 1_000_000 + (identity % 1_000_000_000)),
+    waybillNo: `WB-BUILT-${runId.slice(2).toUpperCase()}`,
     recipientName: request.recipientName?.trim() || template.recipientName,
     recipientPhone: request.recipientChannel,
     recipientAddress: route.destination.label,
