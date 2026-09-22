@@ -37,7 +37,6 @@ const NODE_INFO: Record<NodeName, { title: string; blurb: string; stub?: string 
   plan: {
     title: "plan",
     blurb: "0–2 tools from a closed enum",
-    stub: "no model configured — the deterministic heuristic ran",
   },
   verify: { title: "verify", blurb: "axis 1 — single-event contradiction" },
   fetch_history: { title: "fetch_history", blurb: "axis 2 — per-courier pattern" },
@@ -49,9 +48,10 @@ const NODE_INFO: Record<NodeName, { title: string; blurb: string; stub?: string 
   explain: {
     title: "explain",
     blurb: "the operator's explanation",
-    stub: "no model configured — structured fallback",
   },
 };
+
+type ModelRuntime = { selection: string; modelId: string | null; mode: string; reason: string };
 
 type NodeState = {
   status: "pending" | "running" | "done" | "error";
@@ -90,6 +90,8 @@ export function StreamView({
   const [result, setResult] = useState<ResultState | null>(null);
   const [preparing, setPreparing] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [modelRuntime, setModelRuntime] = useState<ModelRuntime | null>(null);
   const [leg, setLeg] = useState(defaultLeg);
   const sourceRef = useRef<EventSource | null>(null);
 
@@ -107,6 +109,8 @@ export function StreamView({
     setNodes(blank());
     setThoughts([]);
     setResult(null);
+    setFailure(null);
+    setModelRuntime(null);
     setRunning(true);
 
     const source = new EventSource(`/api/stream?scenario=${scenarioId}&leg=${leg}`);
@@ -121,12 +125,14 @@ export function StreamView({
 
     source.addEventListener("tool_start", (e) => {
       const frame = JSON.parse((e as MessageEvent).data);
+      if (frame.summary?.detail?.model) setModelRuntime(frame.summary.detail.model);
       setPreparing(null);
       setNodes((prev) => ({ ...prev, [frame.node as NodeName]: { status: "running" } }));
     });
 
     source.addEventListener("tool_end", (e) => {
       const frame = JSON.parse((e as MessageEvent).data);
+      if (frame.summary?.detail?.model) setModelRuntime(frame.summary.detail.model);
       setNodes((prev) => ({
         ...prev,
         [frame.node as NodeName]: {
@@ -148,6 +154,12 @@ export function StreamView({
 
     source.addEventListener("result", (e) => {
       setResult(JSON.parse((e as MessageEvent).data));
+    });
+
+    source.addEventListener("failure", (e) => {
+      const frame = JSON.parse((e as MessageEvent).data);
+      setFailure(frame.message ?? "Replay failed.");
+      stop();
     });
 
     source.addEventListener("complete", () => stop());
@@ -180,12 +192,17 @@ export function StreamView({
 
         <ol className="mt-4 space-y-2">
           {NODES.map((name, i) => (
-            <NodeRow key={name} index={i} name={name} state={nodes[name]} />
+            <NodeRow key={name} index={i} name={name} state={nodes[name]} modelRuntime={modelRuntime} />
           ))}
         </ol>
       </div>
 
       <aside className="space-y-4">
+        {failure && (
+          <div role="alert" className="rounded-lg border border-rose-500/50 bg-rose-500/[0.07] p-4 text-sm text-rose-700 dark:text-rose-300">
+            {failure}
+          </div>
+        )}
         <ResultPanel result={result} />
 
         <div className="rounded-lg border border-border/60 bg-card/40 p-4">
@@ -194,8 +211,7 @@ export function StreamView({
           </div>
           {thoughts.length === 0 ? (
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              The only frame a model ever authors. None yet — no model is configured, so the
-              deterministic paths ran instead.
+              The only frame a model ever authors. None yet{modelRuntime ? ` — ${modelRuntime.reason}` : "."}
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
@@ -213,9 +229,11 @@ export function StreamView({
   );
 }
 
-function NodeRow({ index, name, state }: { index: number; name: NodeName; state: NodeState }) {
+function NodeRow({ index, name, state, modelRuntime }: { index: number; name: NodeName; state: NodeState; modelRuntime: ModelRuntime | null }) {
   const info = NODE_INFO[name];
-  const isStub = Boolean(info.stub) && state.status === "done";
+  const isModelNode = name === "plan" || name === "explain";
+  const rejection = typeof state.detail?.rejection === "string" ? state.detail.rejection : null;
+  const fallback = isModelNode && state.status === "done" && (modelRuntime?.mode !== "active" || rejection !== null);
 
   return (
     <li
@@ -273,7 +291,11 @@ function NodeRow({ index, name, state }: { index: number; name: NodeName; state:
       )}
 
       {/* Shown honestly as a stub where it is one. */}
-      {isStub && <div className="mt-2 pl-8 text-xs text-zinc-400 italic">{info.stub}</div>}
+      {isModelNode && state.status === "done" && modelRuntime && (
+        <div className="mt-2 pl-8 text-xs text-zinc-500 italic">
+          {fallback ? rejection ?? modelRuntime.reason : `Model ${modelRuntime.modelId} ran at this node.`}
+        </div>
+      )}
 
       {state.error && <div className="mt-2 pl-8 text-xs text-rose-300">{state.error}</div>}
     </li>
@@ -298,7 +320,7 @@ function ResultPanel({ result }: { result: ResultState | null }) {
   if (!result) {
     return (
       <div className="rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
-        The result frame arrives last, whether or not the run completed.
+        Run the replay to receive a result. If preparation cannot start, the reason appears here.
       </div>
     );
   }

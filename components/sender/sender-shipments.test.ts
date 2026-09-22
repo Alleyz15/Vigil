@@ -20,8 +20,9 @@ it("corrects only the registered index, preserving the displayed original refere
   const view = render(createElement(SenderShipments, { shipments: [shipment], addresses }));
   fireEvent.click(view.getByRole("button", { name: "Correct" }));
   await waitFor(() => expect(router.refresh).toHaveBeenCalledOnce());
-  expect(fetcher.mock.calls[0][0]).toBe("/api/sender/shipments/run-1/correct");
-  expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ addressIndex: 1 });
+  const correction = fetcher.mock.calls.find(([url]) => url === "/api/sender/shipments/run-1/correct");
+  expect(correction).toBeTruthy();
+  expect(JSON.parse(correction![1].body)).toEqual({ addressIndex: 1 });
   expect(view.getByText("Original")).toBeTruthy();
 });
 it("labels proxy delivery as demo behavior and redirects by returned eventId, not a fabricated verdict", async () => {
@@ -30,4 +31,37 @@ it("labels proxy delivery as demo behavior and redirects by returned eventId, no
   expect(view.getByText(/Demo control/)).toBeTruthy();
   fireEvent.click(view.getByRole("button", { name: "Courier delivers" }));
   await waitFor(() => expect(router.push).toHaveBeenCalledWith("/operator/handoffs/pending-event"));
+});
+
+it("uses the confirmed-point correction route for an online shipment instead of the cached-address dropdown", () => {
+  const online = {
+    ...shipment,
+    kind: "online" as const,
+    shipmentId: "shipment-online-1",
+    recordedPoint: { latitude: 3.165, longitude: 101.73 },
+  };
+  const view = render(createElement(SenderShipments, { shipments: [online], addresses }));
+
+  expect(view.queryByLabelText("Correct address for WB-1")).toBeNull();
+  expect(view.getByRole("button", { name: /choose a corrected point/i })).toBeTruthy();
+  expect(view.getByRole("button", { name: "Courier delivers" })).toBeTruthy();
+});
+
+it("loads online pending shipments from the route bundle and refreshes when one is created", async () => {
+  const online = {
+    ...shipment,
+    kind: "online" as const,
+    shipmentId: "shipment-online-1",
+    runId: "B-O-online-1",
+    waybillNo: "WB-ONLINE-1",
+    recordedPoint: { latitude: 3.165, longitude: 101.73 },
+  };
+  const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ items: [online] }) });
+  vi.stubGlobal("fetch", fetcher);
+
+  const view = render(createElement(SenderShipments, { shipments: [], addresses }));
+  await waitFor(() => expect(view.getByText("WB-ONLINE-1")).toBeTruthy());
+
+  window.dispatchEvent(new Event("vigil:sender-shipments-changed"));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
 });

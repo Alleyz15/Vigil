@@ -28,6 +28,14 @@ const Request = z.strictObject({
 
 const STATUS = { created: 201, replayed: 200, conflict: 409, rejected: 422 } as const;
 
+export async function GET() {
+  const workbench = await getWorkbench();
+  const items = workbench
+    .listSenderShipments()
+    .filter((shipment) => shipment.kind === "online" && !shipment.delivered);
+  return NextResponse.json({ items });
+}
+
 export async function POST(request: globalThis.Request) {
   const key = request.headers.get("idempotency-key")?.trim();
   if (!key || key.length > 200) {

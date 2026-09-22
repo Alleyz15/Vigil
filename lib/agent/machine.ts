@@ -44,6 +44,7 @@ export async function runAgent(
   options: RunOptions = {},
 ): Promise<AgentContext> {
   const ctx = createContext(input);
+  ctx.modelRuntime = deps.llm?.runtime;
   const runDeps: NodeDeps = options.credential ? { ...deps, credential: options.credential } : deps;
   let seq = 0;
 
@@ -143,7 +144,7 @@ function summarize(node: Node, ctx: AgentContext) {
 
     case "plan":
       return {
-        detail: { tools: ctx.plan?.tools ?? [], fromHeuristic: ctx.planFromHeuristic ?? null },
+        detail: { tools: ctx.plan?.tools ?? [], fromHeuristic: ctx.planFromHeuristic ?? null, model: ctx.modelRuntime ?? null, rejection: ctx.planRejection ?? null },
       };
 
     case "verify":
@@ -209,7 +210,7 @@ function summarize(node: Node, ctx: AgentContext) {
       };
 
     case "explain":
-      return { detail: { explained: Boolean(ctx.explanation) } };
+      return { detail: { explained: Boolean(ctx.explanation), model: ctx.modelRuntime ?? null, rejection: ctx.explanationRejection ?? null } };
   }
 }
 

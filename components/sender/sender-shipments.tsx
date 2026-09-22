@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MapPinned, PackageCheck, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
 import type { SenderShipmentView } from "@/lib/workbench/service";
 import type { SenderAddress } from "./sender-form";
+import { OnlineCorrectionControl } from "./online-correction-control";
 
 /**
  * Shipments this sender has dispatched, and what they can still do about them.
@@ -29,16 +30,44 @@ export function SenderShipments({
   shipments: SenderShipmentView[];
   addresses: SenderAddress[];
 }) {
+  const [visibleShipments, setVisibleShipments] = useState(shipments);
+  const loadOnline = useCallback(async () => {
+    try {
+      const response = await fetch("/api/sender/online-shipments");
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(body?.items)) return;
+      setVisibleShipments((current) => {
+        const onlineIds = new Set(body.items.map((item: SenderShipmentView) => item.runId));
+        return [
+          ...current.filter((item) => item.kind !== "online" || !onlineIds.has(item.runId)),
+          ...body.items,
+        ];
+      });
+    } catch {
+      // The server-rendered list remains truthful when the route is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    const initialLoad = window.setTimeout(() => void loadOnline(), 0);
+    const refresh = () => void loadOnline();
+    window.addEventListener("vigil:sender-shipments-changed", refresh);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("vigil:sender-shipments-changed", refresh);
+    };
+  }, [loadOnline]);
+
   return (
     <section id="pending-deliveries" className="mt-10 scroll-mt-6 border-t pt-6">
       <h2 className="text-lg font-semibold">Awaiting delivery scan</h2>
       <p className="mt-1 max-w-prose text-xs leading-5 text-muted-foreground">
         Pending delivery scans only — not complete shipment history or live tracking.
       </p>
-      {shipments.length === 0 && <p className="mt-4 text-sm text-muted-foreground">No pending delivery scans.</p>}
+      {visibleShipments.length === 0 && <p className="mt-4 text-sm text-muted-foreground">No pending delivery scans.</p>}
 
       <ul className="mt-4 flex flex-col gap-3">
-        {shipments.map((shipment) => (
+        {visibleShipments.map((shipment) => (
           <Shipment key={shipment.runId} shipment={shipment} addresses={addresses} />
         ))}
       </ul>
@@ -64,7 +93,10 @@ function Shipment({
     setError(null);
     startTransition(async () => {
       try {
-      const response = await fetch(`/api/sender/shipments/${shipment.runId}/${path}`, {
+      const base = shipment.kind === "online" && shipment.shipmentId
+        ? `/api/sender/online-shipments/${shipment.shipmentId}`
+        : `/api/sender/shipments/${shipment.runId}`;
+      const response = await fetch(`${base}/${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body ?? {}),
@@ -115,7 +147,9 @@ function Shipment({
           <p className="mt-1 max-w-prose text-xs leading-5 text-muted-foreground">
             The customer has moved. The courier will be told directly.
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          {shipment.kind === "online" && shipment.shipmentId ? (
+            <OnlineCorrectionControl shipmentId={shipment.shipmentId} onCorrected={() => router.refresh()} />
+          ) : <div className="mt-2 flex flex-wrap items-center gap-2">
             <select
               aria-label={`Correct address for ${shipment.waybillNo}`}
               value={target}
@@ -137,7 +171,7 @@ function Shipment({
             >
               Correct
             </Button>
-          </div>
+          </div>}
         </div>
       )}
 
@@ -145,6 +179,10 @@ function Shipment({
       </div>
       <div className="min-w-0 space-y-3 border-t bg-amber-50/50 p-5">
         <ProvenanceLabel>Demo control · not product behaviour</ProvenanceLabel>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
+          <span>run {shipment.runId}</span>
+          {shipment.fault && <span>injection {shipment.fault}</span>}
+        </div>
         <p className="text-xs leading-5 text-muted-foreground">Act on behalf of the courier to submit the held delivery scan.</p>
         <Button
           disabled={pending}

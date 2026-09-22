@@ -155,6 +155,8 @@ export type HandoffDetail = {
     selectedTools: string[];
     source: "model" | "heuristic" | "unavailable";
     rejection: string | null;
+    modelId: string | null;
+    runtimeReason: string | null;
   };
   externalContext: AgentContext["externalContext"] | null;
   reroute: AgentContext["reroute"] | null;
@@ -162,6 +164,8 @@ export type HandoffDetail = {
     text: string | null;
     source: "model" | "fallback" | "unavailable";
     rejection: string | null;
+    modelId: string | null;
+    runtimeReason: string | null;
   };
 };
 

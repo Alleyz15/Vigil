@@ -61,6 +61,21 @@ describe("an online shipment in the workbench", () => {
     expect(conflict.status).toBe("conflict");
   });
 
+  it("appears in the sender's pending-delivery surface with its confirmed point", async () => {
+    const created = await workbench.createOnlineShipment(REQUEST, "wb-key-pending");
+    if (created.status !== "created") throw new Error(created.status);
+
+    expect(workbench.listSenderShipments()).toContainEqual(
+      expect.objectContaining({
+        kind: "online",
+        runId: `B-O-${created.shipmentId}`,
+        shipmentId: created.shipmentId,
+        recordedAddress: REQUEST.destination.addressClaim,
+        delivered: false,
+      }),
+    );
+  });
+
   it("refuses a point outside the boundary with the field that was wrong", async () => {
     const result = await workbench.createOnlineShipment(
       { ...REQUEST, destination: { latitude: 3.3, longitude: 101.7, addressClaim: "north" } },

@@ -2,14 +2,9 @@ import { eq } from "drizzle-orm";
 import { runAgent } from "@/lib/agent/machine";
 import { sha256Hex } from "@/lib/ledger";
 import type { AgentContext } from "@/lib/agent/context";
+import type { TraceFrame } from "@/lib/agent/trace";
 import { closeDb, type VigilDb } from "@/lib/db/client";
-import {
-  deviceEnrollments,
-  handoffCases,
-  operatorActions,
-  otpChallenges,
-  parcels,
-} from "@/lib/db/schema";
+import { handoffCases, operatorActions } from "@/lib/db/schema";
 import {
   SCENARIO_IDS,
   buildScenario,
@@ -19,7 +14,9 @@ import {
   ingestWithApproval,
   makeRng,
   recordDispute,
+  seedIdentityReferences,
   seedFleetBackground,
+  upsertScenarioParcels,
   type BuiltEvent,
   type GeneratedScenario,
   type GeneratedWorld,
@@ -53,6 +50,7 @@ import { isQueueState, transitionCase } from "./state";
 import { buildShipmentMapModel } from "./map-model";
 import { courierOutcome, type CourierOutcome } from "./courier";
 import { considerTools } from "@/lib/llm/plan";
+import { activeAgentLlm, bootstrapAgentLlm, resolveRuntimeLlm, type RuntimeLlm } from "@/lib/llm/runtime";
 import { recipientChannelFingerprint } from "@/lib/identity/channel";
 import {
   answerConfirmation,
@@ -135,6 +133,8 @@ type BuiltShipment = {
 };
 
 export type SenderShipmentView = {
+  kind?: "registered" | "online";
+  shipmentId?: string;
   runId: string;
   waybillNo: string;
   originLabel: string;
@@ -144,6 +144,8 @@ export type SenderShipmentView = {
   correction?: AddressCorrection;
   delivered: boolean;
   deliveryEventId: string | null;
+  recordedPoint?: { latitude: number; longitude: number };
+  fault?: BuildRequest["fault"];
 };
 
 /**
@@ -266,37 +268,6 @@ function reasonFor(ctx: StoredEntry["current"]): string {
   );
 }
 
-function upsertScenarioParcels(harness: IngestHarness, scenario: GeneratedScenario): void {
-  for (const parcel of scenario.parcels) {
-    harness.deps.db
-      .insert(parcels)
-      .values({
-        epc: parcel.epc,
-        waybillNo: parcel.waybillNo,
-        recipientName: parcel.recipientName,
-        recipientPhone: parcel.recipientPhone,
-        recipientAddress: parcel.recipientAddress,
-        recipientLat: parcel.recipientPoint.latitude,
-        recipientLng: parcel.recipientPoint.longitude,
-        declaredValueSen: parcel.declaredValueSen,
-        codAmountSen: parcel.codAmountSen,
-      })
-      .onConflictDoUpdate({
-        target: parcels.epc,
-        set: {
-          waybillNo: parcel.waybillNo,
-          recipientName: parcel.recipientName,
-          recipientPhone: parcel.recipientPhone,
-          recipientAddress: parcel.recipientAddress,
-          recipientLat: parcel.recipientPoint.latitude,
-          recipientLng: parcel.recipientPoint.longitude,
-          declaredValueSen: parcel.declaredValueSen,
-          codAmountSen: parcel.codAmountSen,
-        },
-      })
-      .run();
-  }
-}
 
 /**
  * Build one scenario, optionally reserving its final leg for the courier.
@@ -327,6 +298,7 @@ async function buildScenarioEntries(
      * not, seals. Same submission either way.
      */
     leavePendingAt?: (built: BuiltEvent, scenario: GeneratedScenario) => boolean;
+    llm?: IngestHarness["deps"]["llm"];
   } = {},
 ): Promise<{ entries: StoredEntry[]; draft?: StoredDraft }> {
   // A pre-built scenario travels the IDENTICAL path from here on. The scenario
@@ -340,6 +312,7 @@ async function buildScenarioEntries(
       : source.scenario;
   const id = scenario.id;
   const harness = createHarness(world);
+  harness.deps.llm = options.llm;
   harness.deps.weather = createOpenMeteoProvider({
     cacheDir: OPEN_METEO_CACHE_DIR,
     network: "cache-only",
@@ -494,29 +467,11 @@ type StoredDraft = CourierDraft & {
 /**
  * Seed the independent records this leg's evidence refers to.
  *
- * MIRRORS `seedIdentityReferences` in lib/generate/ingest.ts, which is not
- * exported and which this session may not modify. Without it the held-back leg
- * would resolve a different evidence set from every other leg — I15 would come
- * back `not_evaluated` on the courier's submission and `clear` everywhere else
- * — so the screen would be showing an artefact of how the draft was built
- * rather than a property of the handoff. Duplicated deliberately and narrowly;
- * fold it back into one exported helper when lib/generate is in scope.
+ * The shared generator helper is required here as well as during ingest.
+ * Without it the held-back leg would resolve a different evidence set from
+ * every other leg: I15 would become `not_evaluated` on the courier submission
+ * and `clear` elsewhere, an artefact of reconstruction rather than the handoff.
  */
-function seedDraftIdentity(harness: IngestHarness, built: BuiltEvent): void {
-  const identity = built.identity;
-  if (!identity) return;
-
-  const enrollment = identity.deviceEnrollment;
-  harness.deps.db
-    .insert(deviceEnrollments)
-    .values({ ...enrollment, status: "active" })
-    .onConflictDoNothing()
-    .run();
-
-  if (identity.otpChallenge) {
-    harness.deps.db.insert(otpChallenges).values(identity.otpChallenge).onConflictDoNothing().run();
-  }
-}
 
 /** Project a held-back leg into the courier's view of it. */
 function makeDraft(
@@ -526,7 +481,7 @@ function makeDraft(
   harness: IngestHarness,
   held: BuiltEvent,
 ): StoredDraft {
-  seedDraftIdentity(harness, held);
+  seedIdentityReferences(harness, held);
   const epc = epcsOf(held.event)[0] ?? "";
   const parcel = scenario.parcels.find((candidate) => candidate.epc === epc);
 
@@ -563,12 +518,17 @@ export class OperatorWorkbench {
   private actionSequence = 0;
   private readonly nowIso: string;
 
-  constructor(entries: StoredEntry[], drafts: StoredDraft[] = []) {
+  constructor(entries: StoredEntry[], drafts: StoredDraft[] = [], private readonly runtimeLlm: RuntimeLlm = resolveRuntimeLlm()) {
     for (const entry of entries) {
       this.entries.set(entry.built.event.eventID, entry);
       this.harnesses.add(entry.harness);
     }
+    // Historical seeded records keep the explicit bootstrap-skip provenance
+    // already sealed in their contexts. Any later operator action on the same
+    // harness is interactive and may use the selected runtime provider.
+    for (const harness of this.harnesses) harness.deps.llm = activeAgentLlm(this.runtimeLlm);
     for (const draft of drafts) {
+      draft.harness.deps.llm = activeAgentLlm(this.runtimeLlm);
       this.drafts.set(draft.draftId, draft);
       this.harnesses.add(draft.harness);
     }
@@ -767,6 +727,7 @@ export class OperatorWorkbench {
         holdBackFinalLeg: options.holdDelivery,
         leavePendingAt: (event, scenario) =>
           event.legIndex === scenario.timeline.length - 1,
+        llm: bootstrapAgentLlm(this.runtimeLlm),
       },
     );
 
@@ -794,6 +755,7 @@ export class OperatorWorkbench {
         correction: undefined,
         deliveryEventId: undefined,
       });
+      entries[0].harness.deps.llm = activeAgentLlm(this.runtimeLlm);
     }
 
     // Land on the leg that is actually worth looking at: whatever the gate
@@ -928,7 +890,8 @@ export class OperatorWorkbench {
 
   /** Shipments the sender has dispatched, for their own surface. */
   listSenderShipments(): SenderShipmentView[] {
-    return [...this.shipments.values()].map((shipment) => ({
+    const registered = [...this.shipments.values()].map((shipment) => ({
+      kind: "registered" as const,
       runId: shipment.runId,
       waybillNo: shipment.parcel.waybillNo,
       originLabel: shipment.route.origin.label,
@@ -937,7 +900,28 @@ export class OperatorWorkbench {
       correction: shipment.correction,
       delivered: Boolean(shipment.deliveryEventId),
       deliveryEventId: shipment.deliveryEventId ?? null,
+      fault: shipment.request.fault,
     }));
+    const online = [...this.online.values()].map((run) => {
+      const history = getShipment(this.store(), run.shipmentId)!;
+      const parcel = run.scenario.parcels[0];
+      return {
+        kind: "online" as const,
+        shipmentId: run.shipmentId,
+        runId: run.runId,
+        waybillNo: parcel.waybillNo,
+        originLabel: addressLabelOf(history.origin),
+        recordedAddress: addressLabelOf(history.originalReference),
+        recordedPoint: {
+          latitude: history.originalReference.latitude,
+          longitude: history.originalReference.longitude,
+        },
+        declaredValueSen: parcel.declaredValueSen,
+        delivered: Boolean(run.deliveryEventId),
+        deliveryEventId: run.deliveryEventId ?? null,
+      };
+    });
+    return [...registered, ...online];
   }
 
   /**
@@ -1016,13 +1000,18 @@ export class OperatorWorkbench {
     const { scenario } = buildOnlineScenario(history, { world, startMs: START_MS });
     const { entries } = await buildScenarioEntries(
       { scenario, world },
-      { holdBackFinalLeg: true, leavePendingAt: (event, s) => event.legIndex === s.timeline.length - 1 },
+      {
+        holdBackFinalLeg: true,
+        leavePendingAt: (event, s) => event.legIndex === s.timeline.length - 1,
+        llm: bootstrapAgentLlm(this.runtimeLlm),
+      },
     );
     for (const entry of entries) {
       this.entries.set(entry.built.event.eventID, entry);
       this.harnesses.add(entry.harness);
     }
     const run: OnlineRun = { runId: scenario.id, shipmentId, scenario, world, harness: entries[0].harness };
+    run.harness.deps.llm = activeAgentLlm(this.runtimeLlm);
     this.online.set(shipmentId, run);
     return { status: "created", shipmentId, running: true, eventIds: this.eventIdsOf(run), boundary };
   }
@@ -1224,6 +1213,52 @@ export class OperatorWorkbench {
     };
   }
 
+  /** Rebuild one stored shipment through the same preparation path as ingest. */
+  async replayHandoff(
+    scenarioId: string,
+    legIndex: number,
+    options: { onTrace?: (frame: TraceFrame) => void; onProgress?: (message: string) => void } = {},
+  ): Promise<AgentContext> {
+    const source = [...this.entries.values()].find((entry) => entry.scenario.id === scenarioId);
+    if (!source) throw new Error(`No stored shipment has scenario ${scenarioId}.`);
+    const { scenario, world } = source;
+    const target = scenario.timeline[legIndex];
+    if (!target) throw new Error(`Scenario ${scenarioId} has no leg ${legIndex + 1}.`);
+
+    const harness = createHarness(world);
+    harness.deps.weather = createOpenMeteoProvider({ cacheDir: OPEN_METEO_CACHE_DIR, network: "cache-only" });
+    try {
+      seedFleetBackground(harness, world, {
+        excludeCourierId: scenario.courier.courierId,
+        startMs: START_MS - 8 * 3_600_000,
+      });
+      upsertScenarioParcels(harness, scenario);
+      harness.deps.llm = bootstrapAgentLlm(this.runtimeLlm);
+      const args = {
+        courierPrivateKey: scenario.courier.keys.privateKey,
+        mandateId: scenario.courier.mandate.mandateId,
+      };
+      options.onProgress?.(`Replaying ${scenario.warmup.length} prior handoffs to build this courier's history`);
+      for (const built of scenario.warmup) await ingestWithApproval(harness, built, args);
+
+      if (legIndex > 0) options.onProgress?.(`Replaying legs 1-${legIndex} of this shipment`);
+      const disputed = new Set(scenario.disputedEventIds);
+      for (const built of scenario.timeline.slice(0, legIndex)) {
+        await ingestWithApproval(harness, built, args);
+        if (disputed.has(built.event.eventID)) {
+          recordDispute(harness, built.event.eventID, epcsOf(built.event)[0] ?? "");
+        }
+      }
+
+      options.onProgress?.(`Running leg ${legIndex + 1} through the agent`);
+      harness.deps.llm = activeAgentLlm(this.runtimeLlm);
+      return await ingestEvent(harness, target, { ...args, withCosign: true, onTrace: options.onTrace });
+    } finally {
+      closeDb(harness.deps.db);
+      rmSync(harness.dir, { recursive: true, force: true });
+    }
+  }
+
   getHandoff(eventId: string): HandoffDetail | undefined {
     const entry = this.entries.get(eventId);
     if (!entry) return undefined;
@@ -1314,6 +1349,8 @@ export class OperatorWorkbench {
             : "model"
           : "unavailable",
         rejection: entry.current.planRejection ?? null,
+        modelId: entry.current.modelRuntime?.modelId ?? null,
+        runtimeReason: entry.current.modelRuntime?.reason ?? null,
       },
       externalContext: entry.current.externalContext ?? null,
       reroute: entry.current.reroute ?? null,
@@ -1325,6 +1362,8 @@ export class OperatorWorkbench {
             : "model"
           : "unavailable",
         rejection: entry.current.explanationRejection ?? null,
+        modelId: entry.current.modelRuntime?.modelId ?? null,
+        runtimeReason: entry.current.modelRuntime?.reason ?? null,
       },
     };
   }
@@ -1496,7 +1535,7 @@ export class OperatorWorkbench {
 }
 
 export async function createWorkbench(
-  options: { scenarioIds?: ScenarioId[]; courierDrafts?: boolean } = {},
+  options: { scenarioIds?: ScenarioId[]; courierDrafts?: boolean; runtimeLlm?: RuntimeLlm } = {},
 ): Promise<OperatorWorkbench> {
   const ids = options.scenarioIds ?? SCENARIO_IDS;
   /**
@@ -1509,18 +1548,20 @@ export async function createWorkbench(
    * this feature does not reach into them. A test that wants a draft asks.
    */
   const wantDrafts = options.courierDrafts ?? options.scenarioIds === undefined;
+  const runtimeLlm = options.runtimeLlm ?? resolveRuntimeLlm();
 
   const groups: StoredEntry[][] = [];
   const drafts: StoredDraft[] = [];
   for (const id of ids) {
     const built = await buildScenarioEntries(id, {
       holdBackFinalLeg: wantDrafts && id in DRAFT_TITLES,
+      llm: bootstrapAgentLlm(runtimeLlm),
     });
     groups.push(built.entries);
     if (built.draft) drafts.push(built.draft);
   }
 
-  return new OperatorWorkbench(groups.flat(), drafts);
+  return new OperatorWorkbench(groups.flat(), drafts, runtimeLlm);
 }
 
 declare global {

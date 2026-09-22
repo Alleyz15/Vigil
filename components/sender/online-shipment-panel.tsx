@@ -190,6 +190,7 @@ export function OnlineShipmentPanel() {
           boundaryLabel: body.boundary?.label ?? "",
           stored: await storedReference(body.shipmentId),
         });
+        window.dispatchEvent(new Event("vigil:sender-shipments-changed"));
         return;
       }
       setOutcome({

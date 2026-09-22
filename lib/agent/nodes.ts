@@ -103,6 +103,12 @@ export type AgentLlm = {
   telemetry?: LlmTelemetry;
   planTimeoutMs?: number;
   explainTimeoutMs?: number;
+  runtime?: {
+    selection: "none" | "gemini" | "anthropic" | "ollama";
+    modelId: string | null;
+    mode: "active" | "disabled" | "skipped_seed_bootstrap";
+    reason: string;
+  };
 };
 
 /**

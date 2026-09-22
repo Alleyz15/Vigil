@@ -244,6 +244,11 @@ export function HandoffDetailView({
               <ProvenanceLabel>{detail.explanation.source}</ProvenanceLabel>
             </div>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">{detail.explanation.text ?? "No explanation was produced."}</p>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              {detail.explanation.source === "model"
+                ? `Model ${detail.explanation.modelId ?? "unknown"} produced this prose.`
+                : detail.explanation.rejection ?? detail.explanation.runtimeReason ?? "Deterministic structured fallback."}
+            </p>
           </section>
 
           {detail.recipientConfirmation && (

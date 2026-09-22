@@ -19,6 +19,7 @@ import { courierCredential, cosign, generateKeyPair } from "@/lib/credential";
 import { runAgent } from "@/lib/agent/machine";
 import { epcsOf } from "@/lib/epcis";
 import type { AgentContext } from "@/lib/agent/context";
+import type { TraceFrame } from "@/lib/agent/trace";
 import type { NodeDeps } from "@/lib/agent/nodes";
 import type { BuiltEvent } from "./timeline";
 import type { GeneratedScenario } from "./scenarios/types";
@@ -137,7 +138,7 @@ export function createHarness(world: GeneratedWorld): IngestHarness {
 export async function ingestEvent(
   harness: IngestHarness,
   built: BuiltEvent,
-  args: { courierPrivateKey: string; mandateId: string; withCosign?: boolean },
+  args: { courierPrivateKey: string; mandateId: string; withCosign?: boolean; onTrace?: (frame: TraceFrame) => void },
 ): Promise<AgentContext> {
   const event = built.event;
   seedIdentityReferences(harness, built);
@@ -161,11 +162,11 @@ export async function ingestEvent(
     now: () => new Date(Date.parse(event.recordTime ?? event.eventTime)),
   };
 
-  return runAgent(event, stamped, { credential });
+  return runAgent(event, stamped, { credential, onTrace: args.onTrace });
 }
 
 /** Seed the independent records referenced by one generated event. */
-function seedIdentityReferences(harness: IngestHarness, built: BuiltEvent): void {
+export function seedIdentityReferences(harness: IngestHarness, built: BuiltEvent): void {
   const identity = built.identity;
   if (!identity) return;
 
@@ -244,7 +245,7 @@ export async function ingestScenario(
   // a single tower, and the engine compares each scan against the recipient
   // coordinates ON FILE - so without this the tower scans are measured against
   // the world's original scattered addresses and I10 fires on every one.
-  upsertParcels(harness, scenario);
+  upsertScenarioParcels(harness, scenario);
 
   const warmup: AgentContext[] = [];
   for (const built of scenario.warmup) {
@@ -353,7 +354,7 @@ export function recordDispute(harness: IngestHarness, eventId: string, epc: stri
 }
 
 /** Write the scenario's parcels, overriding whatever the world seeded. */
-function upsertParcels(harness: IngestHarness, scenario: GeneratedScenario): void {
+export function upsertScenarioParcels(harness: IngestHarness, scenario: GeneratedScenario): void {
   for (const parcel of scenario.parcels) {
     harness.deps.db
       .insert(parcels)

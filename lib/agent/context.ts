@@ -100,6 +100,7 @@ export type { TraceFrame } from "./trace";
 export type AgentContext = {
   /** Raw input as received, before validation. */
   readonly input: unknown;
+  modelRuntime?: NonNullable<import("./nodes").AgentLlm["runtime"]>;
 
   /** parse */
   event?: EpcisEvent;
