@@ -95,8 +95,12 @@ records provider operations, not the number of tests that passed.
 
 ## Limitations
 
-- Sender locations are the cached registered address set, not arbitrary map pins,
-  runtime geocoding, road navigation or live parcel tracking.
+- Sender locations may be confirmed anywhere inside the four-unit service area;
+  search and reverse lookup only label a point and never move it. This is not road
+  navigation or live parcel tracking.
+- At an arbitrary point, a real handset's cell ID/BSSIDs may be absent from the
+  demo registry. The simulator does not invent those IDs, so its event carries no
+  cell/WiFi observations and I1 is honestly `not_evaluated`.
 - Cached address coordinates were geocoded from real locations. Cell/WiFi reference
   signals, device attestations and logistics observations are simulated evidence,
   not field measurements. Signatures and their verification are real cryptography.

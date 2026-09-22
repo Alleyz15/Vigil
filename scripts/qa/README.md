@@ -9,6 +9,7 @@ In PowerShell, from the project root:
 ```powershell
 $env:VIGIL_QA = '1'
 $env:VIGIL_QA_KEY_SEED = 'route-group-v1'
+$env:VIGIL_LLM_PROVIDER = 'none'
 $env:NODE_OPTIONS = '--import=./scripts/qa/fixed-keys.mjs'
 npm run dev -- --port 3012
 ```
@@ -16,7 +17,10 @@ npm run dev -- --port 3012
 The preload is deliberately absent from application imports and normal npm
 scripts. Its predictable keys are test fixtures, never production keys. It
 requires explicit QA activation and rejects production processes. Clear these
-three variables before launching normal development, tests or builds.
+four variables before launching normal development, tests or builds. The model
+choice is explicit because provider prose is not a pixel-stable QA fixture;
+`qa:capture` checks the runtime selection and stops before writing a frame when
+it is not `none`.
 
 In a separate terminal, capture into a new output directory:
 

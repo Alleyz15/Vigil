@@ -21,6 +21,17 @@ if (!chromePath) throw new Error("Chrome not found. Set CHROME_PATH to its execu
 
 mkdirSync(OUT, { recursive: true });
 
+// Model prose is intentionally non-deterministic. A capture made against an
+// enabled provider cannot be used for pixel-equality evidence, so fail before
+// writing the first frame rather than quietly recording unstable output.
+const runtimeResponse = await fetch(`${BASE}/api/runtime/llm`);
+if (!runtimeResponse.ok) throw new Error(`LLM capture preflight returned ${runtimeResponse.status}.`);
+const runtime = await runtimeResponse.json();
+if (runtime.selection !== "none") {
+  throw new Error(`qa:capture requires VIGIL_LLM_PROVIDER=none; this server selected ${runtime.selection}.`);
+}
+process.stdout.write("LLM preflight: VIGIL_LLM_PROVIDER=none (deterministic capture)\n");
+
 /**
  * All still frames force reduced motion and wait for settled pixels.
  *

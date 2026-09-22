@@ -632,6 +632,14 @@ session-20 discipline applied to a change that "obviously" does nothing — **wh
 "nothing changed", produce the value from before the change and compare it.** "Sounds impossible"
 is not evidence.
 
+Session 26 found the missing half of that discipline: the `998918b7c13e` result was written down,
+but the probe that produced it was never committed. A recorded value without its computation cannot
+be rerun and is not a durable guard. `lib/generate/authored-timeline-hash.test.ts` now owns one
+explicit serialisation of all seven authored timelines and warm-ups and pins its full SHA-256. The
+same test ran against an isolated pre-session-26 clone and the current tree with the same result;
+future generator changes now fail in the suite instead of depending on somebody recovering a
+scratch command.
+
 #### An approved DIAGNOSIS is not a verified one either, and that is the other direction
 
 Session 24 reported that OpenStreetMap's tile servers "refuse this project's non-browser client",
@@ -4211,15 +4219,23 @@ threshold to warn against. A real liveness threshold is separate work.
 
 **An online shipment's location has no registered reference sites, so I1 cannot run there.** The
 site registry covers the 24 cached addresses. The engine never searches for towers near a point: it
-looks up the cell ID and BSSIDs the handset REPORTED, so at an arbitrary point the problem is not
+looks up the cell ID and BSSIDs a real handset REPORTED, so at an arbitrary point the problem is not
 "no tower nearby" but "the IDs the device reports are not in the registry". Assembly records that
 in `resolution.missing`, returns `referenceSites: undefined`, and I1 comes back `not_evaluated` —
-never `clear`. The simulated scan carries no cell or WiFi rather than invented ones: an invented ID
+never `clear`. This demo's simulated scan carries no cell or WiFi rather than invented ones: an invented ID
 would mean nothing, and a borrowed one would manufacture the contradiction I1 exists to find.
 Location cross-checking then rests on the checks that remain evaluable, and the count is read from
 each handoff's own result rather than stated for "arbitrary points" in general. **This neither
 promises that a spoof there is detectable nor that it is not.** I7, I8 and the distance rules run
 as usual and are tested at arbitrary points.
+
+**A replay that manufactures a contradiction is not the same event.** Session 26 found the live
+replay path rebuilding S2 without the scenario's parcel overrides: I10 changed from `clear` to
+`triggered`, while I15 simultaneously fell from `clear` to `not_evaluated` because identity
+references were also omitted. The verdict happened not to move, but the replay had invented one
+conflict and lost one independent check. Replay now shares the exported parcel and identity
+preparation used by ingest, and every seeded scenario is compared rule by rule, on both axis
+scores and on the final decision. S4's hard abort is included rather than exempted.
 
 **An online point's address claim is optional, and absence is stored as the empty string.** A
 confirmed coordinate need not have an address; requiring one would make an empty box look like a
@@ -4232,8 +4248,7 @@ implicit delete against two referencing tables, and a migration runs inside a tr
 pragma cannot be changed. So the empty string carries it, which is unambiguous because a claim is
 non-empty by construction (`normaliseClaim` trims). It is read back through `addressClaimOf` and
 rendered through `addressLabelOf` — one place each, rather than a `=== ""` test every caller has to
-remember. **The less severe failure, chosen deliberately and written down** (the `seedDraftIdentity`
-rule).
+remember.
 
 **Address search depends on a volunteer service, and the limit is per PROCESS.** Public Nominatim
 allows one request a second for the whole application. The queue that enforces it is one per Node

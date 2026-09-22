@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,7 +50,12 @@ const TILE_USER_AGENT = osmUserAgent("QA screenshot capture");
 export async function captureStable(chromePath, url, target) {
   const profile = mkdtempSync(join(tmpdir(), "vigil-stable-"));
   const proc = spawn(chromePath, ["--headless=new", "--hide-scrollbars", "--disable-gpu",
-    "--remote-debugging-port=0", "--force-prefers-reduced-motion", `--user-data-dir=${profile}`, "about:blank"]);
+    "--remote-debugging-port=0", "--force-prefers-reduced-motion",
+    `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+  let browserStderr = "";
+  proc.stderr.on("data", (chunk) => {
+    browserStderr = `${browserStderr}${chunk}`.slice(-4_000);
+  });
   let ws;
   try {
     let port;
@@ -62,21 +67,27 @@ export async function captureStable(chromePath, url, target) {
     if (!port) throw new Error("Chrome DevTools did not start.");
     const tabs = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
     ws = new WebSocket(tabs.find((tab) => tab.type === "page").webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+    await new Promise((resolve, reject) => {
+      ws.addEventListener("open", resolve, { once: true });
+      ws.addEventListener("error", reject, { once: true });
+    });
     let id = 0;
     let onEvent = () => {};
     const pending = new Map();
-    ws.onmessage = (event) => {
+    ws.addEventListener("message", (event) => {
       const message = JSON.parse(event.data);
       const request = pending.get(message.id);
       if (!request) { onEvent(message); return; }
       clearTimeout(request.timer); pending.delete(message.id);
       if (message.error) request.reject(new Error(message.error.message));
       else request.resolve(message.result);
-    };
+    });
     const send = (method, params = {}) => new Promise((resolve, reject) => {
       const mid = ++id;
-      const timer = setTimeout(() => { pending.delete(mid); reject(new Error(`CDP timeout: ${method}`)); }, 20_000);
+      const timer = setTimeout(() => {
+        pending.delete(mid);
+        reject(new Error(`CDP timeout: ${method}${browserStderr ? `\n${browserStderr}` : ""}`));
+      }, 20_000);
       pending.set(mid, { resolve, reject, timer });
       ws.send(JSON.stringify({ id: mid, method, params }));
     });
@@ -204,7 +215,16 @@ export async function captureStable(chromePath, url, target) {
   } finally {
     ws?.close();
     const exited = new Promise((resolve) => proc.once("exit", resolve));
-    proc.kill();
+    if (process.platform === "win32") {
+      // Chrome launches a process tree. Killing only the parent leaves headless
+      // children behind; after one ten-frame run the next CDP session can hang
+      // before Network.enable. The PID came from this capture's own spawn, so
+      // taskkill is scoped to the QA browser tree and cannot match a user's
+      // ordinary browser process by name.
+      spawnSync("taskkill", ["/PID", String(proc.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      proc.kill();
+    }
     await Promise.race([exited, sleep(5000)]);
     try { rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* OS cleans a late Chrome profile lock. */ }
   }
