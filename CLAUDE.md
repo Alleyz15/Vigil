@@ -640,6 +640,14 @@ same test ran against an isolated pre-session-26 clone and the current tree with
 future generator changes now fail in the suite instead of depending on somebody recovering a
 scratch command.
 
+The same session supplied another rule-1g example during screenshot verification. Two convenient
+explanations for drifting map frames were offered — live OSM tiles and machine load — and neither
+was accepted without evidence. Both frames were in replay mode and every requested tile existed in
+the fixture. The actual `Network.enable` hang was the headless browser's GPU child repeatedly
+crashing inside the restricted execution sandbox; the unchanged capture completed outside it and
+all ten record/replay frame pairs had zero changed pixels. A familiar explanation is still only a
+hypothesis until the failing boundary identifies itself.
+
 #### An approved DIAGNOSIS is not a verified one either, and that is the other direction
 
 Session 24 reported that OpenStreetMap's tile servers "refuse this project's non-browser client",
@@ -1946,6 +1954,27 @@ silently converts real controls into a reset-on-refresh facade.
 editing `lib/workbench/` in `next dev` recompiles the module and keeps the OLD object. A new
 method appears as `workbench.X is not a function` until the dev server is restarted. That is dev
 ergonomics, not a product defect — but it will waste an hour if it is not written down.
+
+**A Server Component and an API route cannot reliably share that in-memory singleton across Next
+bundles.** Session 26 found an online shipment created by an API route while the sender page's
+initial Server Component read a different workbench instance. Unit tests stayed green because they
+exercised one workbench directly; only the browser exposed the split. Any flow shaped as “initial
+page data comes from the in-memory workbench, then an API route mutates it” can therefore show stale
+or missing state even inside one Next process. Seven current surfaces have that shape and remain an
+explicit audit list rather than an implied guarantee:
+
+- Sender: the Server Component shipment list versus create, correction and delivery routes.
+- Operator: inbox/all/detail Server Components versus action routes and live replay.
+- Courier: initial draft data versus draft submission and subsequent API reads.
+- Recipient: capability-token page state versus the confirmation POST.
+- Demo co-sign: the split view versus courier submission and operator action routes.
+- Verify ledger: the page's workbench projection versus `/api/ledger`.
+- Console layout: identity/navigation data versus child pages whose later state changes through APIs.
+
+The online shipment list now uses a route-owned read after route-owned writes, but this does not
+close every sender path or any of the other listed surfaces merely because the same failure is
+plausible. They require browser-level reproduction and a deliberate persistence or route-owned
+read contract; sharing a `globalThis` name is not such a contract.
 
 **And `pkill` does not stop `next dev` on Windows.** It reports success and kills nothing. The old
 server keeps holding port 3000 and keeps serving the OLD build, while the "restarted" one quietly
