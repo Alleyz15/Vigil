@@ -1,4 +1,5 @@
 import { canonicalHash } from "@/lib/ledger";
+import { describeVerification } from "@/lib/credential";
 import type { TokenState } from "@/lib/recipient/token";
 import type { ToolConsideration } from "@/lib/llm/plan";
 import { epcsOf } from "@/lib/epcis";
@@ -110,7 +111,21 @@ export type HandoffDetail = {
   summary: HandoffSummary;
   event: unknown;
   flags: Array<{ id: string; points: number; label: string; evidence: Array<{ field: string; value: unknown }> }>;
+  /** A ledger rejection that stopped the engine before its normal flag sources existed. */
+  abortEvidence: {
+    code: "EVENT_ID_REUSE";
+    ruleId: "H4";
+    eventId: string;
+    boundPayloadHash: string;
+    submittedPayloadHash: string;
+  } | null;
   gate: { decision: string | null; matrixCell: string | null; rationale: string | null; cosignReasons: string[] };
+  /** Raw mandate inputs shown beside the gate-produced reasons; never re-decides the condition. */
+  cosignPolicyEvidence: Array<{
+    kind: "parcel_value_over_sen" | "recipient_address_not_in_scope" | "inconsistency_score_at_least" | "pattern_score_at_least";
+    actual: number | string | null;
+    threshold: number | null;
+  }>;
   credential: RunView["credential"];
   ledger: { sequence: number | null; chainValid: boolean; entries: number };
   /** The recipient capability for this handoff. Demo affordance; see service.ts. */
@@ -294,9 +309,13 @@ export function summaryFrom(entry: WorkbenchEntry, nowIso: string): HandoffSumma
 }
 
 export function flagsFrom(ctx: AgentContext): HandoffDetail["flags"] {
-  return [
+  const flags = [
     ...(ctx.engineResult?.hardFailures ?? []),
     ...(ctx.engineResult?.flags ?? []),
+    // H4 is produced by the ledger before the engine runs. It still arrives as
+    // structured inconsistency evidence, and an absent engine result must not
+    // make the read model call that evidence empty.
+    ...(ctx.engineResult ? [] : (ctx.inconsistency?.flags ?? [])),
     ...(ctx.patternOutcome?.flags ?? []),
     ...(ctx.gateResult?.limitFlags ?? []),
   ].map((flag) => ({
@@ -305,4 +324,23 @@ export function flagsFrom(ctx: AgentContext): HandoffDetail["flags"] {
     label: flag.label,
     evidence: flag.evidence.map(({ field, value }) => ({ field, value })),
   }));
+
+  if (ctx.verdict?.abortCode === "CREDENTIAL_INVALID" && ctx.credential && !ctx.credential.valid) {
+    flags.push({
+      id: "C1",
+      points: 0,
+      label: describeVerification(ctx.credential),
+      evidence: [
+        ...ctx.credential.problems.map((problem) => ({
+          field: `credential.${problem.role}`,
+          value: problem.detail,
+        })),
+        ...(ctx.credential.subjectMismatch
+          ? [{ field: "credential.subject", value: ctx.credential.subjectMismatch }]
+          : []),
+      ],
+    });
+  }
+
+  return [...new Map(flags.map((flag) => [flag.id, flag])).values()];
 }

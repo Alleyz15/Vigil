@@ -75,6 +75,52 @@ describe("a built shipment reaches the operator's surfaces", () => {
     expect(valuableDelivery!.credential?.courierValid).toBe(true);
     expect(valuableDelivery!.credential?.operatorValid).toBe(false);
     expect(valuableDelivery!.ledger.sequence).toBeNull();
+
+    const detailWithPolicy = valuableDelivery as typeof valuableDelivery & {
+      cosignPolicyEvidence?: Array<{
+        kind: string;
+        actual: number | string | null;
+        threshold: number | null;
+      }>;
+    };
+    expect(
+      detailWithPolicy.cosignPolicyEvidence ?? [],
+      "the detail says a co-signature is required but omits the mandate inputs that required it",
+    ).toContainEqual({
+      kind: "parcel_value_over_sen",
+      actual: 90_000,
+      threshold: 40_000,
+    });
+  });
+
+  it("lets an operator approve a high-value shipment delivered from the sender queue", async () => {
+    const workbench = await getWorkbench();
+    const dispatched = await workbench.runBuilt(
+      {
+        ...BASE,
+        declaredValueSen: 90_000,
+        fault: "none",
+        seed: "wb-held-valuable",
+      },
+      { holdDelivery: true },
+    );
+
+    expect(dispatched.ok).toBe(true);
+    if (!dispatched.ok) return;
+
+    const delivered = await workbench.completeDelivery(dispatched.runId);
+    expect(delivered.ok).toBe(true);
+    if (!delivered.ok) return;
+
+    const pending = workbench.getHandoff(delivered.eventId)!;
+    expect(pending.summary.state).toBe("awaiting_cosignature");
+
+    await expect(
+      workbench.resolveHandoff(delivered.eventId, { action: "approve" }),
+      "the sender-queue delivery must persist its handoff case before the operator action writes its audit row",
+    ).resolves.toMatchObject({
+      summary: { state: "resolved_approved", sealed: true },
+    });
   });
 
   /**

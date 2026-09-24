@@ -2,8 +2,27 @@ import { NODES, type TraceFrame } from "@/lib/agent/context";
 import type { ToolEndFrame } from "@/lib/agent/trace";
 import type { HandoffState } from "@/lib/workbench";
 import type { OperatorActionName } from "@/lib/workbench/types";
+import type { Evidence } from "@/lib/engine";
 
 export type DetailTone = "accepted" | "pending" | "alert" | "resolved";
+
+export function primaryFlagCard(flags: Array<{
+  id: string;
+  label: string;
+  points: number;
+  evidence: Evidence[];
+}>): { code: string; title: string; evidence: Evidence | null } | null {
+  const flag = [...flags].sort((a, b) => b.points - a.points || a.id.localeCompare(b.id))[0];
+  return flag
+    ? { code: flag.id, title: flag.label, evidence: flag.evidence[0] ?? null }
+    : null;
+}
+
+export function resolvedActionMessage(sealed: boolean): string {
+  return sealed
+    ? "This work item is resolved. The sealed deterministic verdict remains unchanged."
+    : "This work item is resolved. No verdict was sealed; the operator disposition closed the work item.";
+}
 
 export function operatorActionAvailability(input: {
   state: HandoffState;

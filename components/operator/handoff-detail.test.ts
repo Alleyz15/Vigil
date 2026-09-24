@@ -4,6 +4,8 @@ import {
   detailStatusMessage,
   ledgerReferencePresentation,
   operatorActionAvailability,
+  primaryFlagCard,
+  resolvedActionMessage,
   shouldShowEvidenceDetails,
   traceNodeStates,
 } from "./handoff-detail-model";
@@ -76,5 +78,24 @@ describe("correlated handoff detail presentation", () => {
     expect(shouldShowEvidenceDetails({ flagCount: 0, hasAddressCorrection: true })).toBe(true);
     // A clean online delivery has no flags, and still has something to say about its location.
     expect(shouldShowEvidenceDetails({ flagCount: 0, hasAddressCorrection: false, hasLocationGap: true })).toBe(true);
+  });
+
+  it("takes a multi-flag status card's id, label and evidence from one rule", () => {
+    const card = primaryFlagCard([
+      { id: "I1", label: "GPS and registered cell disagree", points: 40, evidence: [{ field: "cellId", value: "cell-1" }] },
+      { id: "I7", label: "Mock location reported", points: 50, evidence: [{ field: "mockLocation", value: true }] },
+    ]);
+
+    expect(card).toEqual({
+      code: "I7",
+      title: "Mock location reported",
+      evidence: { field: "mockLocation", value: true },
+    });
+  });
+
+  it("states whether a resolved work item actually has a sealed verdict", () => {
+    expect(resolvedActionMessage(true)).toMatch(/sealed deterministic verdict remains unchanged/i);
+    expect(resolvedActionMessage(false)).toMatch(/no verdict was sealed/i);
+    expect(resolvedActionMessage(false)).not.toMatch(/sealed verdict remains unchanged/i);
   });
 });

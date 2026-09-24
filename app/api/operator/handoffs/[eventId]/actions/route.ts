@@ -30,7 +30,13 @@ export async function POST(
   try {
     return NextResponse.json(await workbench.resolveHandoff(eventId, parsed.data));
   } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 409 });
+    const message = (error as Error).message;
+    if (/case is already resolved/i.test(message)) {
+      return NextResponse.json(
+        { error: message, code: "CASE_ALREADY_RESOLVED", detail: workbench.getHandoff(eventId) },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: message }, { status: 409 });
   }
 }
-

@@ -1,25 +1,27 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Check, FileQuestion, Route, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { HandoffState } from "@/lib/workbench";
+import type { HandoffDetail, HandoffState } from "@/lib/workbench";
 import type { OperatorActionName } from "@/lib/workbench/types";
-import { operatorActionAvailability } from "./handoff-detail-model";
+import { operatorActionAvailability, resolvedActionMessage } from "./handoff-detail-model";
 
 export function OperatorActions({
   eventId,
   state,
   rerouteAvailable,
   rerouteReason,
+  sealed,
+  onDetailChange,
 }: {
   eventId: string;
   state: HandoffState;
   rerouteAvailable: boolean;
   rerouteReason: string;
+  sealed: boolean;
+  onDetailChange: (detail: HandoffDetail) => void;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const availability = operatorActionAvailability({ state, rerouteAvailable });
@@ -33,17 +35,21 @@ export function OperatorActions({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action }),
       });
+      const body = await response.json().catch(() => null);
       if (!response.ok) {
-        const body = await response.json().catch(() => null);
+        if (body?.code === "CASE_ALREADY_RESOLVED" && body.detail) {
+          onDetailChange(body.detail as HandoffDetail);
+          return;
+        }
         setError(body?.error ?? "The action could not be recorded.");
         return;
       }
-      router.refresh();
+      onDetailChange(body as HandoffDetail);
     });
   };
 
   if (resolved) {
-    return <p className="text-xs leading-5 text-muted-foreground">This work item is resolved. Its sealed verdict remains unchanged.</p>;
+    return <p className="text-xs leading-5 text-muted-foreground">{resolvedActionMessage(sealed)}</p>;
   }
 
   return (

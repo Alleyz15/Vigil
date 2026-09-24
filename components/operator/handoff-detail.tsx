@@ -12,6 +12,7 @@ import { AxisPair } from "./axis-pair";
 import {
   detailStatusMessage,
   ledgerReferencePresentation,
+  primaryFlagCard,
   shouldShowEvidenceDetails,
   traceNodeStates,
 } from "./handoff-detail-model";
@@ -27,12 +28,13 @@ function sentence(value: string | null): string {
 }
 
 export function HandoffDetailView({
-  detail,
+  detail: initialDetail,
   backLink = { href: "/operator/inbox", label: "Back to inbox" },
 }: {
   detail: HandoffDetail;
   backLink?: { href: string; label: string };
 }) {
+  const [detail, setDetail] = useState(initialDetail);
   const [activeLegIndex, setActiveLegIndex] = useState(detail.summary.legIndex);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
   const status = detailStatusMessage(detail.summary);
@@ -54,6 +56,7 @@ export function HandoffDetailView({
       ? detail.reroute.proposal.target.label
       : detail.reroute.proposal.target.courierId
     : null;
+  const primaryFlag = primaryFlagCard(detail.flags);
 
   return (
     <div className="space-y-6">
@@ -67,7 +70,7 @@ export function HandoffDetailView({
             {detail.summary.courier.displayName} · {detail.summary.bizStep} · scenario {detail.summary.scenarioId} · event {detail.summary.eventId.slice(0, 4)}…{detail.summary.eventId.slice(-4)}
           </p>
         </div>
-        <HandoffStateBadge state={detail.summary.state} provenance={detail.summary.stateProvenance} />
+        <HandoffStateBadge state={detail.summary.state} provenance={detail.summary.stateProvenance} decision={detail.summary.decision} />
         <Badge variant="secondary">{detail.summary.sealed ? "sealed" : "nothing sealed"}</Badge>
         <div className="flex h-9 min-w-36 items-center justify-center gap-2 rounded-md border bg-muted/60 px-3 text-xs font-semibold">
           <Link2 className="size-3.5" aria-hidden="true" />
@@ -191,19 +194,29 @@ export function HandoffDetailView({
               <CredentialHalf label="Operator half" value={detail.credential?.operatorValid ? "valid" : "missing"} valid={Boolean(detail.credential?.operatorValid)} />
             </div>
 
+            {detail.summary.requiresCosign && <CosignReason detail={detail} />}
+
             <div className="mt-3">
               <OperatorActions
                 eventId={detail.summary.eventId}
                 state={detail.summary.state}
                 rerouteAvailable={rerouteAvailable}
                 rerouteReason={rerouteReason}
+                sealed={detail.summary.sealed}
+                onDetailChange={setDetail}
               />
             </div>
           </section>
 
-          {detail.flags.slice(0, 1).map((flag) => (
-            <StatusCard key={flag.id} code={flag.id} title={detail.summary.shortReason} detail="stored address disagrees" source="engine" tone="alert" />
-          ))}
+          {primaryFlag && (
+            <StatusCard
+              code={primaryFlag.code}
+              title={primaryFlag.title}
+              detail={primaryFlag.evidence ? `${primaryFlag.evidence.field} = ${formatEvidenceValue(primaryFlag.evidence.value)}` : undefined}
+              source="engine"
+              tone="alert"
+            />
+          )}
           <StatusCard code="R1" title={rerouteAvailable ? "Reroute proposed" : "Reroute unavailable"} detail={rerouteAvailable ? rerouteTarget ?? "authorised proposal" : "no proposal in this run"} source={rerouteAvailable ? "available" : "unavailable"} />
           <StatusCard code="WX" title={detail.externalContext?.status === "available" ? "Weather context" : "Weather not selected"} detail={detail.externalContext?.summary ?? "planner did not request it"} source={detail.externalContext?.status === "available" ? "available" : "not used"} tone="info" />
         </aside>
@@ -216,6 +229,7 @@ export function HandoffDetailView({
             <span className="text-xs text-muted-foreground">Backend values used by the deterministic engine</span>
           </div>
           <div className="mt-3 space-y-2">
+            {detail.abortEvidence && <AbortEvidenceNotice detail={detail} />}
             {detail.locationEvidence && <LocationEvidenceNotice detail={detail} />}
             {detail.addressCorrection && <AddressCorrectionNotice detail={detail} />}
             {detail.flags.map((flag) => (
@@ -369,7 +383,7 @@ function StatusCard({
 }: {
   code: string;
   title: string;
-  detail: string;
+  detail?: string;
   source: string;
   tone?: "neutral" | "alert" | "info";
 }) {
@@ -387,9 +401,65 @@ function StatusCard({
       </Badge>
       <div className="min-w-0">
         <div className="truncate text-xs font-semibold">{title}</div>
-        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={detail}>{detail}</div>
+        {detail && <div className="mt-0.5 truncate text-xs text-muted-foreground" title={detail}>{detail}</div>}
       </div>
       <Badge variant="secondary" className="justify-center truncate px-1.5 text-xs text-muted-foreground">{source}</Badge>
+    </section>
+  );
+}
+
+function formatSen(value: number | string | null): string {
+  return typeof value === "number"
+    ? new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(value / 100)
+    : "unavailable";
+}
+
+function CosignReason({ detail }: { detail: HandoffDetail }) {
+  return (
+    <section className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-950">
+      <h3 className="text-xs font-semibold">Why a co-signature is required</h3>
+      <ul className="mt-1 list-disc space-y-1 pl-4 text-xs leading-5">
+        {detail.gate.cosignReasons.map((reason) => <li key={reason}>{reason}</li>)}
+      </ul>
+      {detail.cosignPolicyEvidence.length > 0 && (
+        <div className="mt-2 border-t border-amber-200 pt-2">
+          <p className="text-xs font-medium">Mandate conditions on file · actual / threshold</p>
+        <dl className="mt-1 space-y-1 text-xs">
+          {detail.cosignPolicyEvidence.map((item) => (
+            <div key={item.kind} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+              <dt className="break-words">{item.kind.replaceAll("_", " ")}</dt>
+              <dd className="font-mono text-right">
+                {item.kind === "parcel_value_over_sen"
+                  ? `${formatSen(item.actual)} / ${formatSen(item.threshold)}`
+                  : item.threshold === null
+                    ? String(item.actual ?? "unavailable")
+                    : `${item.actual ?? "unavailable"} / ${item.threshold}`}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AbortEvidenceNotice({ detail }: { detail: HandoffDetail }) {
+  const abort = detail.abortEvidence!;
+  return (
+    <section className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-red-950">
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="border-red-200 bg-red-100 font-mono text-red-700">{abort.ruleId}</Badge>
+        <h3 className="text-sm font-semibold">Event ID reused with a different payload</h3>
+      </div>
+      <p className="mt-2 text-xs leading-5">
+        The ledger already bound event <span className="font-mono">{abort.eventId}</span> to one payload.
+        This submission reused it with different content, so the ledger aborted before the engine ran.
+      </p>
+      <dl className="mt-2 grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+        <dt>Bound payload</dt><dd className="break-all font-mono">{abort.boundPayloadHash}</dd>
+        <dt>Submitted payload</dt><dd className="break-all font-mono">{abort.submittedPayloadHash}</dd>
+      </dl>
     </section>
   );
 }

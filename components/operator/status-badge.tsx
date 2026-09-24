@@ -23,10 +23,13 @@ const LABELS: Record<HandoffState, string> = {
 export function HandoffStateBadge({
   state,
   provenance = "computed",
+  decision = null,
 }: {
   state: HandoffState;
   provenance?: "computed" | "seeded";
+  decision?: string | null;
 }) {
+  const label = state === "flagged" && decision !== "flag" ? "Needs review" : LABELS[state];
   const badge = (
     <Badge
       variant="outline"
@@ -38,7 +41,7 @@ export function HandoffStateBadge({
         state === "flagged" && "border-orange-200 bg-orange-50 text-orange-900",
       )}
     >
-      {LABELS[state]}
+      {label}
     </Badge>
   );
   if (provenance === "computed") return badge;

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { runAgent } from "@/lib/agent/machine";
-import { sha256Hex } from "@/lib/ledger";
+import { sha256Hex, type AbortRecord } from "@/lib/ledger";
 import type { AgentContext } from "@/lib/agent/context";
 import type { TraceFrame } from "@/lib/agent/trace";
 import { closeDb, type VigilDb } from "@/lib/db/client";
@@ -206,6 +206,30 @@ function storedEntryFor(
     harness: shipment.harness,
     actions: [],
   };
+}
+
+/** Persist the mutable operator case that belongs to a stored delivery entry. */
+function persistStoredCase(entry: StoredEntry): void {
+  if (!entry.state || !entry.caseId) return;
+
+  entry.harness.deps.db
+    .insert(handoffCases)
+    .values({
+      caseId: entry.caseId,
+      eventId: entry.built.event.eventID,
+      scenarioId: entry.scenario.id,
+      legIndex: entry.built.legIndex,
+      state: entry.state,
+      priority: entry.priority,
+      reason: entry.reason,
+      payloadJson: JSON.stringify(entry.built.event),
+      contextJson: JSON.stringify(entry.current),
+      traceJson: JSON.stringify(entry.current.trace),
+      createdAt: entry.createdAt,
+      updatedAt: entry.createdAt,
+    })
+    .onConflictDoNothing()
+    .run();
 }
 
 /** Who is acting, and the key that proves it. */
@@ -882,6 +906,7 @@ export class OperatorWorkbench {
     });
 
     const entry = storedEntryFor(shipment, built, ctx);
+    persistStoredCase(entry);
     this.entries.set(built.event.eventID, entry);
     shipment.deliveryEventId = built.event.eventID;
 
@@ -1083,7 +1108,9 @@ export class OperatorWorkbench {
       mandateId: run.scenario.courier.mandate.mandateId,
     });
 
-    this.entries.set(built.event.eventID, storedEntryFor(run, built, ctx));
+    const entry = storedEntryFor(run, built, ctx);
+    persistStoredCase(entry);
+    this.entries.set(built.event.eventID, entry);
     run.deliveryEventId = built.event.eventID;
     return { ok: true, eventId: built.event.eventID };
   }
@@ -1264,6 +1291,9 @@ export class OperatorWorkbench {
     if (!entry) return undefined;
     const summary = summaryFrom(entry, this.nowIso);
     const records = entry.harness.deps.ledger.readRecords();
+    const abortRecord = [...records]
+      .reverse()
+      .find((record): record is AbortRecord => record.kind === "abort" && record.eventID === eventId);
     const timeline = [...this.entries.values()]
       .filter((candidate) => candidate.scenario.id === entry.scenario.id)
       .sort((a, b) => a.built.legIndex - b.built.legIndex)
@@ -1272,12 +1302,51 @@ export class OperatorWorkbench {
       summary,
       event: entry.built.event,
       flags: flagsFrom(entry.current),
+      abortEvidence: abortRecord
+        ? {
+            code: abortRecord.code,
+            ruleId: "H4",
+            eventId: abortRecord.eventID,
+            boundPayloadHash: abortRecord.boundPayloadHash,
+            submittedPayloadHash: abortRecord.payloadHash,
+          }
+        : null,
       gate: {
         decision: entry.current.gateResult?.decision ?? entry.current.decision ?? null,
         matrixCell: entry.current.gateResult?.matrixCell ?? null,
         rationale: entry.current.gateResult?.rationale ?? null,
         cosignReasons: entry.current.gateResult?.cosignReasons ?? [],
       },
+      cosignPolicyEvidence: (entry.current.mandate?.value?.requiresCosignIf ?? []).map(
+        (condition) => {
+          switch (condition.kind) {
+            case "parcel_value_over_sen":
+              return {
+                kind: condition.kind,
+                actual: entry.current.parcel?.declaredValueSen ?? null,
+                threshold: condition.value,
+              };
+            case "recipient_address_not_in_scope":
+              return {
+                kind: condition.kind,
+                actual: entry.current.parcel?.recipientAddress ?? null,
+                threshold: null,
+              };
+            case "inconsistency_score_at_least":
+              return {
+                kind: condition.kind,
+                actual: entry.current.engineResult?.score ?? entry.current.inconsistency?.score ?? null,
+                threshold: condition.value,
+              };
+            case "pattern_score_at_least":
+              return {
+                kind: condition.kind,
+                actual: entry.current.patternOutcome?.score ?? entry.current.pattern?.score ?? null,
+                threshold: condition.value,
+              };
+          }
+        },
+      ),
       credential: runView(entry.current, entry.runs.length, entry.built.event).credential,
       /**
        * The recipient's link for THIS handoff, and only this one.
