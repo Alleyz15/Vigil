@@ -568,7 +568,7 @@ decision. Before relying on a property of code you did not just write, go and re
 |---|---|---|
 | 1 | retired `gemini-2.0-flash` default (session 13) | code no test could reach |
 | 2 | Ollama base URL calling a route that does not exist (session 14) | code no test could reach |
-| 3 | `propose_reroute` success path, never exercised (session 17B) | code no test could reach |
+| 3 | `propose_reroute` success path was called unexercised after checking only S5 (session 17B; corrected session 27) | **claim exceeded the check that produced it** |
 | 4 | `uuidFrom` ignoring the world seed (session 17B) | **invariant no test expressed** |
 | 5 | `npm run qa:capture` broken by reserving S1's leg (session 17B) | code no test could reach |
 | 6 | `fetch_route_history` and `lookup_recipient_history` selecting nothing (session 18) | **code no test could reach — and the most consequential yet** |
@@ -588,7 +588,7 @@ That is why the whole Agentic AI story looked thin: the model's one real decisio
 inert options. A future session proposing "the model's contribution looks optional" should check
 whether the options do anything before concluding the model is redundant.
 
-The first three are **unexercised code**: something written once, unreachable by any real test,
+The first two are **unexercised code**: something written once, unreachable by any real test,
 and therefore never questioned. They are found by **tracing before building** — reading the
 configuration, the schema semantics or the call graph against what the code claims (see rule 1d,
 and rule 4d's cheap check).
@@ -1177,9 +1177,9 @@ two layers:
 
 - `lib/workbench/actions.test.ts` — table-driven over every member of `OperatorActionName`, with
   the split assertion above, plus a coverage check that fails if a sixth action is added and left
-  uncovered. `propose_reroute` currently has no reachable success path in the seeded workbench, so
-  it is asserted on its **refusal**: a guard that throws must throw before it writes anything, or
-  a refusal leaves a half-applied action behind.
+  uncovered. `propose_reroute` covers both sides: S2 exercises the authorised success path and S5
+  asserts that a refusal throws before it writes anything, so a rejection cannot leave a
+  half-applied action behind.
 - `lib/purity.test.ts` — **the seventh architectural constraint verified by running the suite.**
   No source under `lib/workbench/` or `app/api/operator/` may call `.update(verdicts)` or
   `.delete(verdicts)`. It bans the **verb**, not the table, because inserting is the mechanism and
@@ -1975,6 +1975,65 @@ The online shipment list now uses a route-owned read after route-owned writes, b
 close every sender path or any of the other listed surfaces merely because the same failure is
 plausible. They require browser-level reproduction and a deliberate persistence or route-owned
 read contract; sharing a `globalThis` name is not such a contract.
+
+Session 27 confirmed the first operator instance. The action endpoint returned the authoritative
+updated `HandoffDetail`, but `OperatorActions` discarded it and asked a Server Component in another
+bundle to read the singleton again. Sometimes that read saw the old instance, leaving a successful
+approval visibly pending until a second click received `case is already resolved`. The client now
+adopts the POST response directly; `router.refresh()` is no longer part of correctness. General
+rule: **when a mutation API already returns the new state, use it. Throwing it away and re-reading
+through another bundle is a correctness risk, not merely an extra request.**
+
+The same narrower shape still exists in three places and remains an audit list, not a claim that
+they are broken. The ratings are the consequence **if** an intermittent stale read occurs, not a
+finding that it already has:
+
+- **High audit priority — demo co-sign:** discards both courier and operator mutation responses for
+  a refresh. A successful signature ceremony could still look incomplete and invite a duplicate
+  action.
+- **High audit priority — courier submission:** discards the returned updated draft and outcome
+  before fetching the listing again. A successful submission could remain actionable on screen.
+- **Medium audit priority — cached-address correction:** returns the correction record but the
+  sender row discards it and refreshes. The durable correction could exist while the row still
+  presents the old action.
+
+These are correctness risks, not style debt. Sender creation and online correction also cross the
+boundary, but their responses do not contain a complete row model, while recipient confirmation
+already adopts the returned token state directly.
+
+The same browser pass exposed a different failure that initially looked adjacent but was **not** a
+cross-bundle read: a high-value shipment dispatched from the sender queue reached
+`awaiting_cosignature` in memory, then operator approval failed its `operator_actions.case_id`
+foreign key. `completeDelivery()` and `deliverOnlineShipment()` both used `storedEntryFor()` but
+never persisted the corresponding `handoff_cases` parent row; the direct six-leg builder path did.
+The shared stored-delivery path now writes the case before publishing the entry in memory. A
+regression test follows the exact sender queue -> courier delivery -> operator approval sequence and
+failed on the old code with `SQLITE_CONSTRAINT_FOREIGNKEY`. Similar browser symptoms do not make
+two causes the same: one discarded authoritative mutation data across bundles, the other omitted a
+durable parent record on a second construction path.
+
+This belongs with the earlier defects found only by driving the page. Session 26 connected online
+shipments to the pending-delivery surface, but “the row appears” was a weaker check than “the row
+can complete every operation the established built path can complete.” The omitted case insert
+survived 914 tests until the browser attempted approval. General rule: **when a new path joins an
+existing path's interface, inventory every side effect the established path performs at that step
+and prove the new path performs all of them. Do not stop at proving the interface can display it.**
+
+#### Session 27 — detail truthfulness corrections
+
+**Ledger abort evidence was present; the read model omitted its source.** H4 already lived in
+`ctx.inconsistency.flags`. `flagsFrom()` read engine hard failures, engine flags and pattern flags,
+but not the ledger-produced inconsistency when the engine never ran. The same source-shaped hole
+could hide C1 for `CREDENTIAL_INVALID`, even though no authored scenario currently triggers it.
+Both are now explicit read-model sources and both have regression tests. Similar symptoms do not
+identify a layer: only reading the data flow distinguished “the ledger did not produce H4” from
+“the presentation adapter dropped H4.”
+
+**The reroute provenance label was false from the moment it was introduced, not later made stale.**
+The check observed S5's rejected alternatives and promoted that one-scenario observation to “the
+current dataset has no proposal path”, while S2 already produced a proposal. A provenance label's
+scope must never be wider than the check that produced it. The global label is removed; S2 now
+executes the successful operator action in the invariant suite while S5 retains the refusal test.
 
 **And `pkill` does not stop `next dev` on Windows.** It reports success and kills nothing. The old
 server keeps holding port 3000 and keeps serving the OLD build, while the "restarted" one quietly
@@ -2974,9 +3033,9 @@ that restates a decision must be derived from it), and `4f` extended to five ins
 
 #### Still open after 17B
 
-Rejected-alternative disclosure for `propose_reroute`'s **success** path is unexercised: no seeded
-scenario yields a proposal, so the panel shows the rejection half and says so with a provenance
-label. `seedDraftIdentity` remains a deliberate duplicate awaiting its fold-back. The submission
+Superseded by session 27: S2 had yielded a proposal from the start; the “unexercised by the current
+dataset” label came from checking only S5 and has been removed. `seedDraftIdentity` was folded back
+in session 26. The submission
 artefacts — write-up, recorded demo, RESULTS.md refresh — are the remaining work.
 
 ### Session 17A — operator workbench and spatial evidence (complete)
