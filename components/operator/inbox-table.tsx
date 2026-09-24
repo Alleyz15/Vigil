@@ -148,7 +148,7 @@ function HandoffRow({ item, markPattern = false, nested = false, detailMode }: {
         <div className="mt-1 font-mono text-xs text-muted-foreground">{item.courier.courierId}</div>
       </td>
       <td>
-        <HandoffStateBadge state={item.state} provenance={item.stateProvenance} />
+        <HandoffStateBadge state={item.state} provenance={item.stateProvenance} decision={item.decision} />
         {!item.sealed && <div className="mt-2 text-xs font-semibold text-amber-800">Nothing sealed</div>}
       </td>
       <td>
@@ -208,7 +208,7 @@ function CourierAggregate({ handoffs, detailMode }: { handoffs: HandoffSummary[]
           <div className="mt-1 font-mono text-xs text-muted-foreground">{worst.courier.courierId}</div>
         </td>
         <td>
-          <HandoffStateBadge state={worst.state} provenance={worst.stateProvenance} />
+          <HandoffStateBadge state={worst.state} provenance={worst.stateProvenance} decision={worst.decision} />
         </td>
         <td>
           <p className="text-sm font-medium leading-5">{reasons.size === 1 ? worst.shortReason : "Pattern anomaly"}</p>

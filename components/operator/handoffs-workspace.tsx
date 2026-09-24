@@ -93,7 +93,7 @@ export function HandoffsWorkspace({
                   <div className="font-mono text-sm font-semibold">{selected.parcel.waybillNo}</div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">{selected.courier.displayName}</div>
                 </div>
-                <HandoffStateBadge state={selected.state} provenance={selected.stateProvenance} />
+                <HandoffStateBadge state={selected.state} provenance={selected.stateProvenance} decision={selected.decision} />
               </div>
               <p className="mt-4 text-sm font-medium leading-5">{selected.shortReason}</p>
               <div className="mt-4 border-y py-4">

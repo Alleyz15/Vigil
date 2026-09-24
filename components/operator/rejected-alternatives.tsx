@@ -100,22 +100,11 @@ export function RerouteAlternatives({ reroute }: { reroute: RerouteOutcome | nul
   if (!reroute) return null;
 
   const considered = reroute.considered ?? [];
-  const proposed = reroute.status === "proposed";
 
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">Reroute destinations considered</h3>
-        {/*
-          THE UNEXERCISED PATH, LABELLED. No seeded scenario currently yields a
-          reroute proposal, so the success branch has never run end to end. The
-          provenance vocabulary says so rather than letting a viewer assume the
-          panel is only showing rejections because rejections are all there
-          were. Same discipline as "Open-Meteo not wired yet" in the stream view.
-        */}
-        {!proposed && (
-          <ProvenanceLabel>proposal path unexercised by the current dataset</ProvenanceLabel>
-        )}
       </div>
 
       <p className="mb-2 text-xs leading-5 text-muted-foreground">

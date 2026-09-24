@@ -78,7 +78,7 @@ export function HandoffTable({
                   <div className="text-sm font-medium capitalize">{item.bizStep}</div>
                   <div className="mt-1 text-xs text-muted-foreground">{item.courier.displayName} · {item.scenarioId}</div>
                 </td>
-                <td><HandoffStateBadge state={item.state} provenance={item.stateProvenance} /></td>
+                <td><HandoffStateBadge state={item.state} provenance={item.stateProvenance} decision={item.decision} /></td>
                 <td><AxisPair inconsistency={item.inconsistency} pattern={item.pattern} /></td>
                 <td className="max-w-sm">
                   {item.state === "accepted" ? (

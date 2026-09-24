@@ -43,7 +43,7 @@ describe("no operator action mutates a sealed verdict", () => {
   const covered = new Set<string>();
 
   beforeAll(async () => {
-    workbench = await createWorkbench({ scenarioIds: ["S0", "S1", "S3", "S4", "S5", "S6"] });
+    workbench = await createWorkbench({ scenarioIds: ["S0", "S1", "S2", "S3", "S4", "S5", "S6"] });
   }, 60_000);
 
   afterAll(() => workbench.close());
@@ -102,12 +102,7 @@ describe("no operator action mutates a sealed verdict", () => {
     }
   });
 
-  /**
-   * `propose_reroute` has NO reachable success path in the seeded workbench —
-   * no scenario currently yields `reroute.status === "proposed"`. That is worth
-   * asserting rather than skipping: a guard that throws must throw BEFORE it
-   * writes anything, or the refusal leaves a half-applied action behind.
-   */
+  /** S5 has no authorised reroute. Its refusal must happen before any write. */
   it("writes nothing at all when propose_reroute is refused", async () => {
     const item = pick((entry) => entry.state === "timed_out");
     const before = verdictRows(item.eventId);
@@ -126,6 +121,18 @@ describe("no operator action mutates a sealed verdict", () => {
     expect(caseRow(item.eventId)).toEqual(caseBefore);
     expect(workbench.getHandoff(item.eventId)!.actions).toHaveLength(actionsBefore);
     covered.add("propose_reroute");
+  });
+
+  it("records the authorised reroute that S2 has exposed since the path was introduced", async () => {
+    const item = pick((entry) => entry.scenarioId === "S2" && entry.state === "flagged");
+    const before = verdictRows(item.eventId);
+    expect(workbench.getHandoff(item.eventId)?.reroute?.status).toBe("proposed");
+
+    const after = await workbench.resolveHandoff(item.eventId, { action: "propose_reroute" });
+
+    expect(after.summary.state).toBe("awaiting_reroute_signatures");
+    expect(after.actions.at(-1)?.action).toBe("propose_reroute");
+    expect(verdictRows(item.eventId)).toEqual(before);
   });
 
   /**
