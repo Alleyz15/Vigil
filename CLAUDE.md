@@ -2029,6 +2029,40 @@ Both are now explicit read-model sources and both have regression tests. Similar
 identify a layer: only reading the data flow distinguished “the ledger did not produce H4” from
 “the presentation adapter dropped H4.”
 
+#### Session 28 — presentation instruments still need independent inputs
+
+**Business time and elapsed time are different clocks.** Replay originally timed every agent node
+with `deps.now()`, the deliberately frozen business clock that keeps seeded verdicts and ledger
+bytes reproducible. Eight `0ms` values were therefore structurally inevitable: the column had
+never measured elapsed time. Business timestamps still use the injected frozen clock; duration
+uses an independent monotonic clock. General rule: one clock cannot represent two incompatible
+notions of time. As with an instrument taking a different route to the thing it measures, an
+elapsed-time instrument that is frozen with the domain does not measure elapsed time.
+
+The repaired instrument exposed a fact the broken one had hidden: in a live Gemini replay,
+`plan` took 1110 ms and `explain` took 1041 ms while the deterministic nodes took less than
+1–3 ms. A broken instrument does not merely omit data; it can conceal the strongest available
+explanation of the architecture. Here the model's visible cost is roughly three orders of
+magnitude above the deterministic verdict path.
+
+**Open reservation — the replay never emits `thought` frames.** The model-backed `plan` and
+`explain` nodes genuinely run and are labelled with their exact model id and elapsed time, but
+the machine emits no `thought` frame. The panel headed `THOUGHTS` is therefore structurally stuck
+at zero: it promises a kind of content the current producer cannot supply. A later session must
+choose one honest design: emit the model-authored frames through the frozen optional frame type,
+or hide the panel when no producer exists. Do not leave an always-empty promise in the demo.
+
+**Data present in the domain can still disappear in a read model.** Courier history already held
+the operator approval in `entry.actions` and the sealing run in `entry.runs`, but its projection
+returned only courier attempts. That is the same shape as session 27's H4 omission: before adding
+new storage or inventing a record, enumerate every source the read model should project.
+
+**Validate shared wording before extracting it.** The cached-address value preview correctly says
+only that the amount condition does or does not require co-signing, and explicitly leaves other
+risk and evidence conditions open. That wording was verified before it became the shared preview
+for confirmed-point shipments. Otherwise a refactor that removes duplication can turn one local
+false claim into a system-wide one.
+
 **The reroute provenance label was false from the moment it was introduced, not later made stale.**
 The check observed S5's rejected alternatives and promoted that one-scenario observation to “the
 current dataset has no proposal path”, while S2 already produced a proposal. A provenance label's
