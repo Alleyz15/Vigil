@@ -6,6 +6,7 @@ import { AxisPair } from "./axis-pair";
 import { HandoffStateBadge } from "./status-badge";
 import { ProvenanceLabel } from "./provenance-label";
 import { ParcelCell } from "./parcel-cell";
+import { SimulatedClockLabel } from "./simulated-clock-label";
 
 type Summary = {
   automaticallyAccepted: number;
@@ -46,6 +47,7 @@ export function HandoffTable({
           <p className="mt-1 text-xs text-muted-foreground">
             Fixed demo window · {formatDate(summary.from)} to {formatDate(summary.to)}
           </p>
+          <div className="mt-2"><SimulatedClockLabel anchorIso={summary.to} /></div>
         </div>
         <p className="max-w-lg text-right text-xs leading-5 text-muted-foreground">
           Automatic acceptance means both independent axes were low and mandate limits passed. Open any row to inspect the sealed basis.
@@ -92,7 +94,7 @@ export function HandoffTable({
                       </p>
                     </details>
                   ) : (
-                    <p className="text-xs leading-5 text-muted-foreground">{item.reason}</p>
+                    <p className="text-xs font-medium leading-5">{item.shortReason}</p>
                   )}
                 </td>
                 <td>

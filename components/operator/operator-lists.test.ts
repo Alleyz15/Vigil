@@ -73,5 +73,19 @@ describe("operator work lists", () => {
     expect(html).toContain("1 of 1 handoffs automatically accepted");
     expect(html).toMatch(/8 Sep(?:t)? 2026/);
     expect(html).toContain("both axes");
+    expect(html).toContain("Simulated clock");
+  });
+
+  it("uses the existing short reason in all handoffs instead of repeating prose", () => {
+    const html = renderToStaticMarkup(
+      createElement(HandoffTable, {
+        items: [ITEM],
+        summary: { automaticallyAccepted: 0, total: 1, timeframe: "", from: ITEM.eventTime, to: ITEM.eventTime },
+        showSummary: false,
+      }),
+    );
+
+    expect(html).toContain("GPS contradicts cell");
+    expect(html).not.toContain("Single-event evidence is high.");
   });
 });

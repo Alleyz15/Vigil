@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ReactECharts from "echarts-for-react";
 import type { ScatterPoint } from "@/lib/console/dataset";
 import { DEFAULT_GATE_THRESHOLDS } from "@/lib/gate/thresholds";
@@ -19,6 +20,12 @@ import { DEFAULT_GATE_THRESHOLDS } from "@/lib/gate/thresholds";
 
 const GUTTER = -14;
 const AXIS_MAX = 105;
+
+function thresholdFromQuery(value: string | null, fallback: number): number {
+  if (value === null || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 100 ? parsed : fallback;
+}
 
 const QUADRANT_COLOUR: Record<string, string> = {
   accept: "#34d399",
@@ -72,9 +79,33 @@ export function GateExplorer({
   points: ScatterPoint[];
   counts: { total: number; bothEvaluated: number; patternUnknown: number; inconsistencyUnknown: number };
 }) {
-  const [xThreshold, setXThreshold] = useState(DEFAULT_GATE_THRESHOLDS.highInconsistency);
-  const [yThreshold, setYThreshold] = useState(DEFAULT_GATE_THRESHOLDS.highPattern);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [xThreshold, setXThreshold] = useState(() =>
+    thresholdFromQuery(searchParams.get("single"), DEFAULT_GATE_THRESHOLDS.highInconsistency),
+  );
+  const [yThreshold, setYThreshold] = useState(() =>
+    thresholdFromQuery(searchParams.get("pattern"), DEFAULT_GATE_THRESHOLDS.highPattern),
+  );
   const [hovered, setHovered] = useState<ScatterPoint | null>(null);
+  const hypothetical =
+    xThreshold !== DEFAULT_GATE_THRESHOLDS.highInconsistency ||
+    yThreshold !== DEFAULT_GATE_THRESHOLDS.highPattern;
+
+  const replaceThreshold = (axis: "single" | "pattern", value: number) => {
+    if (axis === "single") setXThreshold(value);
+    else setYThreshold(value);
+
+    const configured = axis === "single"
+      ? DEFAULT_GATE_THRESHOLDS.highInconsistency
+      : DEFAULT_GATE_THRESHOLDS.highPattern;
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === configured) next.delete(axis);
+    else next.set(axis, String(value));
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   const series = useMemo(() => {
     const both: [number, number, ScatterPoint][] = [];
@@ -268,15 +299,21 @@ export function GateExplorer({
           <ThresholdSlider
             label="single-event (x)"
             value={xThreshold}
-            onChange={setXThreshold}
+            onChange={(value) => replaceThreshold("single", value)}
             hint="above this, the event contradicts itself"
           />
           <ThresholdSlider
             label="pattern (y)"
             value={yThreshold}
-            onChange={setYThreshold}
+            onChange={(value) => replaceThreshold("pattern", value)}
             hint="above this, the courier's shape is wrong"
           />
+
+          {hypothetical && (
+            <p className="mt-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-900 dark:text-amber-200">
+              Hypothetical view. The system uses {DEFAULT_GATE_THRESHOLDS.highInconsistency} for single-event and {DEFAULT_GATE_THRESHOLDS.highPattern} for pattern evidence.
+            </p>
+          )}
 
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
             {(["accept", "flag", "escalate", "freeze"] as const).map((q) => (
