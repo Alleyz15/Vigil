@@ -13,7 +13,7 @@ import {
   useMap,
 } from "react-leaflet";
 import type { MapOverlay, MapPoint, ShipmentMapModel } from "@/lib/workbench";
-import { clampAnimationProgress } from "./shipment-map-animation";
+import { clampAnimationProgress, initialViewport } from "./shipment-map-animation";
 
 /**
  * Three kinds of line, told apart WITHOUT reading a tooltip.
@@ -63,14 +63,29 @@ function Viewport({
 
   useEffect(() => {
     const points = model.route.flatMap((leg) => (leg.point ? [latLng(leg.point)] : []));
-    if (!initialized.current && points.length > 1) {
-      map.fitBounds(points, { padding: [36, 36] });
-      initialized.current = true;
-      return;
-    }
     const evidencePoints = revealOverlays
       ? model.overlays.flatMap((feature) => (feature.point ? [latLng(feature.point)] : []))
       : [];
+    if (!initialized.current) {
+      initialized.current = true;
+      const initial = initialViewport({
+        routePointCount: points.length,
+        evidencePointCount: evidencePoints.length,
+        revealOverlays,
+      });
+      if (initial === "evidence") {
+        map.fitBounds(evidencePoints, { padding: [54, 54], animate: false });
+        return;
+      }
+      if (initial === "route") {
+        map.fitBounds(points, { padding: [36, 36], animate: false });
+        return;
+      }
+      if (activeLatitude !== undefined && activeLongitude !== undefined) {
+        map.setView([activeLatitude, activeLongitude], 15, { animate: false });
+        return;
+      }
+    }
     if (evidencePoints.length > 1) {
       map.fitBounds(evidencePoints, { padding: [54, 54], animate: !reducedMotion, duration: 0.35 });
       return;
