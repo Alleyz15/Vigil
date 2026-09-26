@@ -21,6 +21,7 @@ import {
   type SlotName,
   withReverseLabel,
 } from "./online-shipment-model";
+import { ValueConsequence, type SenderPolicy } from "./value-consequence";
 
 /**
  * DISPATCH TO A POINT SOMEBODY CONFIRMED.
@@ -48,7 +49,7 @@ import {
  * beside the confirmed point, because "we did not move it" is a claim, and a
  * claim is worth measuring.
  */
-export function OnlineShipmentPanel() {
+export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
   const [area, setArea] = useState<ServiceAreaView | null>(null);
   const [areaError, setAreaError] = useState<string | null>(null);
 
@@ -301,6 +302,8 @@ export function OnlineShipmentPanel() {
               className="h-10 w-full rounded-md bg-muted/60 px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
           </Labelled>
+
+          <ValueConsequence policy={policy} declaredValueSen={declaredValueSen} />
 
           <div className="mt-7">
             <Button size="lg" disabled={busy || refusal !== null} onClick={submit}>

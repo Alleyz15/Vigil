@@ -21,6 +21,7 @@ import { ProvenanceLabel } from "./provenance-label";
 import { PlanAlternatives, RerouteAlternatives } from "./rejected-alternatives";
 import { ShipmentMap } from "./shipment-map";
 import { HandoffStateBadge } from "./status-badge";
+import { SimulatedClockLabel } from "./simulated-clock-label";
 import { StreamView } from "@/components/console/stream-view";
 
 function sentence(value: string | null): string {
@@ -30,9 +31,11 @@ function sentence(value: string | null): string {
 export function HandoffDetailView({
   detail: initialDetail,
   backLink = { href: "/operator/inbox", label: "Back to inbox" },
+  clockAnchorIso,
 }: {
   detail: HandoffDetail;
   backLink?: { href: string; label: string };
+  clockAnchorIso?: string;
 }) {
   const [detail, setDetail] = useState(initialDetail);
   const [activeLegIndex, setActiveLegIndex] = useState(detail.summary.legIndex);
@@ -76,6 +79,7 @@ export function HandoffDetailView({
           <Link2 className="size-3.5" aria-hidden="true" />
           {ledger.label}
         </div>
+        <SimulatedClockLabel anchorIso={clockAnchorIso} />
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_23rem] items-start gap-5">
@@ -191,7 +195,12 @@ export function HandoffDetailView({
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <CredentialHalf label="Courier half" value={detail.credential?.courierValid ? "valid" : "missing"} valid={Boolean(detail.credential?.courierValid)} />
-              <CredentialHalf label="Operator half" value={detail.credential?.operatorValid ? "valid" : "missing"} valid={Boolean(detail.credential?.operatorValid)} />
+              <CredentialHalf
+                label="Operator half"
+                value={detail.credential?.operatorValid ? "valid" : detail.summary.requiresCosign ? "missing" : "not required"}
+                valid={Boolean(detail.credential?.operatorValid)}
+                neutral={!detail.credential?.operatorValid && !detail.summary.requiresCosign}
+              />
             </div>
 
             {detail.summary.requiresCosign && <CosignReason detail={detail} />}
@@ -354,24 +363,46 @@ export function HandoffDetailView({
   );
 }
 
-function CredentialHalf({ label, value, valid }: { label: string; value: string; valid: boolean }) {
+function CredentialHalf({
+  label,
+  value,
+  valid,
+  neutral = false,
+}: {
+  label: string;
+  value: string;
+  valid: boolean;
+  neutral?: boolean;
+}) {
   return (
     <div className={cn(
       "rounded-md border px-3 py-2.5",
-      valid ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50",
+      valid
+        ? "border-emerald-300 bg-emerald-50"
+        : neutral
+          ? "border-border bg-muted/40"
+          : "border-amber-300 bg-amber-50",
     )}>
       <div className="flex items-center gap-1.5 text-xs font-semibold">
-        <KeyRoundIcon valid={valid} />
+        <KeyRoundIcon valid={valid} neutral={neutral} />
         {label}
       </div>
-      <div className={cn("mt-1 font-mono text-xs font-semibold", valid ? "text-emerald-700" : "text-amber-700")}>{value}</div>
-      <div className="mt-1 text-xs text-muted-foreground">binds event + nonce</div>
+      <div className={cn(
+        "mt-1 font-mono text-xs font-semibold",
+        valid ? "text-emerald-700" : neutral ? "text-muted-foreground" : "text-amber-700",
+      )}>{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        {neutral ? "mandate did not require this half" : "binds event + nonce"}
+      </div>
     </div>
   );
 }
 
-function KeyRoundIcon({ valid }: { valid: boolean }) {
-  return <span aria-hidden="true" className={cn("size-2 rounded-full", valid ? "bg-emerald-600" : "border border-amber-600")} />;
+function KeyRoundIcon({ valid, neutral = false }: { valid: boolean; neutral?: boolean }) {
+  return <span aria-hidden="true" className={cn(
+    "size-2 rounded-full",
+    valid ? "bg-emerald-600" : neutral ? "border border-muted-foreground" : "border border-amber-600",
+  )} />;
 }
 
 function StatusCard({

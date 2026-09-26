@@ -22,6 +22,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       allItems={allItems}
       summary={summary}
       scenario={scenario}
+      clockAnchorIso={workbench.clockProvenance().anchorIso}
     />
   );
 }

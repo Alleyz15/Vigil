@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { createElement } from "react";
+import { createElement, type ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { SenderForm, type SenderAddress } from "./sender-form";
+import { OnlineShipmentPanel } from "./online-shipment-panel";
 const router = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
@@ -39,5 +40,20 @@ describe("Sender registered declaration", () => {
     fireEvent.click(view.getByRole("button", { name: "Create and dispatch" }));
     await waitFor(() => expect(router.refresh).toHaveBeenCalledOnce());
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ originIndex: 0, destinationIndex: 16, declaredValueSen: 12000, recipientChannel: "+60119990001", fault: "none" });
+  });
+});
+
+describe("Sender confirmed-point declaration", () => {
+  it("shows the same policy-derived amount consequence before submission", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+    const Panel = OnlineShipmentPanel as ComponentType<{ policy: typeof policy }>;
+    const view = render(createElement(Panel, { policy }));
+    fireEvent.change(view.getByLabelText("Declared value for the confirmed-point shipment"), {
+      target: { value: "900.00" },
+    });
+
+    expect(view.getByText(/amount condition requires an operator co-signature/i)).toBeTruthy();
+    expect(view.getByText(/RM 900\.00 is above RM 400\.00/)).toBeTruthy();
+    expect(view.getByText(/Other risk or evidence conditions/)).toBeTruthy();
   });
 });

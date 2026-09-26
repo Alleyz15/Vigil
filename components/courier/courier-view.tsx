@@ -150,7 +150,9 @@ function DraftCard({
       </div>
 
       {latest && <OutcomePanel outcome={latest.outcome} />}
-      {draft.attempts.length > 1 && <AttemptHistory attempts={draft.attempts} />}
+      {(draft.attempts.length > 1 || draft.operatorSeal) && (
+        <AttemptHistory attempts={draft.attempts} operatorSeal={draft.operatorSeal} />
+      )}
     </section>
   );
 }
@@ -206,14 +208,42 @@ function OutcomePanel({ outcome }: { outcome: CourierOutcome }) {
  * would leave a viewer unable to see that the same scan was submitted twice and
  * treated differently for a reason.
  */
-function AttemptHistory({ attempts }: { attempts: Attempt[] }) {
+function AttemptHistory({
+  attempts,
+  operatorSeal,
+}: {
+  attempts: Attempt[];
+  operatorSeal: CourierDraft["operatorSeal"];
+}) {
+  const firstPostSeal = attempts.findIndex((attempt) => attempt.run.ledgerStatus === "noop");
+  const beforeSeal = firstPostSeal === -1 ? attempts : attempts.slice(0, firstPostSeal);
+  const afterSeal = firstPostSeal === -1 ? [] : attempts.slice(firstPostSeal);
+
   return (
     <div className="px-4 pb-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Submission history
       </div>
       <ol className="mt-2 flex flex-col gap-2">
-        {attempts.map((attempt) => (
+        {beforeSeal.map((attempt) => (
+          <li key={attempt.run.run} className="flex flex-wrap items-baseline gap-2 text-xs">
+            <span className="font-mono text-muted-foreground">#{attempt.run.run}</span>
+            <span className={cn("font-medium", TONE[attempt.outcome.kind].text)}>
+              {attempt.outcome.headline}
+            </span>
+            <span className="ml-auto font-mono text-xs text-muted-foreground">
+              {attempt.run.ledgerStatus ?? "no ledger entry"}
+            </span>
+          </li>
+        ))}
+        {operatorSeal && (
+          <li className="flex flex-wrap items-baseline gap-2 border-y border-dashed py-2 text-xs">
+            <span className="font-medium text-emerald-700 dark:text-emerald-400">Operator co-signed and sealed</span>
+            <span className="font-mono text-muted-foreground">{operatorSeal.operatorId}</span>
+            <span className="ml-auto font-mono text-xs text-muted-foreground">{operatorSeal.ledgerStatus}</span>
+          </li>
+        )}
+        {afterSeal.map((attempt) => (
           <li key={attempt.run.run} className="flex flex-wrap items-baseline gap-2 text-xs">
             <span className="font-mono text-muted-foreground">#{attempt.run.run}</span>
             <span className={cn("font-medium", TONE[attempt.outcome.kind].text)}>

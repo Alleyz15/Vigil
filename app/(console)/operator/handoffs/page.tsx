@@ -22,6 +22,7 @@ export default async function HandoffsPage({ searchParams }: { searchParams: Pro
       allItems={allItems}
       summary={summary}
       scenario={scenario}
+      clockAnchorIso={workbench.clockProvenance().anchorIso}
     />
   );
 }

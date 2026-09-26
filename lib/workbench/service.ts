@@ -479,6 +479,12 @@ export type CourierDraft = {
   eventId: string;
   /** What the courier has tried so far, oldest first. */
   attempts: { run: RunView; outcome: CourierOutcome }[];
+  /** The distinct operator act that completed this credential, if it happened. */
+  operatorSeal: {
+    operatorId: string;
+    createdAt: string;
+    ledgerStatus: "recorded" | "noop";
+  } | null;
 };
 
 type StoredDraft = CourierDraft & {
@@ -520,6 +526,7 @@ function makeDraft(
     eventTime: held.event.eventTime,
     eventId: held.event.eventID,
     attempts: [],
+    operatorSeal: null,
     built: held,
     scenario,
     harness,
@@ -646,7 +653,15 @@ export class OperatorWorkbench {
     // built event must never reach a client component, and a spread would carry
     // any field a future edit adds to StoredDraft straight out of the server.
     return [...this.drafts.values()]
-      .map((draft) => ({
+      .map((draft) => {
+        const entry = this.entries.get(draft.eventId);
+        const approval = entry?.actions.find((action) => action.action === "approve");
+        const approvedRun = entry?.runs.find(
+          (ctx) =>
+            ctx.credential?.validSignatures.includes("operator") &&
+            (ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop"),
+        );
+        return {
         draftId: draft.draftId,
         scenarioId: draft.scenarioId,
         title: draft.title,
@@ -657,7 +672,15 @@ export class OperatorWorkbench {
         eventTime: draft.eventTime,
         eventId: draft.eventId,
         attempts: draft.attempts,
-      }))
+        operatorSeal: approval && approvedRun && (approvedRun.ledger?.status === "recorded" || approvedRun.ledger?.status === "noop")
+          ? {
+              operatorId: approval.operatorId,
+              createdAt: approval.createdAt,
+              ledgerStatus: approvedRun.ledger.status,
+            }
+          : null,
+        };
+      })
       .sort((a, b) => a.draftId.localeCompare(b.draftId));
   }
 
@@ -1536,6 +1559,11 @@ export class OperatorWorkbench {
           "courier and recipient independently report.",
       },
     };
+  }
+
+  /** The fixed demo-world clock used by every generated and user-created handoff. */
+  clockProvenance(): { anchorIso: string } {
+    return { anchorIso: this.nowIso };
   }
 
   /**

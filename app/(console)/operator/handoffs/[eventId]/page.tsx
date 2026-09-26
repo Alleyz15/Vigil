@@ -18,5 +18,5 @@ export default async function HandoffDetailPage({
   const detail = workbench.getHandoff(eventId);
   if (!detail) notFound();
 
-  return <HandoffDetailView detail={detail} backLink={handoffBackLink(from)} />;
+  return <HandoffDetailView detail={detail} backLink={handoffBackLink(from)} clockAnchorIso={workbench.clockProvenance().anchorIso} />;
 }

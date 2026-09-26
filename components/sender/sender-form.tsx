@@ -2,21 +2,15 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, FlaskConical, PackagePlus, PenLine } from "lucide-react";
+import { FlaskConical, PackagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
 import { cn } from "@/lib/utils";
 import type { BuiltFault } from "@/lib/generate/builder";
 import { RegisteredAddressMap } from "./registered-address-map";
+import { ValueConsequence, type SenderPolicy } from "./value-consequence";
 
 export type SenderAddress = { index: number; label: string; latitude?: number; longitude?: number };
-
-export type SenderPolicy = {
-  cosignOverSen: number | null;
-  codCapSen: number;
-  maxValueSen: number;
-  courier: string;
-};
 
 const FAULTS: { value: BuiltFault; label: string; detail: string }[] = [
   { value: "none", label: "None", detail: "No injected fault. The verifier still checks the shipment." },
@@ -27,9 +21,7 @@ const FAULTS: { value: BuiltFault; label: string; detail: string }[] = [
   { value: "batch_scan", label: "Batch scanning", detail: "Batch scanning is a property of a set, not of one parcel: it needs multiple parcels addressed to one building. A single shipment cannot express it." },
 ];
 
-function ringgit(sen: number): string {
-  return `RM ${(sen / 100).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+export type { SenderPolicy } from "./value-consequence";
 
 export function SenderForm({
   addresses,
@@ -66,11 +58,6 @@ export function SenderForm({
    * submission then fails to seal, it is the consequence of something they
    * typed rather than a surprise the demo sprang on them.
    */
-  const crossesCosign =
-    policy.cosignOverSen !== null && declaredValueSen > policy.cosignOverSen;
-  const overCodCap = declaredValueSen > policy.codCapSen && declaredValueSen > 0;
-  const overMaxValue = declaredValueSen > policy.maxValueSen;
-
   const sameEnds = originIndex === destinationIndex;
   const batchRefused = fault === "batch_scan";
   const canSubmit = !pending && !sameEnds && !batchRefused && Number.isSafeInteger(declaredValueSen) && declaredValueSen > 0 && channel.length >= 3 && addresses.some((a) => a.index === originIndex) && addresses.some((a) => a.index === destinationIndex);
@@ -183,9 +170,6 @@ export function SenderForm({
       <ValueConsequence
         policy={policy}
         declaredValueSen={declaredValueSen}
-        crossesCosign={crossesCosign}
-        overCodCap={overCodCap}
-        overMaxValue={overMaxValue}
       />
 
       <FaultPanel
@@ -213,69 +197,6 @@ export function SenderForm({
       </section>
       <RegisteredAddressMap addresses={addresses} serviceArea={serviceArea} originIndex={originIndex} destinationIndex={destinationIndex} onOriginChange={setOriginIndex} onDestinationChange={setDestinationIndex} />
       </div>
-    </div>
-  );
-}
-
-/**
- * What this declaration will cause, stated before it is submitted.
- *
- * The co-signature figure comes from the mandate. A viewer who types 500 sees
- * that an operator will be required, then watches the courier's submission fail
- * to seal for exactly that reason — cause, then effect, both visible.
- */
-function ValueConsequence({
-  policy,
-  declaredValueSen,
-  crossesCosign,
-  overCodCap,
-  overMaxValue,
-}: {
-  policy: SenderPolicy;
-  declaredValueSen: number;
-  crossesCosign: boolean;
-  overCodCap: boolean;
-  overMaxValue: boolean;
-}) {
-  if (declaredValueSen <= 0) return null;
-
-  return (
-    <div
-      className={cn(
-        "mt-5 rounded-md px-4 py-3 text-sm leading-6",
-        crossesCosign
-          ? "bg-amber-500/10 text-amber-800 dark:text-amber-300"
-          : "bg-muted/60 text-muted-foreground",
-      )}
-    >
-      {crossesCosign ? (
-        <>
-          <span className="flex items-center gap-2 font-medium">
-            <PenLine aria-hidden="true" className="size-4 shrink-0" />
-            The amount condition requires an operator co-signature
-          </span>
-          <span className="mt-1 block">
-            {ringgit(declaredValueSen)} is above {ringgit(policy.cosignOverSen ?? 0)}, the amount threshold provided by the current policy.
-          </span>
-        </>
-      ) : (
-        <span>
-          {policy.cosignOverSen === null ? "No amount-based co-sign condition is listed in the policy." : `${ringgit(declaredValueSen)} is at or below ${ringgit(policy.cosignOverSen)}: the amount condition does not require co-signing.`}
-        </span>
-      )}
-
-      <span className="mt-1 block text-xs">Other risk or evidence conditions may still require an operator signature.</span>
-      {overMaxValue && (
-        <span className="mt-2 flex items-center gap-2 font-medium">
-          <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
-          Above the mandate&apos;s {ringgit(policy.maxValueSen)} ceiling. The gate applies mandate limits independently of co-signing.
-        </span>
-      )}
-      {overCodCap && !overMaxValue && (
-        <span className="mt-2 block text-xs">
-          Cash on delivery is capped at {ringgit(policy.codCapSen)}; this parcel is prepaid.
-        </span>
-      )}
     </div>
   );
 }

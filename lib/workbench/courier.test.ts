@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { verdicts } from "@/lib/db/schema";
-import { createWorkbench, type OperatorWorkbench } from "./service";
+import { createWorkbench, type CourierDraft, type OperatorWorkbench } from "./service";
 import { courierOutcome } from "./courier";
 import type { RunView } from "./read-model";
 
@@ -142,6 +142,22 @@ describe("courier submission", () => {
     expect(detail.runs[1].ledgerStatus).toBe("recorded");
     expect(detail.runs[1].ledgerStatus).not.toBe("aborted");
     expect(detail.summary.sealed).toBe(true);
+  });
+
+  it("projects the operator seal into the courier lifecycle", async () => {
+    const isolated = await createWorkbench({ scenarioIds: ["S1"], courierDrafts: true });
+    try {
+      const target = isolated.listCourierDrafts()[0];
+      await isolated.submitAsCourier(target.draftId, { signed: true });
+      await isolated.resolveHandoff(target.eventId, { action: "approve" });
+
+      const after = isolated.listCourierDrafts().find((item) => item.draftId === target.draftId) as
+        | CourierDraft
+        | undefined;
+      expect(after?.operatorSeal).toMatchObject({ operatorId: "OP-01", ledgerStatus: "recorded" });
+    } finally {
+      isolated.close();
+    }
   });
 
   /**

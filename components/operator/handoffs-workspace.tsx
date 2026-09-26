@@ -16,6 +16,7 @@ import {
   workspaceMetrics,
 } from "./handoffs-workspace-model";
 import { HandoffStateBadge } from "./status-badge";
+import { SimulatedClockLabel } from "./simulated-clock-label";
 
 type Summary = {
   automaticallyAccepted: number;
@@ -31,12 +32,14 @@ export function HandoffsWorkspace({
   allItems,
   summary,
   scenario,
+  clockAnchorIso,
 }: {
   mode: HandoffMode;
   queueItems: HandoffSummary[];
   allItems: HandoffSummary[];
   summary: Summary;
   scenario?: string;
+  clockAnchorIso?: string;
 }) {
   const [query, setQuery] = useState("");
   const source = mode === "inbox" ? queueItems : allItems;
@@ -73,6 +76,7 @@ export function HandoffsWorkspace({
               />
             </label>
             <span className="rounded-full bg-foreground px-3 py-2 text-xs font-semibold text-background">Priority order</span>
+            <SimulatedClockLabel anchorIso={clockAnchorIso} />
           </div>
 
           <div className="max-h-[66rem] overflow-auto p-4">

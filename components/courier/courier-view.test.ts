@@ -11,6 +11,7 @@ const drafts: CourierDraft[] = ["S0", "S1"].map((scenarioId, i) => ({
   title: `Delivery scan ${i}`, epc: `epc-${i}`, waybillNo: `WB-${i}`,
   recipientAddress: `KL address ${i}`, leg: "delivery", eventTime: "2026-09-16T10:00:00+08:00",
   eventId: `event-${i}`, attempts: [],
+  operatorSeal: null,
 }));
 
 describe("Courier prepared handoff workspace", () => {
@@ -60,5 +61,22 @@ describe("Courier prepared handoff workspace", () => {
     view.unmount();
     const history = render(createElement(CourierView, { initial: [{ ...drafts[0], attempts: [attempt, { ...attempt, run: { ...attempt.run, run: 2 } }] }] }));
     expect(history.getByText("Submission history")).toBeTruthy();
+  });
+
+  it("shows the operator seal as an unnumbered lifecycle step", () => {
+    const attempt: CourierDraft["attempts"][number] = {
+      run: { run: 1, eventHash: "test-hash", decision: null, halted: { at: "gate", reason: "PENDING_COSIGNATURE" }, sealed: false, ledgerStatus: null, credential: null, trace: [] },
+      outcome: { kind: "signature_insufficient", headline: "Signature valid, but insufficient", detail: "Waiting for an operator.", sealed: false, problems: [] },
+    };
+    const withSeal: CourierDraft = {
+      ...drafts[1],
+      attempts: [attempt],
+      operatorSeal: { operatorId: "OP-01", createdAt: "2026-09-08T10:01:00.000Z", ledgerStatus: "recorded" },
+    };
+
+    const view = render(createElement(CourierView, { initial: [withSeal] }));
+    expect(view.getByText("Operator co-signed and sealed")).toBeTruthy();
+    expect(view.getByText("OP-01")).toBeTruthy();
+    expect(view.getByText("Operator co-signed and sealed").parentElement?.textContent).not.toMatch(/#\s*2/);
   });
 });

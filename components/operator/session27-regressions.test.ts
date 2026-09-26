@@ -75,4 +75,11 @@ describe("operator detail truthfulness regressions", () => {
       "S2 and a sealed S1 already exercise the proposal path",
     ).not.toContain("proposal path unexercised by the current dataset");
   });
+
+  it("distinguishes an absent optional operator signature from a missing required one", () => {
+    const detail = source("components/operator/handoff-detail.tsx");
+    expect(detail).toContain("detail.summary.requiresCosign");
+    expect(detail).toContain('"not required"');
+    expect(detail).toContain("neutral");
+  });
 });

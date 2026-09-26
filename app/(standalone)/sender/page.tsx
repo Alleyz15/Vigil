@@ -21,15 +21,18 @@ export default async function SenderPage() {
   // the same sentence over the API, so both halves of the page describe the
   // coverage from one source.
   const serviceArea = serviceAreaSentence(loadServiceBoundary());
+  const policy = workbench.senderPolicy();
+  const clock = workbench.clockProvenance();
 
   return (
     <SenderShell identity={workbench.identities().sender} addressCount={addresses.length}>
-      <SenderForm addresses={addresses} policy={workbench.senderPolicy()} serviceArea={serviceArea} />
+      <SenderForm addresses={addresses} policy={policy} serviceArea={serviceArea} />
       <SenderShipments
         shipments={workbench.listSenderShipments().filter((s) => !s.delivered)}
         addresses={addresses}
+        clockAnchorIso={clock.anchorIso}
       />
-      <OnlineShipmentPanel />
+      <OnlineShipmentPanel policy={policy} />
     </SenderShell>
   );
 }

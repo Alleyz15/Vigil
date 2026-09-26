@@ -9,6 +9,7 @@ import { ProvenanceLabel } from "@/components/operator/provenance-label";
 import type { SenderShipmentView } from "@/lib/workbench/service";
 import type { SenderAddress } from "./sender-form";
 import { OnlineCorrectionControl } from "./online-correction-control";
+import { SimulatedClockLabel } from "@/components/operator/simulated-clock-label";
 
 /**
  * Shipments this sender has dispatched, and what they can still do about them.
@@ -26,9 +27,11 @@ import { OnlineCorrectionControl } from "./online-correction-control";
 export function SenderShipments({
   shipments,
   addresses,
+  clockAnchorIso,
 }: {
   shipments: SenderShipmentView[];
   addresses: SenderAddress[];
+  clockAnchorIso?: string;
 }) {
   const [visibleShipments, setVisibleShipments] = useState(shipments);
   const loadOnline = useCallback(async () => {
@@ -64,6 +67,7 @@ export function SenderShipments({
       <p className="mt-1 max-w-prose text-xs leading-5 text-muted-foreground">
         Pending delivery scans only — not complete shipment history or live tracking.
       </p>
+      <div className="mt-2"><SimulatedClockLabel anchorIso={clockAnchorIso} /></div>
       {visibleShipments.length === 0 && <p className="mt-4 text-sm text-muted-foreground">No pending delivery scans.</p>}
 
       <ul className="mt-4 flex flex-col gap-3">
