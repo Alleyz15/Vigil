@@ -14,15 +14,15 @@ import { cn } from "@/lib/utils";
 export type VerdictKind = "accept" | "flag" | "escalate" | "freeze" | "pending" | "halted";
 
 const STYLES: Record<VerdictKind, { label: string; className: string }> = {
-  accept: { label: "accept", className: "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30" },
-  flag: { label: "flag", className: "bg-amber-500/15 text-amber-300 ring-amber-500/30" },
+  accept: { label: "accept", className: "bg-emerald-500/15 text-emerald-800 ring-emerald-500/30 dark:text-emerald-300" },
+  flag: { label: "flag", className: "bg-amber-500/15 text-amber-800 ring-amber-500/30 dark:text-amber-300" },
   escalate: { label: "escalate", className: "bg-orange-500/15 text-orange-300 ring-orange-500/30" },
-  freeze: { label: "freeze", className: "bg-rose-500/15 text-rose-300 ring-rose-500/30" },
+  freeze: { label: "freeze", className: "bg-rose-500/15 text-rose-800 ring-rose-500/30 dark:text-rose-300" },
   // Dashed, because nothing was sealed. It reads as an open state rather than
   // an outcome, which is exactly what it is.
   pending: {
     label: "pending co-signature",
-    className: "bg-sky-500/15 text-sky-200 ring-sky-400/50 ring-dashed",
+    className: "bg-sky-500/15 text-sky-800 ring-sky-400/50 ring-dashed dark:text-sky-200",
   },
   halted: { label: "halted — nothing sealed", className: "bg-zinc-500/10 text-zinc-300 ring-zinc-500/30" },
 };

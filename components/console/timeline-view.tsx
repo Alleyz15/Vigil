@@ -203,7 +203,7 @@ function Controls({
       </Button>
 
       {scenario.exceptionLegIndex !== null && (
-        <Button size="sm" variant="ghost" onClick={onException} className="text-amber-300">
+        <Button size="sm" variant="ghost" onClick={onException} className="text-amber-800 dark:text-amber-300">
           <AlertTriangle data-icon="inline-start" />
           Jump to exception
         </Button>
@@ -282,7 +282,7 @@ function LegRow({
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-semibold">{stepLabel(leg.bizStep)}</span>
               {isException && (
-                <span className="inline-flex items-center gap-1 rounded bg-amber-400/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-amber-200 ring-1 ring-inset ring-amber-400/25">
+                <span className="inline-flex items-center gap-1 rounded bg-amber-400/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider text-amber-800 ring-1 ring-inset ring-amber-400/25 dark:text-amber-200">
                   <AlertTriangle className="size-3" aria-hidden="true" />
                   exception detected
                 </span>
@@ -304,10 +304,10 @@ function LegRow({
           <div className="w-44 shrink-0 text-right">
             <div className="text-xs text-muted-foreground">{leg.coverageLine ?? "—"}</div>
             {leg.neededCosign && !halted && (
-              <div className="mt-0.5 text-xs font-medium text-sky-300">handoff co-signed</div>
+              <div className="mt-0.5 text-xs font-medium text-sky-800 dark:text-sky-300">handoff co-signed</div>
             )}
             {leg.reroute?.status === "proposed" && (
-              <div className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-violet-300">
+              <div className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-violet-800 dark:text-violet-300">
                 <Route className="size-3" aria-hidden="true" />
                 reroute awaiting co-sign
               </div>
@@ -319,7 +319,7 @@ function LegRow({
             {/* A halt is not a decision, and the difference has to be legible
                 without expanding the leg. */}
             {halted && (
-              <div className="mt-2 inline-flex items-center rounded border border-dashed border-sky-400/50 bg-sky-400/[0.08] px-2 py-1 font-mono text-xs font-semibold uppercase leading-none text-sky-200">
+              <div className="mt-2 inline-flex items-center rounded border border-dashed border-sky-400/50 bg-sky-400/[0.08] px-2 py-1 font-mono text-xs font-semibold uppercase leading-none text-sky-800 dark:text-sky-200">
                 halted · nothing sealed
               </div>
             )}
@@ -346,7 +346,7 @@ function LegDetail({ leg }: { leg: LegView }) {
     <div className="border-t border-border/60 px-4 py-4">
       {leg.halted && (
         <div className="mb-4 rounded-md border border-sky-500/30 bg-sky-500/[0.06] px-3 py-2">
-          <div className="text-sm font-medium text-sky-300">
+          <div className="text-sm font-medium text-sky-800 dark:text-sky-300">
             Halted at <span className="font-mono">{leg.halted.at}</span> — {leg.halted.reason}
           </div>
           <div className="mt-1 text-sm leading-relaxed text-muted-foreground">
@@ -374,7 +374,7 @@ function LegDetail({ leg }: { leg: LegView }) {
       {leg.externalContext && (
         <Section title="External context">
           <div className="rounded-md border border-sky-500/25 bg-sky-500/[0.05] px-3 py-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-sky-200">
+            <div className="flex items-center gap-2 text-sm font-medium text-sky-800 dark:text-sky-200">
               <CloudRain className="size-4" aria-hidden="true" />
               {leg.externalContext.status === "available"
                 ? `${leg.externalContext.condition} · ${leg.externalContext.precipitationMm} mm`
@@ -401,11 +401,11 @@ function LegDetail({ leg }: { leg: LegView }) {
           {leg.reroute.status === "proposed" ? (
             <div className="rounded-md border border-violet-500/30 bg-violet-500/[0.06] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-violet-200">
+                <div className="flex items-center gap-2 text-sm font-medium text-violet-800 dark:text-violet-200">
                   <Route className="size-4" aria-hidden="true" />
                   {leg.reroute.targetLabel}
                 </div>
-                <span className="rounded border border-dashed border-violet-400/50 px-2 py-1 font-mono text-xs uppercase text-violet-200">
+                <span className="rounded border border-dashed border-violet-400/50 px-2 py-1 font-mono text-xs uppercase text-violet-800 dark:text-violet-200">
                   nothing approved · operator co-sign required
                 </span>
               </div>
@@ -431,7 +431,7 @@ function LegDetail({ leg }: { leg: LegView }) {
             {leg.flags.map((flag) => (
               <div key={`${flag.id}-${flag.label}`} className="rounded-md border border-border/50 px-3 py-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-xs text-amber-300">{flag.id}</span>
+                  <span className="font-mono text-xs text-amber-800 dark:text-amber-300">{flag.id}</span>
                   {flag.points > 0 && (
                     <span className="font-mono text-xs tabular-nums text-muted-foreground">
                       +{flag.points}
@@ -485,5 +485,4 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </div>
   );
 }
-
 

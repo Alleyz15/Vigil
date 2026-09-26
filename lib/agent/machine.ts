@@ -46,6 +46,7 @@ export async function runAgent(
   const ctx = createContext(input);
   ctx.modelRuntime = deps.llm?.runtime;
   const runDeps: NodeDeps = options.credential ? { ...deps, credential: options.credential } : deps;
+  const elapsedNow = runDeps.elapsedNow ?? (() => performance.now());
   let seq = 0;
 
   const emit = (frame: TraceFrame) => {
@@ -59,6 +60,7 @@ export async function runAgent(
     if (ctx.halted) break;
 
     const startedAt = deps.now();
+    const elapsedStartedAt = elapsedNow();
     emit({ type: "tool_start", seq: seq++, node, at: startedAt.toISOString() });
 
     try {
@@ -75,7 +77,7 @@ export async function runAgent(
         seq: seq++,
         node,
         at: endedAt.toISOString(),
-        durationMs: endedAt.getTime() - startedAt.getTime(),
+        durationMs: Math.max(0, elapsedNow() - elapsedStartedAt),
         error: message,
       });
       break;
@@ -87,7 +89,7 @@ export async function runAgent(
       seq: seq++,
       node,
       at: endedAt.toISOString(),
-      durationMs: endedAt.getTime() - startedAt.getTime(),
+      durationMs: Math.max(0, elapsedNow() - elapsedStartedAt),
       summary: summarize(node, ctx),
     });
   }

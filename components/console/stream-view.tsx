@@ -187,7 +187,7 @@ export function StreamView({
             <span className="font-mono">of {legCount}</span>
           </label>
 
-          {preparing && <span className="ml-auto text-sm text-sky-300">{preparing}…</span>}
+          {preparing && <span className="ml-auto text-sm text-sky-800 dark:text-sky-300">{preparing}…</span>}
         </div>
 
         <ol className="mt-4 space-y-2">
@@ -256,11 +256,11 @@ function NodeRow({ index, name, state, modelRuntime }: { index: number; name: No
 
         <span className="ml-auto flex items-center gap-3">
           {state.score !== undefined && (
-            <span className="font-mono text-xs tabular-nums text-amber-300">{state.score}</span>
+            <span className="font-mono text-xs tabular-nums text-amber-800 dark:text-amber-300">{state.score}</span>
           )}
           {state.durationMs !== undefined && (
             <span className="font-mono text-xs tabular-nums text-muted-foreground">
-              {state.durationMs}ms
+              {durationLabel(state.durationMs)}
             </span>
           )}
           <StatusDot status={state.status} />
@@ -272,7 +272,7 @@ function NodeRow({ index, name, state, modelRuntime }: { index: number; name: No
           {state.flags!.map((flag) => (
             <span
               key={flag}
-              className="rounded bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-amber-300"
+              className="rounded bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-amber-800 dark:text-amber-300"
             >
               {flag}
             </span>
@@ -285,21 +285,26 @@ function NodeRow({ index, name, state, modelRuntime }: { index: number; name: No
       )}
 
       {name === "external_context" && state.status === "done" && state.detail && (
-        <div className="mt-2 pl-8 text-xs leading-relaxed text-sky-200">
+        <div className="mt-2 pl-8 text-xs leading-relaxed text-sky-800 dark:text-sky-200">
           {String(state.detail.summary ?? "Weather lookup was not selected.")}
         </div>
       )}
 
       {/* Shown honestly as a stub where it is one. */}
       {isModelNode && state.status === "done" && modelRuntime && (
-        <div className="mt-2 pl-8 text-xs text-zinc-500 italic">
+        <div className="mt-2 pl-8 text-xs text-muted-foreground italic">
           {fallback ? rejection ?? modelRuntime.reason : `Model ${modelRuntime.modelId} ran at this node.`}
         </div>
       )}
 
-      {state.error && <div className="mt-2 pl-8 text-xs text-rose-300">{state.error}</div>}
+      {state.error && <div className="mt-2 pl-8 text-xs text-red-700 dark:text-rose-300">{state.error}</div>}
     </li>
   );
+}
+
+function durationLabel(durationMs: number): string {
+  if (durationMs > 0 && durationMs < 1) return "<1ms";
+  return `${Math.round(durationMs)}ms`;
 }
 
 function StatusDot({ status }: { status: NodeState["status"] }) {
@@ -344,7 +349,7 @@ function ResultPanel({ result }: { result: ResultState | null }) {
 
       {halted && (
         <div className="mt-3 rounded-md border border-sky-500/30 bg-sky-500/[0.06] px-3 py-2 text-sm leading-relaxed">
-          <div className="font-medium text-sky-300">
+          <div className="font-medium text-sky-800 dark:text-sky-300">
             Stopped at <span className="font-mono">{result.halted!.at}</span>
           </div>
           <div className="mt-1 text-muted-foreground">

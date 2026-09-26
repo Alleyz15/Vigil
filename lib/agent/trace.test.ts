@@ -100,6 +100,28 @@ describe("ordering and timing", () => {
     }
   });
 
+  it("measures elapsed time independently of the frozen business clock", async () => {
+    const w = seedWorld();
+    let elapsed = 0;
+    const deps = {
+      ...w.deps,
+      now: () => new Date("2026-09-08T02:15:30.000Z"),
+      elapsedNow: () => (elapsed += 0.25),
+    } as typeof w.deps & { elapsedNow: () => number };
+
+    try {
+      const ctx = await runSigned(makeAgentEvent(), w, { deps });
+      const ends = ctx.trace.filter((frame) => frame.type === "tool_end");
+      expect(ends).toHaveLength(NODES.length);
+      for (const end of ends) expect(end.durationMs).toBe(0.25);
+      expect(new Set(ctx.trace.map((frame) => frame.at))).toEqual(
+        new Set(["2026-09-08T02:15:30.000Z"]),
+      );
+    } finally {
+      rmSync(w.dir, { recursive: true, force: true });
+    }
+  });
+
   it("streams frames to the consumer in the same order they are recorded", async () => {
     const streamed: number[] = [];
     const ctx = await runSigned(makeAgentEvent(), world, {

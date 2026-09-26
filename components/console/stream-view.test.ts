@@ -48,3 +48,38 @@ it("names the exact model carried by a completed model node", async () => {
 
   await waitFor(() => expect(view.getByText("Model gemini-3.5-flash-lite ran at this node.")).toBeTruthy());
 });
+
+it("shows sub-millisecond work without rounding it to zero", async () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const view = render(createElement(StreamView, { scenarioId: "S6", legCount: 6, defaultLeg: 5 }));
+  fireEvent.click(view.getByRole("button", { name: "Run" }));
+  instances[0].emit("tool_end", { node: "parse", durationMs: 0.25, summary: {} });
+  await waitFor(() => expect(view.getByText("<1ms")).toBeTruthy());
+  expect(view.queryByText("0ms")).toBeNull();
+});
+
+it("uses light-surface contrast for replay detail, fallback and error lines", async () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const view = render(createElement(StreamView, { scenarioId: "S6", legCount: 6, defaultLeg: 5 }));
+  fireEvent.click(view.getByRole("button", { name: "Run" }));
+  instances[0].emit("tool_end", {
+    node: "external_context",
+    durationMs: 1,
+    summary: { detail: { summary: "Regional conditions: Partly cloudy." } },
+  });
+  instances[0].emit("tool_end", {
+    node: "plan",
+    durationMs: 1,
+    summary: {
+      detail: {
+        model: { selection: "none", modelId: null, mode: "disabled", reason: "No model configured." },
+        rejection: "No model configured — deterministic heuristic ran.",
+      },
+    },
+  });
+
+  const weather = await view.findByText("Regional conditions: Partly cloudy.");
+  const fallback = await view.findByText(/deterministic heuristic ran/i);
+  expect(weather.className).toContain("text-sky-800");
+  expect(fallback.className).toContain("text-muted-foreground");
+});

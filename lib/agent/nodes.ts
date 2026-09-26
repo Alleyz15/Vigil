@@ -50,6 +50,8 @@ export type NodeDeps = {
   ledger: NonceLedger;
   /** Injected so tests are not at the mercy of the wall clock. */
   now: () => Date;
+  /** Monotonic elapsed-time source; unlike the simulated world clock, this advances. */
+  elapsedNow?: () => number;
   /**
    * The LLM seam. Absent means no model is available, which is the normal case
    * today. Whatever this returns, it CANNOT change a verdict — see the parity
