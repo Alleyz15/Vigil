@@ -25,6 +25,12 @@ describe("shipment map projection", () => {
       "out_for_delivery",
       "delivery",
     ]);
+    expect(model.locations.map((location) => location.kind)).toEqual([
+      "origin_depot",
+      "destination_depot",
+      "delivery",
+    ]);
+    expect(model.locations).toHaveLength(3);
   });
 
   it("links S1 claimed GPS and independently located cell evidence to I1", () => {

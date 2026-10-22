@@ -165,6 +165,8 @@ export type ExplainOutcome = {
   rejection?: string;
   /** Citations that were not in the collected evidence. Counted by experiment 5. */
   hallucinatedCitations?: string[];
+  /** Present only when the model response passed every citation and decision check. */
+  citations?: string[];
 };
 
 /**
@@ -263,5 +265,6 @@ export async function explainVerdict(
   return {
     explanation: coverage ? `${prose} (${coverage}.)` : prose,
     fromFallback: false,
+    citations: parsed.citations,
   };
 }

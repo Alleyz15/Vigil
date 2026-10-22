@@ -83,3 +83,12 @@ it("uses light-surface contrast for replay detail, fallback and error lines", as
   expect(weather.className).toContain("text-sky-800");
   expect(fallback.className).toContain("text-muted-foreground");
 });
+
+it("shows structured agent activity without promising chain-of-thought", () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const view = render(createElement(StreamView, { scenarioId: "S1", legCount: 6, defaultLeg: 5 }));
+
+  expect(view.getByText("Agent activity")).toBeTruthy();
+  expect(view.queryByText(/thoughts/i)).toBeNull();
+  expect(view.getByText(/structured node events only/i)).toBeTruthy();
+});

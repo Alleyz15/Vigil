@@ -678,6 +678,7 @@ export const explain: NodeFn = async (ctx, deps) => {
   ctx.explanation = outcome.explanation;
   ctx.explanationFromFallback = outcome.fromFallback;
   ctx.explanationRejection = outcome.rejection;
+  ctx.explanationCitations = outcome.citations;
   ctx.hallucinatedCitations = outcome.hallucinatedCitations;
 
   // The verdict was sealed at `gate`. This only attaches prose to it, so a

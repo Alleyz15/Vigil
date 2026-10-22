@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { along, length, lineString } from "@turf/turf";
-import { useReducedMotion } from "motion/react";
+import { useEffect } from "react";
 import {
   Circle,
   CircleMarker,
@@ -12,21 +10,10 @@ import {
   Tooltip,
   useMap,
 } from "react-leaflet";
-import type { MapOverlay, MapPoint, ShipmentMapModel } from "@/lib/workbench";
-import { clampAnimationProgress, initialViewport } from "./shipment-map-animation";
+import type { MapLocation, MapOverlay, MapPoint, ShipmentMapModel } from "@/lib/workbench";
 
-/**
- * Three kinds of line, told apart WITHOUT reading a tooltip.
- *
- * The route is what happened; the contradiction is the accusation. When both
- * were saturated and the same weight, a viewer could not tell which line was
- * the argument — they read as one network diagram. So the route recedes to a
- * neutral grey and the contradiction is the only coloured, dashed, heavy line
- * on the map. Weight and dash carry it; colour alone would not survive
- * compression or a colour-blind viewer.
- */
+/** Operational places are markers. Lines are reserved for evidence conflicts. */
 const ROUTE_COLOR = "#64748b";
-const FUTURE_COLOR = "#cbd5e1";
 const ALERT_COLOR = "#c24138";
 const CONTEXT_COLOR = "#16778a";
 
@@ -36,107 +23,50 @@ function latLng(point: MapPoint): [number, number] {
 
 function Viewport({
   model,
-  activeLegIndex,
   revealOverlays,
 }: {
   model: ShipmentMapModel;
-  activeLegIndex: number;
   revealOverlays: boolean;
 }) {
   const map = useMap();
-  const initialized = useRef(false);
-  /**
-   * The CAMERA respects reduced motion, not only the marker.
-   *
-   * The moving marker below already checked this; the camera moves did not, so
-   * a viewer who asked their OS for less motion still got a swooping `flyTo`
-   * across the city every time a leg changed. Found while chasing a capture
-   * defect — headless Chrome's virtual time never completes that animation, so
-   * the committed stale-record frame showed overlays at the final zoom with no
-   * tiles underneath — which is a reminder that a motion bug can hide inside
-   * what looks like a tooling bug.
-   */
-  const reducedMotion = useReducedMotion();
-  const active = model.route.find((leg) => leg.legIndex === activeLegIndex)?.point;
-  const activeLatitude = active?.latitude;
-  const activeLongitude = active?.longitude;
 
   useEffect(() => {
-    const points = model.route.flatMap((leg) => (leg.point ? [latLng(leg.point)] : []));
+    const points = model.locations.map((location) => latLng(location.point));
     const evidencePoints = revealOverlays
-      ? model.overlays.flatMap((feature) => (feature.point ? [latLng(feature.point)] : []))
+      ? model.overlays.flatMap((feature) =>
+          feature.points?.length
+            ? feature.points.map(latLng)
+            : feature.point
+              ? [latLng(feature.point)]
+              : [],
+        )
       : [];
-    if (!initialized.current) {
-      initialized.current = true;
-      const initial = initialViewport({
-        routePointCount: points.length,
-        evidencePointCount: evidencePoints.length,
-        revealOverlays,
-      });
-      if (initial === "evidence") {
-        map.fitBounds(evidencePoints, { padding: [54, 54], animate: false });
-        return;
-      }
-      if (initial === "route") {
-        map.fitBounds(points, { padding: [36, 36], animate: false });
-        return;
-      }
-      if (activeLatitude !== undefined && activeLongitude !== undefined) {
-        map.setView([activeLatitude, activeLongitude], 15, { animate: false });
-        return;
-      }
-    }
-    if (evidencePoints.length > 1) {
-      map.fitBounds(evidencePoints, { padding: [54, 54], animate: !reducedMotion, duration: 0.35 });
-      return;
-    }
-    if (activeLatitude !== undefined && activeLongitude !== undefined) {
-      if (reducedMotion) map.setView([activeLatitude, activeLongitude], 15, { animate: false });
-      else map.flyTo([activeLatitude, activeLongitude], 15, { duration: 0.35 });
-    }
-  }, [activeLatitude, activeLongitude, activeLegIndex, map, model.overlays, model.route, revealOverlays, reducedMotion]);
+    const focus = evidencePoints.length > 1 ? evidencePoints : points;
+    if (focus.length > 1) map.fitBounds(focus, { padding: [82, 72], animate: false });
+    else if (focus[0]) map.setView(focus[0], 15, { animate: false });
+  }, [map, model.locations, model.overlays, revealOverlays]);
 
   return null;
 }
 
-function AnimatedVehicle({ point }: { point: MapPoint }) {
-  const reducedMotion = useReducedMotion();
-  const previous = useRef(point);
-  const [display, setDisplay] = useState(point);
-
-  useEffect(() => {
-    const from = previous.current;
-    previous.current = point;
-    if (reducedMotion || (from.latitude === point.latitude && from.longitude === point.longitude)) {
-      setDisplay(point);
-      return;
-    }
-
-    const path = lineString([
-      [from.longitude, from.latitude],
-      [point.longitude, point.latitude],
-    ]);
-    const distance = length(path);
-    const started = performance.now();
-    let frame = 0;
-    const tick = (now: number) => {
-      const progress = clampAnimationProgress((now - started) / 420);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const coordinate = along(path, distance * eased).geometry.coordinates;
-      setDisplay({ latitude: coordinate[1], longitude: coordinate[0] });
-      if (progress < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [point, reducedMotion]);
-
+function LocationFeature({ location }: { location: MapLocation }) {
+  const sender = location.kind === "sender_reference";
+  const delivery = location.kind === "delivery";
+  const direction = sender ? "bottom" : "top";
   return (
     <CircleMarker
-      center={latLng(display)}
-      radius={7}
-      pathOptions={{ color: "#ffffff", weight: 3, fillColor: ROUTE_COLOR, fillOpacity: 1 }}
+      center={latLng(location.point)}
+      radius={delivery ? 9 : sender ? 7 : 6}
+      pathOptions={{
+        color: sender ? ROUTE_COLOR : "#ffffff",
+        weight: sender ? 2 : 3,
+        fillColor: delivery ? "#047857" : sender ? "#ffffff" : ROUTE_COLOR,
+        fillOpacity: sender ? 0.35 : 1,
+      }}
     >
-      <Tooltip direction="top" offset={[0, -6]}>Current vehicle position</Tooltip>
+      <Tooltip permanent direction={direction} offset={[0, -6]}>
+        <strong>{location.mapLabel}</strong>
+      </Tooltip>
     </CircleMarker>
   );
 }
@@ -240,8 +170,9 @@ export function ShipmentMapClient({
   onSelectEvidence: (id: string | null) => void;
 }) {
   const positioned = model.route.filter((leg): leg is typeof leg & { point: MapPoint } => Boolean(leg.point));
-  const current = positioned.find((leg) => leg.legIndex === activeLegIndex)?.point ?? positioned.at(-1)?.point;
-  const segments = positioned.slice(1).map((leg, index) => ({ from: positioned[index], to: leg }));
+  const current = model.locations.find((location) => location.kind === "delivery")?.point
+    ?? positioned.find((leg) => leg.legIndex === activeLegIndex)?.point
+    ?? positioned.at(-1)?.point;
 
   if (!current) {
     return <div className="flex h-[430px] items-center justify-center bg-muted text-sm text-muted-foreground">No coordinate evidence is available.</div>;
@@ -254,29 +185,8 @@ export function ShipmentMapClient({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <Viewport model={model} activeLegIndex={activeLegIndex} revealOverlays={revealOverlays} />
-        {segments.map(({ from, to }) => (
-          <Polyline
-            key={`${from.eventId}-${to.eventId}`}
-            positions={[latLng(from.point), latLng(to.point)]}
-            pathOptions={{
-              color: to.legIndex <= activeLegIndex ? ROUTE_COLOR : FUTURE_COLOR,
-              weight: to.legIndex === activeLegIndex ? 5 : 3,
-              opacity: to.legIndex <= activeLegIndex ? 0.92 : 0.48,
-            }}
-          />
-        ))}
-        {positioned.map((leg) => (
-          <CircleMarker
-            key={leg.eventId}
-            center={latLng(leg.point)}
-            radius={leg.legIndex === activeLegIndex ? 6 : 4}
-            eventHandlers={{ click: () => onSelectEvidence(null) }}
-            pathOptions={{ color: "#ffffff", weight: 2, fillColor: leg.legIndex <= activeLegIndex ? ROUTE_COLOR : FUTURE_COLOR, fillOpacity: 1 }}
-          >
-            <Tooltip>{leg.leg.replaceAll("_", " ")}</Tooltip>
-          </CircleMarker>
-        ))}
+        <Viewport model={model} revealOverlays={revealOverlays} />
+        {model.locations.map((location) => <LocationFeature key={location.id} location={location} />)}
         {revealOverlays && model.overlays.map((feature) => (
           <OverlayFeature
             key={feature.id}
@@ -285,7 +195,6 @@ export function ShipmentMapClient({
             onSelect={() => onSelectEvidence(feature.evidenceId)}
           />
         ))}
-        <AnimatedVehicle point={current} />
       </MapContainer>
 
       {revealOverlays && model.notices.length > 0 && (

@@ -86,7 +86,6 @@ export function StreamView({
   defaultLeg: number;
 }) {
   const [nodes, setNodes] = useState(blank);
-  const [thoughts, setThoughts] = useState<{ node: string; text: string }[]>([]);
   const [result, setResult] = useState<ResultState | null>(null);
   const [preparing, setPreparing] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -107,7 +106,6 @@ export function StreamView({
   const start = useCallback(() => {
     stop();
     setNodes(blank());
-    setThoughts([]);
     setResult(null);
     setFailure(null);
     setModelRuntime(null);
@@ -145,11 +143,6 @@ export function StreamView({
           error: frame.error,
         },
       }));
-    });
-
-    source.addEventListener("thought", (e) => {
-      const frame = JSON.parse((e as MessageEvent).data);
-      setThoughts((prev) => [...prev, { node: frame.node, text: frame.text }]);
     });
 
     source.addEventListener("result", (e) => {
@@ -206,22 +199,14 @@ export function StreamView({
         <ResultPanel result={result} />
 
         <div className="rounded-lg border border-border/60 bg-card/40 p-4">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">
-            Thoughts ({thoughts.length})
-          </div>
-          {thoughts.length === 0 ? (
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              The only frame a model ever authors. None yet{modelRuntime ? ` — ${modelRuntime.reason}` : "."}
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Agent activity</div>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Structured node events only: status, duration, selected tools, coverage and result. No chain-of-thought is requested or displayed.
+          </p>
+          {modelRuntime && (
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              {modelRuntime.modelId ? `Model ${modelRuntime.modelId}` : "No model"} · {modelRuntime.reason}
             </p>
-          ) : (
-            <ul className="mt-2 space-y-2">
-              {thoughts.map((t, i) => (
-                <li key={i} className="text-sm leading-relaxed">
-                  <span className="font-mono text-xs text-muted-foreground">{t.node}</span>
-                  <div>{t.text}</div>
-                </li>
-              ))}
-            </ul>
           )}
         </div>
       </aside>

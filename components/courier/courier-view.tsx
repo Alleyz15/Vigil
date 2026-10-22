@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw, MapPin, Package, PenLine, Shield } from "lucide-react";
 import type { CourierOutcome, CourierOutcomeKind } from "@/lib/workbench/courier";
-import type { CourierDraft } from "@/lib/workbench/service";
+import type { CourierQueueItem, CourierWorkspaceView } from "@/lib/workbench/service";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
+import { CourierShell } from "@/components/shells/courier-shell";
+import { RouteSummary } from "@/components/shipment/route-summary";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,31 +31,64 @@ const TONE: Record<CourierOutcomeKind, { ring: string; text: string; Icon: typeo
   undecided: { ring: "border-muted bg-muted/30", text: "text-muted-foreground", Icon: CircleDashed },
 };
 
-type Attempt = CourierDraft["attempts"][number];
+type Attempt = CourierQueueItem["attempts"][number];
 
-export function CourierView({ initial }: { initial: CourierDraft[] }) {
-  const [drafts, setDrafts] = useState(initial);
+export function CourierView({ initial }: { initial: CourierWorkspaceView }) {
+  const [workspace, setWorkspace] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState(initial[0]?.draftId ?? null);
-  const selected = drafts.find((draft) => draft.draftId === selectedId) ?? drafts[0];
+  const [selectedId, setSelectedId] = useState(initial.items[0]?.handoffId ?? null);
+  const selected = workspace.items.find((item) => item.handoffId === selectedId) ?? workspace.items[0];
 
-  async function submit(draftId: string, signed: boolean) {
-    setBusy(`${draftId}:${signed}`);
+  async function refreshWorkspace() {
+    const listing = await fetch("/api/courier/handoffs", { cache: "no-store" });
+    if (!listing.ok) {
+      throw new Error("Could not refresh the handoff listing. Submission may have completed; reload before retrying.");
+    }
+    const next = (await listing.json()) as CourierWorkspaceView;
+    setWorkspace(next);
+    setSelectedId((current) =>
+      current && next.items.some((item) => item.handoffId === current)
+        ? current
+        : (next.items[0]?.handoffId ?? null),
+    );
+  }
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const listing = await fetch("/api/courier/handoffs", { cache: "no-store" });
+        if (!listing.ok) throw new Error("Could not load the courier handoff queue.");
+        const next = (await listing.json()) as CourierWorkspaceView;
+        if (!active) return;
+        setWorkspace(next);
+        setSelectedId((current) =>
+          current && next.items.some((item) => item.handoffId === current)
+            ? current
+            : (next.items[0]?.handoffId ?? null),
+        );
+      } catch (caught) {
+        if (active) setError((caught as Error).message);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function submit(handoffId: string, signed: boolean) {
+    setBusy(`${handoffId}:${signed}`);
     setError(null);
     try {
-      const response = await fetch(`/api/courier/drafts/${draftId}/submit`, {
+      const response = await fetch(`/api/courier/handoffs/${encodeURIComponent(handoffId)}/submit`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ signed }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "submission failed");
-
-      const listing = await fetch("/api/courier/drafts", { cache: "no-store" });
-      if (!listing.ok) throw new Error("Could not refresh the handoff listing. Submission may have completed; reload before retrying.");
-      const { items } = (await listing.json()) as { items: CourierDraft[] };
-      setDrafts(items);
+      await refreshWorkspace();
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
@@ -62,6 +97,7 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
   }
 
   return (
+    <CourierShell identity={workspace.identity}>
     <div>
       <h1 className="text-2xl font-semibold">Your handoffs</h1>
       <p className="mt-1 text-sm text-muted-foreground">
@@ -69,7 +105,7 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <ProvenanceLabel>Seeded synthetic shipments</ProvenanceLabel>
+        <ProvenanceLabel>Seeded and sender-dispatched synthetic handoffs</ProvenanceLabel>
       </div>
 
       {error && (
@@ -80,54 +116,62 @@ export function CourierView({ initial }: { initial: CourierDraft[] }) {
 
       <div className="courier-workspace mt-6">
       <section aria-label="Prepared delivery scans" className="min-w-0 overflow-hidden rounded-lg border bg-card">
-        <div className="border-b p-5"><h2 className="text-sm font-semibold">Prepared delivery scans <Badge variant="secondary" className="ml-2">{drafts.length} drafts</Badge></h2></div>
+        <div className="border-b p-5"><h2 className="text-sm font-semibold">Prepared delivery scans <Badge variant="secondary" className="ml-2">{workspace.items.length} handoffs</Badge></h2></div>
       <ul>
-        {drafts.map((draft) => (
-          <li key={draft.draftId} className="border-b">
-            <button type="button" aria-pressed={selected?.draftId === draft.draftId} onClick={() => setSelectedId(draft.draftId)} className={cn("w-full p-5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary", selected?.draftId === draft.draftId && "bg-sidebar-accent")}>
-              <span className="block text-sm font-semibold">{draft.title}</span>
-              <span className="mt-3 flex items-center gap-2 font-mono text-xs"><Package aria-hidden="true" className="size-4 shrink-0" />{draft.waybillNo}</span>
-              <span className="mt-2 flex items-start gap-2 text-xs text-muted-foreground"><MapPin aria-hidden="true" className="size-4 shrink-0" />{draft.recipientAddress}</span>
-              <span className="mt-3 block font-mono text-xs text-muted-foreground">{draft.scenarioId} · {draft.leg}</span>
+        {workspace.items.map((item) => (
+          <li key={item.handoffId} className="border-b">
+            <button type="button" aria-pressed={selected?.handoffId === item.handoffId} onClick={() => setSelectedId(item.handoffId)} className={cn("w-full p-5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary", selected?.handoffId === item.handoffId && "bg-sidebar-accent")}>
+              <span className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{item.title}</span><Badge variant="outline" className="text-xs font-normal">{sourceLabel(item.source)}</Badge></span>
+              <span className="mt-3 flex items-center gap-2 font-mono text-xs"><Package aria-hidden="true" className="size-4 shrink-0" />{item.waybillNo}</span>
+              <span className="mt-2 flex items-start gap-2 text-xs text-muted-foreground"><MapPin aria-hidden="true" className="size-4 shrink-0" />{item.route.destination.label}</span>
+              <span className="mt-3 block font-mono text-xs text-muted-foreground">{item.runId} · {item.leg}</span>
+              {item.fault && item.fault !== "none" && <span className="mt-2 block text-xs text-amber-700">Demo injection · {item.fault}</span>}
             </button>
           </li>
         ))}
       </ul>
       <p className="flex gap-2 p-5 text-xs leading-5 text-muted-foreground"><Shield aria-hidden="true" className="mt-0.5 size-4 shrink-0" />The courier supplies evidence and a device signature. The verifier owns the decision.</p>
       </section>
-      {selected ? <DraftCard draft={selected} busy={busy} onSubmit={(signed) => submit(selected.draftId, signed)} /> : <p className="p-5 text-sm text-muted-foreground">No prepared delivery scans available.</p>}
+      {selected ? <HandoffCard item={selected} busy={busy} onSubmit={(signed) => submit(selected.handoffId, signed)} /> : <p className="p-5 text-sm text-muted-foreground">No prepared delivery scans available.</p>}
       </div>
     </div>
+    </CourierShell>
   );
 }
 
-function DraftCard({
-  draft,
+function sourceLabel(source: CourierQueueItem["source"]): string {
+  if (source === "registered") return "Sender · registered point";
+  if (source === "online") return "Sender · point-to-point";
+  return "Seeded scenario";
+}
+
+function HandoffCard({
+  item,
   busy,
   onSubmit,
 }: {
-  draft: CourierDraft;
+  item: CourierQueueItem;
   busy: string | null;
   onSubmit: (signed: boolean) => void;
 }) {
-  const latest = draft.attempts.at(-1);
-  const sealed = draft.attempts.some((attempt: Attempt) => attempt.outcome.sealed);
+  const latest = item.attempts.at(-1);
+  const sealed = item.attempts.some((attempt: Attempt) => attempt.outcome.sealed);
 
   return (
     <section aria-label="Selected handoff" className="min-w-0 overflow-hidden rounded-lg border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b p-5">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold">{draft.title}</h2>
-          <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{draft.eventId}</p>
+          <h2 className="text-sm font-semibold">{item.title}</h2>
+          <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{item.eventId}</p>
         </div>
         <Badge variant="outline" className="font-mono text-xs font-normal">
-          {draft.scenarioId} · {draft.leg}
+          {item.runId} · {item.leg}
         </Badge>
       </div>
-      <dl className="grid gap-5 border-b p-5 sm:grid-cols-3">
-        <div className="min-w-0"><dt className="text-xs text-muted-foreground">Waybill</dt><dd className="mt-2 break-all font-mono text-xs">{draft.waybillNo}</dd></div>
-        <div className="min-w-0"><dt className="text-xs text-muted-foreground">Recipient address</dt><dd className="mt-2 text-sm">{draft.recipientAddress}</dd></div>
-        <div className="min-w-0"><dt className="text-xs text-muted-foreground">EPCIS leg</dt><dd className="mt-2 text-sm">{draft.leg} · {draft.scenarioId}</dd></div>
+      <dl className="grid gap-5 border-b p-5 sm:grid-cols-[minmax(8rem,0.65fr)_minmax(0,2fr)_minmax(8rem,0.85fr)]">
+        <div className="min-w-0"><dt className="text-xs text-muted-foreground">Waybill</dt><dd className="mt-2 break-all font-mono text-xs">{item.waybillNo}</dd></div>
+        <div className="min-w-0"><dt className="sr-only">Route</dt><dd><RouteSummary route={item.route} /></dd></div>
+        <div className="min-w-0"><dt className="text-xs text-muted-foreground">EPCIS leg</dt><dd className="mt-2 text-sm">{item.leg} · {item.runId}</dd></div>
       </dl>
       <div className="p-5"><h3 className="flex items-center gap-2 text-sm font-semibold"><PenLine aria-hidden="true" className="size-4 text-primary" />Courier device signature</h3>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">The credential travels alongside the unchanged EPCIS event, never inside it.</p>
@@ -136,7 +180,7 @@ function DraftCard({
           <PenLine aria-hidden="true" className="size-4" />
           {sealed ? "Submit again" : "Sign and submit"}
         </Button>
-        {!sealed && draft.attempts.length === 0 && (
+        {!sealed && item.attempts.length === 0 && (
           <Button size="sm" variant="outline" onClick={() => onSubmit(false)} disabled={busy !== null}>
             Submit without signing
           </Button>
@@ -150,8 +194,8 @@ function DraftCard({
       </div>
 
       {latest && <OutcomePanel outcome={latest.outcome} />}
-      {(draft.attempts.length > 1 || draft.operatorSeal) && (
-        <AttemptHistory attempts={draft.attempts} operatorSeal={draft.operatorSeal} />
+      {(item.attempts.length > 1 || item.operatorSeal) && (
+        <AttemptHistory attempts={item.attempts} operatorSeal={item.operatorSeal} />
       )}
     </section>
   );
@@ -213,7 +257,7 @@ function AttemptHistory({
   operatorSeal,
 }: {
   attempts: Attempt[];
-  operatorSeal: CourierDraft["operatorSeal"];
+  operatorSeal: CourierQueueItem["operatorSeal"];
 }) {
   const firstPostSeal = attempts.findIndex((attempt) => attempt.run.ledgerStatus === "noop");
   const beforeSeal = firstPostSeal === -1 ? attempts : attempts.slice(0, firstPostSeal);

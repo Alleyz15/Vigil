@@ -259,6 +259,7 @@ describe("citations are checked against what was actually collected", () => {
 
     expect(outcome.fromFallback).toBe(false);
     expect(outcome.explanation).toMatch(/did not verify/);
+    expect(outcome.citations).toEqual(["C1"]);
     expect(telemetry.explain.accepted).toBe(1);
   });
 

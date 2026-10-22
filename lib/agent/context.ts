@@ -218,6 +218,8 @@ export type AgentContext = {
   explanationFromFallback?: boolean;
   /** Why a model's explanation was refused, when one was asked and refused. */
   explanationRejection?: string;
+  /** Evidence ids accepted with the model-authored explanation. Empty for fallback prose. */
+  explanationCitations?: string[];
   /** Evidence ids the model cited that this run never collected. */
   hallucinatedCitations?: string[];
 

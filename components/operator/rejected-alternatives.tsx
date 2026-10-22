@@ -75,21 +75,27 @@ export function PlanAlternatives({
     <section>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">Context tools considered</h3>
-        <ProvenanceLabel>{modelChose ? "selected by the model" : "deterministic heuristic"}</ProvenanceLabel>
+        <ProvenanceLabel>{modelChose ? "deterministic comparison" : "deterministic heuristic"}</ProvenanceLabel>
       </div>
 
       {modelChose && (
         <p className="mb-2 text-xs leading-5 text-muted-foreground">
           The model selected{" "}
           <span className="font-mono">{selectedTools.join(", ") || "no tools"}</span>. The rows below
-          are what the deterministic heuristic would have chosen and why — shown for comparison, not
-          as the model&rsquo;s reasoning. Either way the verdict is identical.
+          are the independently derived deterministic choice and reasons — shown for comparison, not
+          attributed to the model. Either way the verdict is identical.
         </p>
       )}
 
       <ul className="divide-y rounded-md border px-3">
         {considered.map((entry) => (
-          <Row key={entry.tool} selected={entry.selected} title={entry.tool} reason={entry.reason} />
+          <Row
+            key={entry.tool}
+            selected={entry.selected}
+            title={entry.tool}
+            reason={entry.reason}
+            meta={modelChose ? (entry.selected ? "heuristic would select" : "heuristic would skip") : undefined}
+          />
         ))}
       </ul>
     </section>

@@ -11,6 +11,17 @@ export type RouteLeg = {
   point: MapPoint | null;
 };
 
+export type MapLocation = {
+  id: string;
+  kind: "sender_reference" | "origin_depot" | "destination_depot" | "delivery";
+  label: string;
+  /** Compact permanent map label; full addresses remain in the journey summary. */
+  mapLabel: string;
+  detail: string;
+  point: MapPoint;
+  monitored: boolean;
+};
+
 export type MapOverlay = {
   id: string;
   kind: "marker" | "circle" | "line" | "polygon";
@@ -35,6 +46,8 @@ export type MapNotice = {
 
 export type ShipmentMapModel = {
   route: RouteLeg[];
+  /** Semantic places, not turn-by-turn navigation or one marker per scan. */
+  locations: MapLocation[];
   overlays: MapOverlay[];
   notices: MapNotice[];
 };
@@ -60,6 +73,49 @@ function baseRoute(scenario: GeneratedScenario): RouteLeg[] {
     bizStep: suffix(built.event.bizStep),
     point: gpsPoint(built.event),
   }));
+}
+
+function defaultLocations(route: RouteLeg[]): MapLocation[] {
+  const positioned = route.filter((leg): leg is RouteLeg & { point: MapPoint } => Boolean(leg.point));
+  const origin = positioned[0];
+  const destinationDepot = positioned.find((leg) => leg.leg === "linehaul_arrival") ?? positioned.at(-2);
+  const delivery = positioned.find((leg) => leg.leg === "delivery") ?? positioned.at(-1);
+  const locations: MapLocation[] = [];
+
+  if (origin) {
+    locations.push({
+      id: "origin-depot",
+      kind: "origin_depot",
+      label: "Origin depot",
+      mapLabel: "Origin depot",
+      detail: "Carrier custody begins here.",
+      point: origin.point,
+      monitored: true,
+    });
+  }
+  if (destinationDepot) {
+    locations.push({
+      id: "destination-depot",
+      kind: "destination_depot",
+      label: "Destination depot",
+      mapLabel: "Destination depot",
+      detail: "Last-mile dispatch begins here.",
+      point: destinationDepot.point,
+      monitored: true,
+    });
+  }
+  if (delivery) {
+    locations.push({
+      id: "delivery",
+      kind: "delivery",
+      label: "Delivery scan",
+      mapLabel: "Delivery",
+      detail: "Reported final handoff position.",
+      point: delivery.point,
+      monitored: true,
+    });
+  }
+  return locations;
 }
 
 function s1Overlays(scenario: GeneratedScenario, world: GeneratedWorld): MapOverlay[] {
@@ -218,8 +274,15 @@ function s3Projection(scenario: GeneratedScenario): Pick<ShipmentMapModel, "over
 export function buildShipmentMapModel(
   scenario: GeneratedScenario,
   world: GeneratedWorld,
+  options: { locations?: MapLocation[] } = {},
 ): ShipmentMapModel {
-  const model: ShipmentMapModel = { route: baseRoute(scenario), overlays: [], notices: [] };
+  const route = baseRoute(scenario);
+  const model: ShipmentMapModel = {
+    route,
+    locations: options.locations ?? defaultLocations(route),
+    overlays: [],
+    notices: [],
+  };
 
   if (scenario.id === "S1") model.overlays.push(...s1Overlays(scenario, world));
   if (scenario.id === "S2") model.overlays.push(...s2Overlays(scenario));

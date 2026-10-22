@@ -1,6 +1,6 @@
 import { NODES, type TraceFrame } from "@/lib/agent/context";
 import type { ToolEndFrame } from "@/lib/agent/trace";
-import type { HandoffState } from "@/lib/workbench";
+import type { HandoffState, RunView } from "@/lib/workbench";
 import type { OperatorActionName } from "@/lib/workbench/types";
 import type { Evidence } from "@/lib/engine";
 
@@ -45,6 +45,92 @@ export function ledgerReferencePresentation(sequence: number | null): {
   return sequence === null
     ? { label: "Not written", copyable: false }
     : { label: `Ledger #${sequence}`, copyable: true };
+}
+
+function axisCoverage(line: string, axis: "single-event" | "pattern"): string {
+  const match = /^(\d+) of (\d+) checks evaluable$/.exec(line);
+  return match ? `${match[1]} of ${match[2]} ${axis} checks` : `${axis} coverage: ${line}`;
+}
+
+function money(sen: number): string {
+  return new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(sen / 100);
+}
+
+export function acceptanceExplanation(input: {
+  decision: string | null;
+  inconsistencyScore: number | null;
+  inconsistencyCoverage: string | null;
+  patternScore: number | null;
+  patternCoverage: string | null;
+  declaredValueSen: number | null;
+  valueThresholdSen: number | null;
+  courierSignatureValid: boolean;
+  requiresCosign: boolean;
+}): string | null {
+  if (input.decision !== "accept" || !input.inconsistencyCoverage || !input.patternCoverage) return null;
+
+  const measured = `${axisCoverage(input.inconsistencyCoverage, "single-event")} and ${axisCoverage(input.patternCoverage, "pattern")} were evaluable.`;
+  const findings = [
+    input.inconsistencyScore === 0 ? "No single-event contradiction was found" : null,
+    input.patternScore === 0 ? "recent courier behaviour was normal" : null,
+    input.declaredValueSen !== null && input.valueThresholdSen !== null && input.declaredValueSen <= input.valueThresholdSen
+      ? `and ${money(input.declaredValueSen)} did not trigger the ${money(input.valueThresholdSen)} value condition`
+      : null,
+  ].filter((part): part is string => Boolean(part));
+  const credential = input.courierSignatureValid
+    ? `The courier signature was valid; ${input.requiresCosign ? "an operator signature was also required." : "no operator signature was required."}`
+    : "The courier signature was not valid.";
+
+  return `${measured} ${findings.join(", ")}. ${credential}`;
+}
+
+export function attemptHistoryLabel(run: Pick<RunView, "ledgerStatus" | "decision">): {
+  title: string;
+  detail: string;
+} {
+  if (run.ledgerStatus === "noop") {
+    return {
+      title: "Identical resubmission",
+      detail: "Original sealed verdict reused. No additional ledger record written.",
+    };
+  }
+  if (run.ledgerStatus === "recorded") {
+    return { title: "Verdict sealed", detail: "A new append-only ledger record was written." };
+  }
+  if (run.ledgerStatus === "aborted") {
+    return { title: "Submission aborted", detail: "The attempt was recorded as abort evidence." };
+  }
+  return {
+    title: run.decision ? `Decision: ${run.decision}` : "No decision sealed",
+    detail: "This attempt did not write a ledger record.",
+  };
+}
+
+export function planPresentation(input: {
+  source: "model" | "heuristic" | "unavailable";
+  selectedTools: string[];
+  runtimeReason: string | null;
+}): string {
+  if (input.source === "model") {
+    const selection = input.selectedTools.length > 0
+      ? input.selectedTools.join(", ")
+      : "no optional tools";
+    return `The model selected ${selection}. Its free-text planning rationale is not used as evidence; the auditable deterministic comparison appears below.`;
+  }
+  if (input.source === "heuristic") {
+    return input.runtimeReason
+      ? `Structured fallback used: ${input.runtimeReason}`
+      : "The deterministic heuristic selected the optional context tools shown below.";
+  }
+  return input.runtimeReason ?? "No planning result was available.";
+}
+
+export function citationTarget(citation: string): { href: string; evidenceId: string | null } {
+  if (citation === "ledger") return { href: "#seal-and-ledger", evidenceId: null };
+  if (citation === "decision" || citation === "credential" || citation === "coverage") {
+    return { href: "#decision-and-credential", evidenceId: null };
+  }
+  return { href: "#evidence-details", evidenceId: citation };
 }
 
 export function shouldShowEvidenceDetails(input: {

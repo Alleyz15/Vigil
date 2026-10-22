@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { OperatorActionName } from "@/lib/workbench/types";
 import {
+  acceptanceExplanation,
+  attemptHistoryLabel,
+  citationTarget,
   detailStatusMessage,
   ledgerReferencePresentation,
   operatorActionAvailability,
+  planPresentation,
   primaryFlagCard,
   resolvedActionMessage,
   shouldShowEvidenceDetails,
@@ -97,5 +101,49 @@ describe("correlated handoff detail presentation", () => {
     expect(resolvedActionMessage(true)).toMatch(/sealed deterministic verdict remains unchanged/i);
     expect(resolvedActionMessage(false)).toMatch(/no verdict was sealed/i);
     expect(resolvedActionMessage(false)).not.toMatch(/sealed verdict remains unchanged/i);
+  });
+
+  it("explains an acceptance only from the measured axes, mandate condition and credential", () => {
+    expect(acceptanceExplanation({
+      decision: "accept",
+      inconsistencyScore: 0,
+      inconsistencyCoverage: "13 of 16 checks evaluable",
+      patternScore: 0,
+      patternCoverage: "3 of 5 checks evaluable",
+      declaredValueSen: 18_000,
+      valueThresholdSen: 40_000,
+      courierSignatureValid: true,
+      requiresCosign: false,
+    })).toBe(
+      "13 of 16 single-event checks and 3 of 5 pattern checks were evaluable. " +
+      "No single-event contradiction was found, recent courier behaviour was normal, " +
+      "and RM\u00a0180.00 did not trigger the RM\u00a0400.00 value condition. " +
+      "The courier signature was valid; no operator signature was required.",
+    );
+  });
+
+  it("describes a duplicate no-op as attempt history, not a replacement verdict", () => {
+    expect(attemptHistoryLabel({ ledgerStatus: "noop", decision: "accept" })).toEqual({
+      title: "Identical resubmission",
+      detail: "Original sealed verdict reused. No additional ledger record written.",
+    });
+  });
+
+  it("does not present unverified model planning prose as an evidence-grounded reason", () => {
+    expect(planPresentation({
+      source: "model",
+      selectedTools: [],
+      runtimeReason: null,
+    })).toBe(
+      "The model selected no optional tools. Its free-text planning rationale is not used as evidence; the auditable deterministic comparison appears below.",
+    );
+  });
+
+  it("routes explanation citations to the section that owns the cited fact", () => {
+    expect(citationTarget("decision")).toEqual({ href: "#decision-and-credential", evidenceId: null });
+    expect(citationTarget("credential")).toEqual({ href: "#decision-and-credential", evidenceId: null });
+    expect(citationTarget("coverage")).toEqual({ href: "#decision-and-credential", evidenceId: null });
+    expect(citationTarget("ledger")).toEqual({ href: "#seal-and-ledger", evidenceId: null });
+    expect(citationTarget("I1")).toEqual({ href: "#evidence-details", evidenceId: "I1" });
   });
 });

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { runAgent } from "@/lib/agent/machine";
-import { sha256Hex, type AbortRecord } from "@/lib/ledger";
+import { canonicalHash, sha256Hex, type AbortRecord } from "@/lib/ledger";
 import type { AgentContext } from "@/lib/agent/context";
 import type { TraceFrame } from "@/lib/agent/trace";
 import { closeDb, type VigilDb } from "@/lib/db/client";
@@ -24,10 +24,12 @@ import {
   type ScenarioId,
 } from "@/lib/generate";
 import { buildRequestedScenario, type BuildRequest } from "@/lib/generate/builder";
+import type { Route } from "@/lib/generate/route";
 import { ADDRESSES, jitterPoint, type GeneratedParcel } from "@/lib/generate/world";
 import { createOpenMeteoProvider, OPEN_METEO_CACHE_DIR } from "@/lib/weather";
 import { createMigratedDb } from "@/lib/db/migrate";
 import {
+  addressClaimOf,
   addressLabelOf,
   appendCorrection,
   boundaryLabel,
@@ -36,10 +38,14 @@ import {
   getShipment,
   loadServiceBoundary,
   recordSimulatedScan,
+  resolvedOf,
   shipmentStorePath,
   UNREGISTERED_LOCATION_GAP,
+  COORDINATE_DECIMALS,
   type LocationInput,
+  type LocationSnapshot,
   type Point,
+  type DepotRoute,
   type ServiceBoundary,
   type ShipmentRequest,
 } from "@/lib/shipment";
@@ -47,7 +53,7 @@ import { epcsOf } from "@/lib/epcis";
 import { rmSync } from "node:fs";
 import { OperatorActionRequest, type CaseState, type OperatorActionRequest as ActionRequest } from "./types";
 import { isQueueState, transitionCase } from "./state";
-import { buildShipmentMapModel } from "./map-model";
+import { buildShipmentMapModel, type MapLocation } from "./map-model";
 import { courierOutcome, type CourierOutcome } from "./courier";
 import { considerTools } from "@/lib/llm/plan";
 import { activeAgentLlm, bootstrapAgentLlm, resolveRuntimeLlm, type RuntimeLlm } from "@/lib/llm/runtime";
@@ -67,6 +73,8 @@ import {
   type ActionView,
   type HandoffDetail,
   type HandoffSummary,
+  type RouteLocationView,
+  type ShipmentRouteView,
   type RunView,
   type WorkbenchEntry,
 } from "./read-model";
@@ -127,9 +135,11 @@ type BuiltShipment = {
   /** The delivery leg, built but not yet run. */
   held: BuiltEvent;
   parcel: GeneratedParcel;
-  route: { origin: { label: string } };
+  route: Route;
   correction?: AddressCorrection;
   deliveryEventId?: string;
+  submittedBuilt?: BuiltEvent;
+  attempts: CourierDraft["attempts"];
 };
 
 export type SenderShipmentView = {
@@ -163,7 +173,11 @@ type OnlineRun = {
   scenario: GeneratedScenario;
   world: GeneratedWorld;
   harness: IngestHarness;
+  route: DepotRoute;
   deliveryEventId?: string;
+  submittedBuilt?: BuiltEvent;
+  submittedPoint?: Point;
+  attempts: CourierDraft["attempts"];
 };
 
 /** Which boundary a point was checked against, said on every answer that involves one. */
@@ -487,6 +501,65 @@ export type CourierDraft = {
   } | null;
 };
 
+export type CourierQueueItem = {
+  handoffId: string;
+  source: "seeded" | "registered" | "online";
+  courierId: string;
+  scenarioId: string;
+  runId: string;
+  title: string;
+  epc: string;
+  waybillNo: string;
+  route: ShipmentRouteView;
+  leg: string;
+  eventTime: string;
+  eventId: string;
+  fault: BuildRequest["fault"] | null;
+  attempts: CourierDraft["attempts"];
+  operatorSeal: CourierDraft["operatorSeal"];
+};
+
+export type CourierWorkspaceView = {
+  identity: RoleIdentity;
+  items: CourierQueueItem[];
+};
+
+export type CourierSubmissionResult = {
+  item: CourierQueueItem;
+  run: RunView;
+  outcome: CourierOutcome;
+};
+
+function registeredLocation(label: string): RouteLocationView {
+  return { label, source: "registered", coordinate: null, senderClaim: null };
+}
+
+function registeredPointLocation(label: string, point: Point): RouteLocationView {
+  return {
+    label,
+    source: "registered",
+    coordinate: `${point.latitude.toFixed(COORDINATE_DECIMALS)}, ${point.longitude.toFixed(COORDINATE_DECIMALS)}`,
+    senderClaim: null,
+  };
+}
+
+function storedLocation(snapshot: LocationSnapshot): RouteLocationView {
+  const coordinate = `${snapshot.latitude.toFixed(COORDINATE_DECIMALS)}, ${snapshot.longitude.toFixed(COORDINATE_DECIMALS)}`;
+  const senderClaim = addressClaimOf(snapshot);
+  const resolved = resolvedOf(snapshot);
+
+  if (resolved) {
+    return {
+      label: resolved.label,
+      source: resolved.by === "search" ? "geocoder_search" : "geocoder_reverse",
+      coordinate,
+      senderClaim,
+    };
+  }
+  if (senderClaim) return { label: senderClaim, source: "sender_claim", coordinate, senderClaim };
+  return { label: coordinate, source: "coordinate", coordinate, senderClaim: null };
+}
+
 type StoredDraft = CourierDraft & {
   built: BuiltEvent;
   scenario: GeneratedScenario;
@@ -685,6 +758,125 @@ export class OperatorWorkbench {
   }
 
   /**
+   * The courier workspace is one identity, not a mixed fleet listing.
+   *
+   * S1 is the seeded handoff used by the co-sign demonstration. Sender-built
+   * and online shipments are deliberately assigned to the same generated
+   * courier, so it is the stable identity for this demo workspace. If a pinned
+   * test does not include S1, fall back to a courier that actually exists in
+   * that workbench rather than inventing one.
+   */
+  courierWorkspace(): CourierWorkspaceView {
+    const preferred = [...this.drafts.values()].find((draft) => draft.scenarioId === "S1");
+    const owner =
+      preferred?.scenario.courier ??
+      [...this.shipments.values()][0]?.scenario.courier ??
+      [...this.online.values()][0]?.scenario.courier ??
+      [...this.drafts.values()][0]?.scenario.courier;
+
+    const identity: RoleIdentity = {
+      role: "courier",
+      label: owner?.displayName ?? "Courier",
+      subject: owner?.courierId ?? "unknown",
+      keyFingerprint: fingerprint(owner?.keys.publicKey),
+    };
+    if (!owner) return { identity, items: [] };
+
+    const seeded: CourierQueueItem[] = [...this.drafts.values()]
+      .filter((draft) => draft.scenario.courier.courierId === owner.courierId)
+      .map((draft) => ({
+        handoffId: `seeded:${draft.draftId}`,
+        source: "seeded",
+        courierId: draft.scenario.courier.courierId,
+        scenarioId: draft.scenarioId,
+        runId: draft.scenarioId,
+        title: draft.title,
+        epc: draft.epc,
+        waybillNo: draft.waybillNo,
+        route: { origin: null, destination: registeredLocation(draft.recipientAddress) },
+        leg: draft.leg,
+        eventTime: draft.eventTime,
+        eventId: draft.eventId,
+        fault: null,
+        attempts: draft.attempts,
+        operatorSeal: this.operatorSealFor(draft.eventId),
+      }));
+
+    const registered: CourierQueueItem[] = [...this.shipments.values()]
+      .filter((shipment) => shipment.scenario.courier.courierId === owner.courierId)
+      .map((shipment) => ({
+        handoffId: `registered:${shipment.runId}`,
+        source: "registered",
+        courierId: shipment.scenario.courier.courierId,
+        scenarioId: shipment.scenario.id,
+        runId: shipment.runId,
+        title: "Delivery scan — sender dispatch",
+        epc: shipment.parcel.epc,
+        waybillNo: shipment.parcel.waybillNo,
+        route: {
+          origin: registeredLocation(shipment.route.origin.label),
+          destination: registeredLocation(shipment.correction?.toLabel ?? shipment.parcel.recipientAddress),
+        },
+        leg: shipment.held.leg,
+        eventTime: shipment.held.event.eventTime,
+        eventId: shipment.held.event.eventID,
+        fault: shipment.request.fault,
+        attempts: shipment.attempts,
+        operatorSeal: this.operatorSealFor(shipment.deliveryEventId),
+      }));
+
+    const online: CourierQueueItem[] = [...this.online.values()]
+      .filter((run) => run.scenario.courier.courierId === owner.courierId)
+      .map((run) => {
+        const history = getShipment(this.store(), run.shipmentId)!;
+        const parcel = run.scenario.parcels[0];
+        const held = run.scenario.timeline[run.scenario.timeline.length - 1];
+        return {
+          handoffId: `online:${run.shipmentId}`,
+          source: "online" as const,
+          courierId: run.scenario.courier.courierId,
+          scenarioId: run.scenario.id,
+          runId: run.runId,
+          title: "Delivery scan — point-to-point dispatch",
+          epc: parcel.epc,
+          waybillNo: parcel.waybillNo,
+          route: {
+            origin: storedLocation(history.origin),
+            destination: storedLocation(history.currentReference),
+          },
+          leg: held.leg,
+          eventTime: held.event.eventTime,
+          eventId: held.event.eventID,
+          fault: null,
+          attempts: run.attempts,
+          operatorSeal: this.operatorSealFor(run.deliveryEventId),
+        };
+      });
+
+    const sourceOrder = { registered: 0, online: 1, seeded: 2 } as const;
+    return {
+      identity,
+      items: [...registered, ...online, ...seeded].sort(
+        (a, b) => sourceOrder[a.source] - sourceOrder[b.source] || a.handoffId.localeCompare(b.handoffId),
+      ),
+    };
+  }
+
+  private operatorSealFor(eventId: string | undefined): CourierDraft["operatorSeal"] {
+    if (!eventId) return null;
+    const entry = this.entries.get(eventId);
+    const approval = entry?.actions.find((action) => action.action === "approve");
+    const approvedRun = entry?.runs.find(
+      (ctx) =>
+        ctx.credential?.validSignatures.includes("operator") &&
+        (ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop"),
+    );
+    return approval && approvedRun && (approvedRun.ledger?.status === "recorded" || approvedRun.ledger?.status === "noop")
+      ? { operatorId: approval.operatorId, createdAt: approval.createdAt, ledgerStatus: approvedRun.ledger.status }
+      : null;
+  }
+
+  /**
    * Submit a draft as the courier would.
    *
    * `signed` false presents NO credential at all, which is session 16's
@@ -704,24 +896,162 @@ export class OperatorWorkbench {
     const draft = this.drafts.get(draftId);
     if (!draft) throw new Error(`unknown draft ${draftId}`);
 
-    const event = draft.built.event;
+    const { run, outcome } = await this.submitSeededDraft(draft, options);
+    return { draft: this.listCourierDrafts().find((item) => item.draftId === draftId)!, run, outcome };
+  }
+
+  private async runCourierSubmission(
+    target: Pick<StoredDraft, "built" | "scenario" | "harness">,
+    options: { signed: boolean },
+    runNumber: number,
+  ): Promise<{ ctx: AgentContext; run: RunView; outcome: CourierOutcome }> {
+    const event = target.built.event;
     const ctx = options.signed
-      ? await ingestEvent(draft.harness, draft.built, {
-          courierPrivateKey: draft.scenario.courier.keys.privateKey,
-          mandateId: draft.scenario.courier.mandate.mandateId,
+      ? await ingestEvent(target.harness, target.built, {
+          courierPrivateKey: target.scenario.courier.keys.privateKey,
+          mandateId: target.scenario.courier.mandate.mandateId,
         })
       : await runAgent(event, {
-          ...draft.harness.deps,
+          ...target.harness.deps,
           now: () => new Date(Date.parse(event.recordTime ?? event.eventTime)),
           credential: undefined,
         });
 
-    const run = runView(ctx, draft.attempts.length + 1, draft.built.event);
-    const outcome = courierOutcome(run);
-    draft.attempts.push({ run, outcome });
+    const run = runView(ctx, runNumber, target.built.event);
+    return { ctx, run, outcome: courierOutcome(run) };
+  }
 
+  private async submitSeededDraft(
+    draft: StoredDraft,
+    options: { signed: boolean },
+  ): Promise<{ run: RunView; outcome: CourierOutcome }> {
+    const { ctx, run, outcome } = await this.runCourierSubmission(draft, options, draft.attempts.length + 1);
+    draft.attempts.push({ run, outcome });
     this.promote(draft, ctx);
-    return { draft: this.listCourierDrafts().find((d) => d.draftId === draftId)!, run, outcome };
+    return { run, outcome };
+  }
+
+  /**
+   * Submit any prepared delivery through one courier-facing contract.
+   *
+   * Each source still owns how its final EPCIS event is assembled. From that
+   * point onward the credential, agent, ledger and outcome path are identical.
+   * That boundary is deliberate: forcing three different location models into
+   * one builder would erase facts, while keeping three submission paths is what
+   * let the sender-created work disappear from the courier page.
+   */
+  async submitCourierHandoff(
+    handoffId: string,
+    options: { signed: boolean; simulatedScan?: Point },
+  ): Promise<CourierSubmissionResult> {
+    const separator = handoffId.indexOf(":");
+    const source = handoffId.slice(0, separator);
+    const sourceId = separator >= 0 ? handoffId.slice(separator + 1) : "";
+
+    if (source === "seeded") {
+      const draft = this.drafts.get(sourceId);
+      if (!draft) throw new Error(`unknown courier handoff ${handoffId}`);
+      const { run, outcome } = await this.submitSeededDraft(draft, options);
+      return { item: this.courierQueueItem(handoffId), run, outcome };
+    }
+
+    if (source === "registered") {
+      const shipment = this.shipments.get(sourceId);
+      if (!shipment) throw new Error(`unknown courier handoff ${handoffId}`);
+      const built = shipment.submittedBuilt ?? this.registeredDeliveryEvent(shipment);
+      const { ctx, run, outcome } = await this.runCourierSubmission(
+        { built, scenario: shipment.scenario, harness: shipment.harness },
+        options,
+        shipment.attempts.length + 1,
+      );
+      shipment.attempts.push({ run, outcome });
+      if (options.signed) {
+        this.promoteSenderDelivery(shipment, built, ctx);
+      }
+      return { item: this.courierQueueItem(handoffId), run, outcome };
+    }
+
+    if (source === "online") {
+      const online = this.online.get(sourceId);
+      if (!online) throw new Error(`unknown courier handoff ${handoffId}`);
+      const prepared = this.onlineDeliveryEvent(online, options.simulatedScan);
+      if (options.signed && !online.deliveryEventId) {
+        recordSimulatedScan(this.store(), { shipmentId: online.shipmentId, point: prepared.point, nowIso: this.nowIso });
+      }
+      const { ctx, run, outcome } = await this.runCourierSubmission(
+        { built: prepared.built, scenario: online.scenario, harness: online.harness },
+        options,
+        online.attempts.length + 1,
+      );
+      online.attempts.push({ run, outcome });
+      if (options.signed) this.promoteOnlineDelivery(online, prepared.built, prepared.point, ctx);
+      return { item: this.courierQueueItem(handoffId), run, outcome };
+    }
+
+    throw new Error(`unknown courier handoff ${handoffId}`);
+  }
+
+  private courierQueueItem(handoffId: string): CourierQueueItem {
+    const item = this.courierWorkspace().items.find((candidate) => candidate.handoffId === handoffId);
+    if (!item) throw new Error(`courier handoff ${handoffId} is not assigned to the acting courier`);
+    return item;
+  }
+
+  private registeredDeliveryEvent(shipment: BuiltShipment): BuiltEvent {
+    if (!shipment.correction) return shipment.held;
+
+    const sites = shipment.world.sitesByAddress[shipment.correction.toIndex];
+    const rebuilt = buildRequestedScenario(shipment.request, {
+      world: shipment.world,
+      startMs: START_MS,
+      deliveryOverride: {
+        scanPoint: shipment.correction.toPoint,
+        cellSiteId: sites.cell,
+        wifiBssid: sites.wifi,
+      },
+    });
+    if (!rebuilt.ok) throw new Error(rebuilt.reason);
+    return rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1];
+  }
+
+  private onlineDeliveryEvent(run: OnlineRun, scan?: Point): { built: BuiltEvent; point: Point } {
+    if (run.submittedBuilt && run.submittedPoint) return { built: run.submittedBuilt, point: run.submittedPoint };
+
+    const history = getShipment(this.store(), run.shipmentId)!;
+    const point = scan ?? { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude };
+    const rebuilt = buildOnlineScenario(history, { world: run.world, startMs: START_MS, scan: point });
+    return { built: rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1], point };
+  }
+
+  private promoteSenderDelivery(shipment: BuiltShipment, built: BuiltEvent, ctx: AgentContext): void {
+    const existing = shipment.deliveryEventId ? this.entries.get(shipment.deliveryEventId) : undefined;
+    if (existing) {
+      existing.runs.push(ctx);
+      // A duplicate is an attempt against the already sealed handoff, not a
+      // new authoritative result. Its sparse context belongs in history only.
+      if (ctx.ledger?.status !== "noop") existing.current = ctx;
+      return;
+    }
+    const entry = storedEntryFor(shipment, built, ctx);
+    persistStoredCase(entry);
+    this.entries.set(built.event.eventID, entry);
+    shipment.deliveryEventId = built.event.eventID;
+    shipment.submittedBuilt = built;
+  }
+
+  private promoteOnlineDelivery(run: OnlineRun, built: BuiltEvent, point: Point, ctx: AgentContext): void {
+    const existing = run.deliveryEventId ? this.entries.get(run.deliveryEventId) : undefined;
+    if (existing) {
+      existing.runs.push(ctx);
+      if (ctx.ledger?.status !== "noop") existing.current = ctx;
+      return;
+    }
+    const entry = storedEntryFor(run, built, ctx);
+    persistStoredCase(entry);
+    this.entries.set(built.event.eventID, entry);
+    run.deliveryEventId = built.event.eventID;
+    run.submittedBuilt = built;
+    run.submittedPoint = point;
   }
 
   /**
@@ -801,6 +1131,8 @@ export class OperatorWorkbench {
         route: built.route,
         correction: undefined,
         deliveryEventId: undefined,
+        submittedBuilt: undefined,
+        attempts: [],
       });
       entries[0].harness.deps.llm = activeAgentLlm(this.runtimeLlm);
     }
@@ -900,40 +1232,8 @@ export class OperatorWorkbench {
       return { ok: false, reason: "This parcel has already been delivered." };
     }
 
-    const correction = shipment.correction;
-    let built = shipment.held;
-
-    if (correction) {
-      // POSITION, CELL AND WIFI MOVE TOGETHER. The courier is genuinely at the
-      // new address, so the scan is internally consistent there. Moving the
-      // position while still reporting the old address's tower would fire I1 on
-      // a contradiction nobody committed — turning an honest delivery into an
-      // apparent spoof and destroying the distinction this case exists to draw.
-      const sites = shipment.world.sitesByAddress[correction.toIndex];
-      const rebuilt = buildRequestedScenario(shipment.request, {
-        world: shipment.world,
-        startMs: START_MS,
-        deliveryOverride: {
-          scanPoint: correction.toPoint,
-          cellSiteId: sites.cell,
-          wifiBssid: sites.wifi,
-        },
-      });
-      if (!rebuilt.ok) return { ok: false, reason: rebuilt.reason };
-      built = rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1];
-    }
-
-    const ctx = await ingestEvent(shipment.harness, built, {
-      courierPrivateKey: shipment.scenario.courier.keys.privateKey,
-      mandateId: shipment.scenario.courier.mandate.mandateId,
-    });
-
-    const entry = storedEntryFor(shipment, built, ctx);
-    persistStoredCase(entry);
-    this.entries.set(built.event.eventID, entry);
-    shipment.deliveryEventId = built.event.eventID;
-
-    return { ok: true, eventId: built.event.eventID };
+    const submitted = await this.submitCourierHandoff(`registered:${runId}`, { signed: true });
+    return { ok: true, eventId: submitted.item.eventId };
   }
 
   /** Shipments the sender has dispatched, for their own surface. */
@@ -1045,7 +1345,8 @@ export class OperatorWorkbench {
 
     const history = getShipment(this.store(), shipmentId)!;
     const world = buildWorld(SEED);
-    const { scenario } = buildOnlineScenario(history, { world, startMs: START_MS });
+    const built = buildOnlineScenario(history, { world, startMs: START_MS });
+    const { scenario } = built;
     const { entries } = await buildScenarioEntries(
       { scenario, world },
       {
@@ -1058,7 +1359,17 @@ export class OperatorWorkbench {
       this.entries.set(entry.built.event.eventID, entry);
       this.harnesses.add(entry.harness);
     }
-    const run: OnlineRun = { runId: scenario.id, shipmentId, scenario, world, harness: entries[0].harness };
+    const run: OnlineRun = {
+      runId: scenario.id,
+      shipmentId,
+      scenario,
+      world,
+      harness: entries[0].harness,
+      route: built.route,
+      submittedBuilt: undefined,
+      submittedPoint: undefined,
+      attempts: [],
+    };
     run.harness.deps.llm = activeAgentLlm(this.runtimeLlm);
     this.online.set(shipmentId, run);
     return { status: "created", shipmentId, running: true, eventIds: this.eventIdsOf(run), boundary };
@@ -1119,23 +1430,11 @@ export class OperatorWorkbench {
     const run = this.online.get(shipmentId);
     if (!run) return { ok: false, code: "no_run", reason: "No run for this shipment in this process." };
     if (run.deliveryEventId) return { ok: false, code: "delivered", reason: "This parcel has already been delivered." };
-
-    const history = getShipment(this.store(), shipmentId)!;
-    const point = scan ?? { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude };
-    recordSimulatedScan(this.store(), { shipmentId, point, nowIso: this.nowIso });
-
-    const rebuilt = buildOnlineScenario(history, { world: run.world, startMs: START_MS, scan: point });
-    const built = rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1];
-    const ctx = await ingestEvent(run.harness, built, {
-      courierPrivateKey: run.scenario.courier.keys.privateKey,
-      mandateId: run.scenario.courier.mandate.mandateId,
+    const submitted = await this.submitCourierHandoff(`online:${shipmentId}`, {
+      signed: true,
+      simulatedScan: scan,
     });
-
-    const entry = storedEntryFor(run, built, ctx);
-    persistStoredCase(entry);
-    this.entries.set(built.event.eventID, entry);
-    run.deliveryEventId = built.event.eventID;
-    return { ok: true, eventId: built.event.eventID };
+    return { ok: true, eventId: submitted.item.eventId };
   }
 
   /** The stored history for the sender's own surface, and whether this process runs it. */
@@ -1155,6 +1454,122 @@ export class OperatorWorkbench {
     const entry = this.entries.get(eventId);
     if (!entry) return undefined;
     return [...this.online.values()].find((run) => run.runId === entry.scenario.id);
+  }
+
+  private routeFor(eventId: string): ShipmentRouteView | null {
+    const entry = this.entries.get(eventId);
+    if (!entry) return null;
+
+    const online = [...this.online.values()].find((run) => run.runId === entry.scenario.id);
+    if (online) {
+      const history = getShipment(this.store(), online.shipmentId);
+      return history
+        ? {
+            origin: storedLocation(history.origin),
+            destination: storedLocation(history.currentReference),
+            custody: {
+              originDepot: registeredPointLocation(online.route.originDepot.label, online.route.originDepot),
+              destinationDepot: registeredPointLocation(online.route.destinationDepot.label, online.route.destinationDepot),
+            },
+          }
+        : null;
+    }
+
+    const registered = [...this.shipments.values()].find((shipment) => shipment.scenario.id === entry.scenario.id);
+    if (registered) {
+      return {
+        origin: registeredLocation(registered.route.origin.label),
+        destination: registeredLocation(registered.correction?.toLabel ?? registered.parcel.recipientAddress),
+        custody: {
+          originDepot: registeredPointLocation(registered.route.originHub.label, registered.route.originHub),
+          destinationDepot: registeredPointLocation(registered.route.destinationHub.label, registered.route.destinationHub),
+        },
+      };
+    }
+
+    return null;
+  }
+
+  private timelineLocationFor(eventId: string, legIndex: number): string | null {
+    const route = this.routeFor(eventId);
+    if (!route?.custody) return null;
+    if (legIndex <= 2) return route.custody.originDepot.label;
+    if (legIndex <= 4) return route.custody.destinationDepot.label;
+    return route.destination.label;
+  }
+
+  private compactMapLabel(label: string, role: string): string {
+    const first = label.split(",")[0]?.trim() || label;
+    const place = first === "Multimedia University" ? "MMU" : first;
+    return `${place} · ${role}`;
+  }
+
+  private mapLocationsFor(eventId: string): MapLocation[] | undefined {
+    const entry = this.entries.get(eventId);
+    if (!entry) return undefined;
+    const route = this.routeFor(eventId);
+    if (!route?.origin || !route.custody) return undefined;
+
+    const online = [...this.online.values()].find((run) => run.runId === entry.scenario.id);
+    const registered = [...this.shipments.values()].find((shipment) => shipment.scenario.id === entry.scenario.id);
+    const senderPoint = online
+      ? (() => {
+          const history = getShipment(this.store(), online.shipmentId);
+          return history ? { latitude: history.origin.latitude, longitude: history.origin.longitude } : null;
+        })()
+      : registered
+        ? { latitude: registered.route.origin.latitude, longitude: registered.route.origin.longitude }
+        : null;
+    const originDepot = online?.route.originDepot ?? registered?.route.originHub;
+    const destinationDepot = online?.route.destinationDepot ?? registered?.route.destinationHub;
+    const deliveryPoint = online
+      ? (() => {
+          const history = getShipment(this.store(), online.shipmentId);
+          return history
+            ? { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude }
+            : null;
+        })()
+      : registered?.correction?.toPoint ?? registered?.parcel.recipientPoint ?? null;
+
+    if (!senderPoint || !originDepot || !destinationDepot || !deliveryPoint) return undefined;
+    return [
+      {
+        id: "sender-reference",
+        kind: "sender_reference",
+        label: route.origin.label,
+        mapLabel: this.compactMapLabel(route.origin.label, "Sender"),
+        detail: "Sender reference · context only · no carrier pickup scan.",
+        point: senderPoint,
+        monitored: false,
+      },
+      {
+        id: "origin-depot",
+        kind: "origin_depot",
+        label: route.custody.originDepot.label,
+        mapLabel: this.compactMapLabel(route.custody.originDepot.label, "Origin depot"),
+        detail: "Carrier custody begins.",
+        point: originDepot,
+        monitored: true,
+      },
+      {
+        id: "destination-depot",
+        kind: "destination_depot",
+        label: route.custody.destinationDepot.label,
+        mapLabel: this.compactMapLabel(route.custody.destinationDepot.label, "Destination depot"),
+        detail: "Last-mile dispatch.",
+        point: destinationDepot,
+        monitored: true,
+      },
+      {
+        id: "delivery",
+        kind: "delivery",
+        label: route.destination.label,
+        mapLabel: this.compactMapLabel(route.destination.label, "Delivery"),
+        detail: "Delivery reference + reported delivery scan.",
+        point: deliveryPoint,
+        monitored: true,
+      },
+    ];
   }
 
   /** The correction behind a delivery, for the operator's explanation. */
@@ -1183,8 +1598,8 @@ export class OperatorWorkbench {
     const eventId = draft.built.event.eventID;
     const existing = this.entries.get(eventId);
     if (existing) {
-      existing.current = ctx;
       existing.runs.push(ctx);
+      if (ctx.ledger?.status !== "noop") existing.current = ctx;
       return;
     }
 
@@ -1320,9 +1735,15 @@ export class OperatorWorkbench {
     const timeline = [...this.entries.values()]
       .filter((candidate) => candidate.scenario.id === entry.scenario.id)
       .sort((a, b) => a.built.legIndex - b.built.legIndex)
-      .map((candidate) => summaryFrom(candidate, this.nowIso));
+      .map((candidate) => ({
+        ...summaryFrom(candidate, this.nowIso),
+        locationLabel: this.timelineLocationFor(eventId, candidate.built.legIndex),
+      }));
+    const authoritativeRunNumber = Math.max(1, entry.runs.findIndex((run) => run === entry.current) + 1);
+    const authoritativeRun = runView(entry.current, authoritativeRunNumber, entry.built.event);
     return {
       summary,
+      route: this.routeFor(eventId),
       event: entry.built.event,
       flags: flagsFrom(entry.current),
       abortEvidence: abortRecord
@@ -1423,6 +1844,7 @@ export class OperatorWorkbench {
             }
           : null;
       })(),
+      authoritativeRun,
       ledger: {
         sequence: entry.current.ledger?.status === "recorded" ? entry.current.ledger.seq : null,
         chainValid: entry.harness.deps.ledger.verifyChain().valid,
@@ -1431,10 +1853,13 @@ export class OperatorWorkbench {
       runs: entry.runs.map((ctx, index) => runView(ctx, index + 1, entry.built.event)),
       actions: [...entry.actions],
       timeline,
-      map: buildShipmentMapModel(entry.scenario, entry.world),
+      map: buildShipmentMapModel(entry.scenario, entry.world, {
+        locations: this.mapLocationsFor(eventId),
+      }),
       planConsidered: considerTools(entry.current),
       plan: {
         selectedTools: entry.current.plan?.tools ?? [],
+        rationale: entry.current.plan?.rationale ?? null,
         source: entry.current.plan
           ? entry.current.planFromHeuristic
             ? "heuristic"
@@ -1445,6 +1870,7 @@ export class OperatorWorkbench {
         runtimeReason: entry.current.modelRuntime?.reason ?? null,
       },
       externalContext: entry.current.externalContext ?? null,
+      toolResults: entry.current.toolResults ?? [],
       reroute: entry.current.reroute ?? null,
       explanation: {
         text: entry.current.explanation ?? null,
@@ -1456,7 +1882,9 @@ export class OperatorWorkbench {
         rejection: entry.current.explanationRejection ?? null,
         modelId: entry.current.modelRuntime?.modelId ?? null,
         runtimeReason: entry.current.modelRuntime?.reason ?? null,
+        citations: entry.current.explanationCitations ?? [],
       },
+      verdictHash: entry.current.verdict ? canonicalHash(entry.current.verdict) : null,
     };
   }
 

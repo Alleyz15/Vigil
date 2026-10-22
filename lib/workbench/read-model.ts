@@ -61,6 +61,9 @@ export type HandoffSummary = {
   inconsistency: AxisValue;
   pattern: AxisValue;
   coverageLine: string | null;
+  patternCoverageLine?: string | null;
+  /** Operator-detail timeline label. Omitted on list projections that do not own route context. */
+  locationLabel?: string | null;
   gateBasis: string | null;
   requiresCosign: boolean;
   provenance: {
@@ -107,8 +110,29 @@ export type ActionView = {
   createdAt: string;
 };
 
+export type RouteLocationView = {
+  /** The best available human-readable line, with `source` saying whose line it is. */
+  label: string;
+  source: "registered" | "sender_claim" | "geocoder_search" | "geocoder_reverse" | "coordinate";
+  /** Present for a confirmed arbitrary point; null for cached registered locations. */
+  coordinate: string | null;
+  /** Kept separate when a geocoder label is also present. */
+  senderClaim: string | null;
+};
+
+export type ShipmentRouteView = {
+  origin: RouteLocationView | null;
+  destination: RouteLocationView;
+  custody?: {
+    originDepot: RouteLocationView;
+    destinationDepot: RouteLocationView;
+  };
+};
+
 export type HandoffDetail = {
   summary: HandoffSummary;
+  /** The shipment endpoints when this workbench owns their source records. */
+  route: ShipmentRouteView | null;
   event: unknown;
   flags: Array<{ id: string; points: number; label: string; evidence: Array<{ field: string; value: unknown }> }>;
   /** A ledger rejection that stopped the engine before its normal flag sources existed. */
@@ -156,6 +180,8 @@ export type HandoffDetail = {
     toLabel: string;
     correctedAt: string;
   } | null;
+  /** The run whose result owns the displayed verdict. Retries remain in `runs`. */
+  authoritativeRun: RunView;
   runs: RunView[];
   actions: ActionView[];
   timeline: HandoffSummary[];
@@ -168,12 +194,14 @@ export type HandoffDetail = {
   planConsidered: ToolConsideration[];
   plan: {
     selectedTools: string[];
+    rationale: string | null;
     source: "model" | "heuristic" | "unavailable";
     rejection: string | null;
     modelId: string | null;
     runtimeReason: string | null;
   };
   externalContext: AgentContext["externalContext"] | null;
+  toolResults: NonNullable<AgentContext["toolResults"]>;
   reroute: AgentContext["reroute"] | null;
   explanation: {
     text: string | null;
@@ -181,7 +209,10 @@ export type HandoffDetail = {
     rejection: string | null;
     modelId: string | null;
     runtimeReason: string | null;
+    citations: string[];
   };
+  /** Hash of the one sealed deterministic verdict both explanation views read. */
+  verdictHash: string | null;
 };
 
 export type WorkbenchEntry = {
@@ -297,6 +328,7 @@ export function summaryFrom(entry: WorkbenchEntry, nowIso: string): HandoffSumma
     sealed: ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop",
     ...axes,
     coverageLine: ctx.coverage?.inconsistency?.line ?? null,
+    patternCoverageLine: ctx.coverage?.pattern?.line ?? null,
     gateBasis: ctx.verdict?.basis ?? ctx.gateResult?.basis ?? null,
     requiresCosign: ctx.requiresCosign ?? false,
     provenance: {

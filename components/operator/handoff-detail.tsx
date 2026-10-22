@@ -10,9 +10,13 @@ import { formatEvidenceValue } from "@/lib/display/evidence";
 import { cn } from "@/lib/utils";
 import { AxisPair } from "./axis-pair";
 import {
+  acceptanceExplanation,
+  attemptHistoryLabel,
+  citationTarget,
   detailStatusMessage,
   ledgerReferencePresentation,
   primaryFlagCard,
+  planPresentation,
   shouldShowEvidenceDetails,
   traceNodeStates,
 } from "./handoff-detail-model";
@@ -23,6 +27,7 @@ import { ShipmentMap } from "./shipment-map";
 import { HandoffStateBadge } from "./status-badge";
 import { SimulatedClockLabel } from "./simulated-clock-label";
 import { StreamView } from "@/components/console/stream-view";
+import { OperatorJourneySummary } from "@/components/shipment/route-summary";
 
 function sentence(value: string | null): string {
   return value?.replaceAll("_", " ") ?? "Unavailable";
@@ -40,10 +45,10 @@ export function HandoffDetailView({
   const [detail, setDetail] = useState(initialDetail);
   const [activeLegIndex, setActiveLegIndex] = useState(detail.summary.legIndex);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
+  const [aiTab, setAiTab] = useState<"model" | "fallback">("model");
   const status = detailStatusMessage(detail.summary);
   const ledger = ledgerReferencePresentation(detail.ledger.sequence);
-  const latestRun = detail.runs.at(-1);
-  const trace = useMemo(() => traceNodeStates(latestRun?.trace ?? []), [latestRun?.trace]);
+  const trace = useMemo(() => traceNodeStates(detail.authoritativeRun.trace), [detail.authoritativeRun.trace]);
   const showEvidenceDetails = shouldShowEvidenceDetails({
     flagCount: detail.flags.length,
     hasAddressCorrection: Boolean(detail.addressCorrection),
@@ -60,6 +65,18 @@ export function HandoffDetailView({
       : detail.reroute.proposal.target.courierId
     : null;
   const primaryFlag = primaryFlagCard(detail.flags);
+  const valueCondition = detail.cosignPolicyEvidence.find((item) => item.kind === "parcel_value_over_sen");
+  const whyAccepted = acceptanceExplanation({
+    decision: detail.gate.decision,
+    inconsistencyScore: detail.summary.inconsistency.score,
+    inconsistencyCoverage: detail.summary.coverageLine,
+    patternScore: detail.summary.pattern.score,
+    patternCoverage: detail.summary.patternCoverageLine ?? null,
+    declaredValueSen: typeof valueCondition?.actual === "number" ? valueCondition.actual : null,
+    valueThresholdSen: valueCondition?.threshold ?? null,
+    courierSignatureValid: Boolean(detail.credential?.courierValid),
+    requiresCosign: detail.summary.requiresCosign,
+  });
 
   return (
     <div className="space-y-6">
@@ -82,12 +99,18 @@ export function HandoffDetailView({
         <SimulatedClockLabel anchorIso={clockAnchorIso} />
       </div>
 
+      {detail.route && (
+        <section aria-label="Shipment route" className="border-y bg-card px-4 py-3">
+          <OperatorJourneySummary route={detail.route} />
+        </section>
+      )}
+
       <div className="grid grid-cols-[minmax(0,1fr)_23rem] items-start gap-5">
         <div className="min-w-0 space-y-3">
           <section className="relative overflow-hidden rounded-lg border bg-card">
             <div className="absolute left-3 top-3 z-[600] flex items-center gap-2 rounded-md border bg-white/95 px-3 py-2 text-xs font-semibold shadow-sm">
               <Map className="size-3.5 text-primary" aria-hidden="true" />
-              coordinate-bearing evidence only
+              places and coordinate evidence · no navigation route
             </div>
             <ShipmentMap
               model={detail.map}
@@ -98,10 +121,7 @@ export function HandoffDetailView({
             />
           </section>
 
-          <div className="space-y-2 text-xs leading-5 text-muted-foreground">
-            <ProvenanceLabel>Synthetic cell / WiFi references · not real observations</ProvenanceLabel>
-            <p>Reference signals are derived from the cached address set. GPS and reference-signal contradictions in this demo illustrate the mechanism using simulated evidence, not field measurements.</p>
-          </div>
+          <MapProvenance detail={detail} />
 
           <ol className="grid grid-cols-6 gap-1.5" aria-label="Shipment legs">
             {detail.timeline.map((leg) => {
@@ -112,12 +132,13 @@ export function HandoffDetailView({
                     type="button"
                     onClick={() => setActiveLegIndex(leg.legIndex)}
                     className={cn(
-                      "h-[5.25rem] w-full rounded-md border bg-card px-2 py-2 text-left transition-colors hover:bg-muted",
+                      "h-[6.5rem] w-full rounded-md border bg-card px-2 py-2 text-left transition-colors hover:bg-muted",
                       active && "border-primary bg-accent",
                     )}
                   >
                     <span className="block text-xs font-medium text-muted-foreground">{active && leg.legIndex === detail.summary.legIndex ? "review" : "clear"}</span>
                     <span className="mt-1 block truncate text-xs font-semibold capitalize">{leg.bizStep}</span>
+                    {leg.locationLabel && <span className="mt-1 block line-clamp-2 text-xs leading-4 text-muted-foreground">{leg.locationLabel}</span>}
                     <span className="mt-1 block font-mono text-xs text-muted-foreground">{leg.eventTime.slice(11, 16)}</span>
                   </button>
                 </li>
@@ -168,7 +189,7 @@ export function HandoffDetailView({
         </div>
 
         <aside className="space-y-3">
-          <section className="rounded-lg border bg-card p-4">
+          <section id="decision-and-credential" className="rounded-lg border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Decision and credential</h2>
               <ProvenanceLabel>{detail.summary.sealed ? "sealed" : "pending"}</ProvenanceLabel>
@@ -192,6 +213,13 @@ export function HandoffDetailView({
                 coverageLine={detail.summary.coverageLine}
               />
             </div>
+
+            {whyAccepted && (
+              <section className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-emerald-950">
+                <h3 className="text-xs font-semibold">Why accepted</h3>
+                <p className="mt-1 text-xs leading-5">{whyAccepted}</p>
+              </section>
+            )}
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <CredentialHalf label="Courier half" value={detail.credential?.courierValid ? "valid" : "missing"} valid={Boolean(detail.credential?.courierValid)} />
@@ -232,7 +260,7 @@ export function HandoffDetailView({
       </div>
 
       <div className="space-y-4 border-t pt-6">
-        {showEvidenceDetails && <section>
+        {showEvidenceDetails && <section id="evidence-details">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold">Evidence details</h2>
             <span className="text-xs text-muted-foreground">Backend values used by the deterministic engine</span>
@@ -261,18 +289,12 @@ export function HandoffDetailView({
         </section>}
 
         <div className="grid grid-cols-3 items-start gap-4 [grid-auto-flow:dense]">
-          <section className="rounded-md bg-card p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Agent explanation</h2>
-              <ProvenanceLabel>{detail.explanation.source}</ProvenanceLabel>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">{detail.explanation.text ?? "No explanation was produced."}</p>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              {detail.explanation.source === "model"
-                ? `Model ${detail.explanation.modelId ?? "unknown"} produced this prose.`
-                : detail.explanation.rejection ?? detail.explanation.runtimeReason ?? "Deterministic structured fallback."}
-            </p>
-          </section>
+          <AiInvestigation
+            detail={detail}
+            tab={aiTab}
+            onTabChange={setAiTab}
+            onEvidenceSelect={setSelectedEvidenceId}
+          />
 
           {detail.recipientConfirmation && (
             <section className="rounded-md bg-card p-4 shadow-sm">
@@ -295,17 +317,7 @@ export function HandoffDetailView({
             </section>
           )}
 
-          <section className="rounded-md bg-card p-4 shadow-sm">
-            <div className="flex items-center gap-2"><CloudRain className="size-4" /><h2 className="text-sm font-semibold">External context</h2></div>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              {detail.externalContext?.summary ?? "Weather was not selected for this run."}
-            </p>
-            {detail.externalContext?.status === "available" && (
-              <p className="mt-2 text-xs leading-4 text-muted-foreground">Open-Meteo archive · approximately 9 km reanalysis · regional context, not an observation at the address.</p>
-            )}
-          </section>
-
-          <section className="rounded-md bg-card p-4 shadow-sm">
+          <section id="seal-and-ledger" className="rounded-md bg-card p-4 shadow-sm">
             <div className="flex items-center gap-2"><ShieldAlert className="size-4" /><h2 className="text-sm font-semibold">Reroute</h2></div>
             {detail.reroute?.status === "proposed" ? (
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
@@ -319,19 +331,6 @@ export function HandoffDetailView({
             </div>
           </section>
 
-          {/*
-            WHAT THE AGENT CONSIDERED AND DID NOT CHOOSE.
-            Sits next to the outcome rather than in a separate view, because the
-            option set is only meaningful beside the option taken.
-          */}
-          <section className="col-span-2 rounded-md bg-card p-4 shadow-sm">
-            <PlanAlternatives
-              considered={detail.planConsidered}
-              source={detail.plan.source}
-              selectedTools={detail.plan.selectedTools}
-            />
-          </section>
-
           <section className="rounded-md bg-card p-4 shadow-sm">
             <div className="flex items-center gap-2"><Link2 className="size-4" /><h2 className="text-sm font-semibold">Seal and ledger</h2></div>
             <dl className="mt-3 grid grid-cols-[7rem_1fr] gap-y-2 text-xs">
@@ -340,6 +339,8 @@ export function HandoffDetailView({
               <dt className="text-muted-foreground">Pipeline runs</dt><dd className="font-mono">{detail.runs.length}</dd>
             </dl>
           </section>
+
+          {detail.runs.length > 1 && <AttemptHistory runs={detail.runs} authoritativeRun={detail.authoritativeRun.run} />}
         </div>
       </div>
 
@@ -360,6 +361,192 @@ export function HandoffDetailView({
         />
       </section>
     </div>
+  );
+}
+
+function MapProvenance({ detail }: { detail: HandoffDetail }) {
+  if (detail.locationEvidence) {
+    return (
+      <div className="space-y-2 text-xs leading-5 text-muted-foreground">
+        <ProvenanceLabel>No cell or WiFi reference supplied</ProvenanceLabel>
+        <p>
+          No cell or WiFi reference was supplied for this arbitrary location. I1 was not evaluated;
+          the simulator did not invent reference IDs.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 text-xs leading-5 text-muted-foreground">
+      <ProvenanceLabel>Synthetic cell / WiFi references · not real observations</ProvenanceLabel>
+      <p>
+        Reference signals are derived from the cached address set. GPS and reference-signal
+        contradictions illustrate the mechanism using simulated evidence, not field measurements.
+      </p>
+    </div>
+  );
+}
+
+function AiInvestigation({
+  detail,
+  tab,
+  onTabChange,
+  onEvidenceSelect,
+}: {
+  detail: HandoffDetail;
+  tab: "model" | "fallback";
+  onTabChange: (tab: "model" | "fallback") => void;
+  onEvidenceSelect: (id: string | null) => void;
+}) {
+  const modelId = detail.explanation.modelId ?? detail.plan.modelId;
+  const selectedCount = detail.plan.selectedTools.length;
+  return (
+    <section className="col-span-3 rounded-lg border bg-card p-4 shadow-sm" aria-label="AI investigation">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">AI investigation</h2>
+            <ProvenanceLabel>Advisory only · verdict already sealed</ProvenanceLabel>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Model: <span className="font-mono text-foreground">{modelId ?? "none"}</span>
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-medium">Authority boundary</p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            sealed verdict {detail.verdictHash ? detail.verdictHash.slice(0, 12) : "not available"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <section className="min-w-0 rounded-md border p-3">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">1 · Plan</p>
+          <p className="mt-2 text-sm font-semibold">Selected {selectedCount} of 2 available tool slots</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {planPresentation({
+              source: detail.plan.source,
+              selectedTools: detail.plan.selectedTools,
+              runtimeReason: detail.plan.runtimeReason,
+            })}
+          </p>
+          <div className="mt-3">
+            <PlanAlternatives
+              considered={detail.planConsidered}
+              source={detail.plan.source}
+              selectedTools={detail.plan.selectedTools}
+            />
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-md border p-3">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">2 · Gather</p>
+          {detail.externalContext ? (
+            <div className="mt-2">
+              <div className="flex items-center gap-2 text-sm font-semibold"><CloudRain className="size-4" />Weather context</div>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail.externalContext.summary}</p>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">Weather lookup was not selected.</p>
+          )}
+          {detail.toolResults.map((result) => (
+            <div key={result.tool} className="mt-3 border-t pt-3">
+              <p className="font-mono text-xs font-semibold">{result.tool}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{result.summary}</p>
+            </div>
+          ))}
+          <div className="mt-3 rounded-md bg-muted/60 px-3 py-2 text-xs">
+            <span className="font-semibold">Impact on verdict</span>
+            <span className="ml-2 text-muted-foreground">None · context is explanatory only</span>
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-md border p-3">
+          <p className="text-xs font-semibold uppercase text-muted-foreground">3 · Explain</p>
+          <div className="mt-2 inline-flex rounded-md border bg-muted/40 p-1">
+            <button
+              type="button"
+              className={cn("rounded px-2.5 py-1.5 text-xs font-medium", tab === "model" && "bg-background shadow-sm")}
+              onClick={() => onTabChange("model")}
+            >
+              Model explanation
+            </button>
+            <button
+              type="button"
+              className={cn("rounded px-2.5 py-1.5 text-xs font-medium", tab === "fallback" && "bg-background shadow-sm")}
+              onClick={() => onTabChange("fallback")}
+            >
+              Without model
+            </button>
+          </div>
+
+          {tab === "model" ? (
+            <div className="mt-3">
+              <p className="text-sm leading-6">{detail.explanation.text ?? "No model explanation was produced."}</p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {detail.explanation.source === "model"
+                  ? `Grounded prose from ${detail.explanation.modelId ?? "the configured model"}.`
+                  : detail.explanation.rejection ?? detail.explanation.runtimeReason ?? "Structured fallback used."}
+              </p>
+              {detail.explanation.citations.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Explanation citations">
+                  {detail.explanation.citations.map((citation) => {
+                    const target = citationTarget(citation);
+                    return (
+                      <a
+                        key={citation}
+                        href={target.href}
+                        onClick={() => target.evidenceId && onEvidenceSelect(target.evidenceId)}
+                        className="rounded border bg-muted px-2 py-1 font-mono text-xs hover:bg-accent"
+                      >
+                        {citation}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <dl className="mt-3 grid grid-cols-[7rem_minmax(0,1fr)] gap-y-2 text-xs">
+              <dt className="text-muted-foreground">Decision</dt><dd className="font-mono">{detail.gate.decision ?? "none"}</dd>
+              <dt className="text-muted-foreground">Single-event</dt><dd className="font-mono">{detail.summary.inconsistency.score ?? "not evaluated"}</dd>
+              <dt className="text-muted-foreground">Pattern</dt><dd className="font-mono">{detail.summary.pattern.score ?? "not evaluated"}</dd>
+              <dt className="text-muted-foreground">Flags</dt><dd className="font-mono">{detail.flags.map((flag) => flag.id).join(", ") || "none"}</dd>
+              <dt className="text-muted-foreground">Missing evidence</dt>
+              <dd>{detail.locationEvidence ? "I1 reference sites" : "none recorded"}</dd>
+            </dl>
+          )}
+
+          <p className="mt-3 border-t pt-3 text-xs leading-5 text-muted-foreground">
+            Both views read the same sealed verdict hash. Model removal changes the prose, not the decision.
+          </p>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function AttemptHistory({ runs, authoritativeRun }: { runs: HandoffDetail["runs"]; authoritativeRun: number }) {
+  return (
+    <section className="col-span-2 rounded-md bg-card p-4 shadow-sm">
+      <h2 className="text-sm font-semibold">Attempt history</h2>
+      <ol className="mt-3 divide-y rounded-md border px-3">
+        {runs.map((run) => {
+          const label = attemptHistoryLabel(run);
+          return (
+            <li key={run.run} className="flex gap-3 py-3 text-xs">
+              <span className="font-mono text-muted-foreground">#{run.run}</span>
+              <span className="min-w-0 flex-1">
+                <span className="font-semibold">{label.title}</span>
+                <span className="mt-0.5 block leading-5 text-muted-foreground">{label.detail}</span>
+              </span>
+              {run.run === authoritativeRun && <ProvenanceLabel>displayed result</ProvenanceLabel>}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 
