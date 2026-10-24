@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /**
  * SQLite schema: parcels, couriers, mandates, events, verdicts, reference_sites, disputes.
@@ -363,6 +363,7 @@ export const handoffCases = sqliteTable(
         "awaiting_cosignature",
         "timed_out",
         "awaiting_evidence",
+        "evidence_submitted",
         "awaiting_reroute_signatures",
         "resolved_approved",
         "resolved_rejected",
@@ -405,6 +406,47 @@ export const operatorActions = sqliteTable(
   },
   (t) => [index("operator_actions_case_idx").on(t.caseId, t.createdAt)],
 );
+
+/** Workflow sidecars, never inputs to scoring or part of an EPCIS payload. */
+export const dispatchRequests = sqliteTable("dispatch_requests", {
+  dispatchId: text("dispatch_id").primaryKey(),
+  source: text("source", { enum: ["online", "registered"] }).notNull(),
+  requestJson: text("request_json").notNull(),
+  state: text("state", { enum: ["awaiting_assignment", "assigned"] }).notNull(),
+  courierId: text("courier_id"),
+  createdAt: text("created_at").notNull(),
+  assignedAt: text("assigned_at"),
+});
+
+export const evidenceRequests = sqliteTable("evidence_requests", {
+  requestId: text("request_id").primaryKey(),
+  workflowId: text("workflow_id").notNull().default("legacy-unbound"),
+  eventId: text("event_id").notNull(),
+  courierId: text("courier_id").notNull(),
+  operatorId: text("operator_id").notNull(),
+  note: text("note").notNull(),
+  requestedAt: text("requested_at").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  sequence: integer("sequence").notNull(),
+}, (t) => [uniqueIndex("evidence_event_round_uidx").on(t.eventId, t.workflowId, t.sequence)]);
+
+export const evidenceSubmissions = sqliteTable("evidence_submissions", {
+  submissionId: text("submission_id").primaryKey(),
+  requestId: text("request_id").notNull().unique().references(() => evidenceRequests.requestId),
+  explanation: text("explanation").notNull(),
+  requestHash: text("request_hash").notNull(),
+  submittedAt: text("submitted_at").notNull(),
+});
+
+export const evidenceAttachments = sqliteTable("evidence_attachments", {
+  attachmentId: text("attachment_id").primaryKey(),
+  submissionId: text("submission_id").notNull().references(() => evidenceSubmissions.submissionId),
+  name: text("name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  sha256: text("sha256").notNull(),
+  bytes: blob("bytes", { mode: "buffer" }).notNull(),
+});
 
 /**
  * A scoped capability handed to one recipient about one parcel.
@@ -541,6 +583,10 @@ export const shipments = sqliteTable(
     codAmountSen: integer("cod_amount_sen").notNull(),
     recipientChannel: text("recipient_channel").notNull(),
     recipientName: text("recipient_name"),
+    /** Explicit demo-only delivery condition; never inferred from risk output. */
+    demoCondition: text("demo_condition", { enum: ["normal", "mock_location"] })
+      .notNull()
+      .default("normal"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [

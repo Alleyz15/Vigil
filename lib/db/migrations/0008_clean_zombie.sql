@@ -1,0 +1,1 @@
+ALTER TABLE `shipments` ADD `demo_condition` text DEFAULT 'normal' NOT NULL;
