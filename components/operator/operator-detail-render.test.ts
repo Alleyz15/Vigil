@@ -50,6 +50,21 @@ function rendered(value: HandoffDetail) {
   return within(root);
 }
 
+it("contains a long delivery address in its timeline slot while retaining the complete label", () => {
+  const address = "Ampang, Sungai Besi-Ulu Klang Elevated Expressway, Taman Dagang, Kampung Indah Permai, Kampung Tasik Permai, Ampang Jaya Municipal Council, Hulu Langat, Selangor, 68000, Malaysia";
+  const view = rendered(detail({ timeline: [{ ...summary, locationLabel: address }] }));
+  const timeline = within(view.getByRole("list", { name: "Shipment legs" }));
+  const button = timeline.getByRole("button", { name: /Delivering/i });
+  expect(button.getAttribute("title")).toBe(address);
+  expect(button.classList.contains("grid-rows-[1rem_1rem_2rem_1rem]")).toBe(true);
+  expect(button.classList.contains("overflow-hidden")).toBe(true);
+  const label = timeline.getByText(address);
+  expect(label.classList.contains("line-clamp-2")).toBe(true);
+  expect(label.classList.contains("block")).toBe(false);
+  expect(label.classList.contains("max-h-8")).toBe(true);
+  expect(timeline.getByText("02:00")).toBeTruthy();
+});
+
 it("shows evidence round notes, explanations, download integrity and timestamps separately from rule evidence", () => {
   const view = rendered(detail());
   const evidence = within(view.getByRole("region", { name: "Supporting evidence" }));

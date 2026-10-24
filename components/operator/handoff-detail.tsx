@@ -168,16 +168,17 @@ export function HandoffDetailView({
                 <li key={leg.eventId} className="min-w-0">
                   <button
                     type="button"
+                    title={leg.locationLabel ?? undefined}
                     onClick={() => setActiveLegIndex(leg.legIndex)}
                     className={cn(
-                      "h-[6.5rem] w-full rounded-md border bg-card px-2 py-2 text-left transition-colors hover:bg-muted",
+                      "grid h-28 w-full grid-rows-[1rem_1rem_2rem_1rem] gap-1 overflow-hidden rounded-md border bg-card px-2 py-2 text-left transition-colors hover:bg-muted",
                       active && "border-primary bg-accent",
                     )}
                   >
                     <span className="block text-xs font-medium text-muted-foreground">{active && leg.legIndex === detail.summary.legIndex ? "review" : "clear"}</span>
-                    <span className="mt-1 block truncate text-xs font-semibold capitalize">{leg.bizStep}</span>
-                    {leg.locationLabel && <span className="mt-1 block line-clamp-2 text-xs leading-4 text-muted-foreground">{leg.locationLabel}</span>}
-                    <span className="mt-1 block font-mono text-xs text-muted-foreground">{leg.eventTime.slice(11, 16)}</span>
+                    <span className="block truncate text-xs font-semibold capitalize">{leg.bizStep}</span>
+                    <span className="line-clamp-2 max-h-8 min-w-0 overflow-hidden break-words text-xs leading-4 text-muted-foreground">{leg.locationLabel}</span>
+                    <span className="block font-mono text-xs text-muted-foreground">{leg.eventTime.slice(11, 16)}</span>
                   </button>
                 </li>
               );
