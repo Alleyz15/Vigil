@@ -13,6 +13,7 @@ import {
   issueConfirmation,
   readConfirmation,
   remainingLabel,
+  tokenMessage,
   tokenStateOf,
 } from "./index";
 
@@ -106,6 +107,18 @@ function issue(db: VigilDb, windowHours = 48): string {
 }
 
 describe("the token is a scoped capability", () => {
+  it("describes a recorded no_response as expiry, never a recipient confirmation", () => {
+    const db = seed();
+    const token = issue(db, 1);
+    expireConfirmations(db, "2026-09-08T13:00:30.000Z");
+    const state = evaluateToken(readConfirmation(db, token), "2026-09-08T13:00:30.000Z");
+    expect(state.status).toBe("answered");
+    expect(tokenMessage(state)).toEqual({
+      headline: "The confirmation window has closed",
+      detail: "No recipient answer was received before the deadline. Delivery was not confirmed by this link.",
+    });
+  });
+
   it("issues one token per handoff and returns the same one twice", () => {
     const db = seed();
     expect(issue(db)).toBe(issue(db));

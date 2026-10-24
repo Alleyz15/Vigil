@@ -51,7 +51,8 @@ export function ConfirmView({
   }
 
   const message = tokenMessage(state);
-  const Icon = state.status === "answered" ? CheckCircle2 : state.status === "open" ? PackageCheck : CircleAlert;
+  const recipientAnswered = state.status === "answered" && state.answer !== "no_response";
+  const Icon = recipientAnswered ? CheckCircle2 : state.status === "open" ? PackageCheck : CircleAlert;
 
   return (
     <div>
@@ -59,7 +60,7 @@ export function ConfirmView({
         <Icon
           aria-hidden="true"
           className={
-            state.status === "answered"
+            recipientAnswered
               ? "size-8 text-emerald-600 dark:text-emerald-400"
               : state.status === "open"
                 ? "size-8 text-primary"

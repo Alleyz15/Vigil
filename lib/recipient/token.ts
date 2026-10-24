@@ -103,6 +103,12 @@ export function tokenMessage(state: TokenState): { headline: string; detail: str
         detail: "One question, one answer. This link works once and then expires.",
       };
     case "answered":
+      if (state.answer === "no_response") {
+        return {
+          headline: "The confirmation window has closed",
+          detail: "No recipient answer was received before the deadline. Delivery was not confirmed by this link.",
+        };
+      }
       return {
         headline: "Thank you — your answer was recorded",
         detail:
