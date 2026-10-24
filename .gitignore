@@ -60,6 +60,13 @@ AGENTS.md
 
 .tmp-dev.*.log
 
+# Local dev-server and QA capture artifacts
+/.codex-dev.*.log
+/.codex-dev.pid
+/.qa-dev.*.log
+/.qa-dev.pid
+/tmp/
+
 # Other AI coding tools drop config here. Not this project's, and swept in twice by `git add -A`.
 .cursor/
 .superdesign/
