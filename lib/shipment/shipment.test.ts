@@ -343,6 +343,8 @@ describe("a resolved address and the sender's claim are two things", () => {
       recipientChannel: "+60111234567",
     };
     expect(requestHashOf(before)).toBe("b24047a60786d6120c0cdafd3a3dfecef7133951c07db58ef4ca68bb75ccc259");
+    expect(requestHashOf({ ...before, demoCondition: "normal" })).toBe(requestHashOf(before));
+    expect(requestHashOf({ ...before, demoCondition: "mock_location" })).not.toBe(requestHashOf(before));
   });
 
   it("counts a resolution as part of the request, so a key reused with a different label conflicts", () => {

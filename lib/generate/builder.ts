@@ -125,6 +125,7 @@ export function buildRequestedScenario(
   context: {
     world: GeneratedWorld;
     startMs: number;
+    courierIndex?: number;
     /**
      * Extra overrides merged into the delivery leg.
      *
@@ -158,9 +159,11 @@ export function buildRequestedScenario(
   const rng = makeRng(`${seed}::${runId}`);
 
   const { world, startMs } = context;
-  const courier = world.couriers[BUILDER_COURIER_INDEX];
+  const courierIndex = context.courierIndex ?? BUILDER_COURIER_INDEX;
+  const courier = world.couriers[courierIndex];
+  if (!courier) return { ok: false, reason: "The assigned courier does not exist in this world." };
   const courierParcels = world.parcels.filter((p) =>
-    p.epc.startsWith(prefixFor(BUILDER_COURIER_INDEX)),
+    p.epc.startsWith(prefixFor(courierIndex)),
   );
 
   const route = resolveRoute({
@@ -168,7 +171,7 @@ export function buildRequestedScenario(
     destinationIndex: request.destinationIndex,
   });
 
-  const parcel = parcelFor(request, route, rng.derive("parcel"), courierParcels[0], runId);
+  const parcel = parcelFor(request, route, rng.derive("parcel"), courierParcels[0], runId, courierIndex);
 
   // Timed against the doorstep the courier is actually driving to, not the
   // address label's centroid.
@@ -217,6 +220,7 @@ export function buildRequestedScenario(
         deliveryMs,
         world,
         route: routed,
+        courierIndex,
       }),
       context.deliveryOverride,
     ),
@@ -254,12 +258,13 @@ function parcelFor(
   rng: Rng,
   template: GeneratedParcel,
   runId: BuiltScenarioId,
+  courierIndex: number,
 ): GeneratedParcel {
   const identity = parseInt(createHash("sha256").update(runId).digest("hex").slice(0, 8), 16);
   return {
     // The serial changes per shipment while the courier-owned prefix remains
     // unchanged. H2 authorises the prefix; identity lives in the serial.
-    epc: epcFor(BUILDER_COURIER_INDEX, 1_000_000 + (identity % 1_000_000_000)),
+    epc: epcFor(courierIndex, 1_000_000 + (identity % 1_000_000_000)),
     waybillNo: `WB-BUILT-${runId.slice(2).toUpperCase()}`,
     recipientName: request.recipientName?.trim() || template.recipientName,
     recipientPhone: request.recipientChannel,
@@ -281,7 +286,7 @@ function mergeDelivery(
 
 function overridesFor(
   fault: BuiltFault,
-  ctx: { parcel: GeneratedParcel; rng: Rng; deliveryMs: number; world: GeneratedWorld; route: Route },
+  ctx: { parcel: GeneratedParcel; rng: Rng; deliveryMs: number; world: GeneratedWorld; route: Route; courierIndex: number },
 ): Partial<Record<string, LegOverrides>> {
   switch (fault) {
     case "gps_spoof": {
@@ -310,7 +315,7 @@ function overridesFor(
 
     case "out_of_scope":
       // A parcel from another courier's route entirely.
-      return { delivery: { epc: epcFor(3, 7) } };
+      return { delivery: { epc: epcFor(ctx.courierIndex === 3 ? 0 : 3, 7) } };
 
     case "eventid_reuse":
     case "none":

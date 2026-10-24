@@ -94,6 +94,8 @@ export type ShipmentRequest = {
   codAmountSen?: number;
   recipientChannel: string;
   recipientName?: string;
+  /** Demo-only input that changes a reported device fact, never a verdict directly. */
+  demoCondition?: "normal" | "mock_location";
 };
 
 export type LocationSnapshot = typeof locationSnapshots.$inferSelect;
@@ -131,6 +133,10 @@ function normalised(request: ShipmentRequest) {
     codAmountSen: request.codAmountSen ?? 0,
     recipientChannel: request.recipientChannel,
     recipientName: request.recipientName ?? null,
+    // Preserve every pre-demo shipment's idempotency hash. `normal` is the old
+    // behaviour, so omitted and explicit-normal are the same historical body;
+    // only a condition that changes the simulated scan enters the hash.
+    ...(request.demoCondition === "mock_location" ? { demoCondition: request.demoCondition } : {}),
   };
 }
 
@@ -220,6 +226,7 @@ export function createShipment(
             codAmountSen: request.codAmountSen ?? 0,
             recipientChannel: request.recipientChannel,
             recipientName: request.recipientName ?? null,
+            demoCondition: request.demoCondition ?? "normal",
             createdAt: nowIso,
           })
           .onConflictDoNothing({ target: shipments.idempotencyKey })

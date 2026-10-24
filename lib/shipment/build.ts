@@ -108,6 +108,7 @@ export function buildOnlineScenario(
   context: {
     world: GeneratedWorld;
     startMs: number;
+    courierIndex?: number;
     scan?: Point;
     /**
      * Extra facts about the delivery scan — a mock-location flag, a failed
@@ -123,8 +124,10 @@ export function buildOnlineScenario(
   const id = scenarioIdFor(shipment.shipmentId);
   const rng = makeRng(`online::${shipment.shipmentId}`);
 
-  const courier = world.couriers[ONLINE_COURIER_INDEX];
-  const courierParcels = world.parcels.filter((p) => p.epc.startsWith(prefixFor(ONLINE_COURIER_INDEX)));
+  const courierIndex = context.courierIndex ?? ONLINE_COURIER_INDEX;
+  const courier = world.couriers[courierIndex];
+  if (!courier) throw new Error("The assigned courier does not exist in this world.");
+  const courierParcels = world.parcels.filter((p) => p.epc.startsWith(prefixFor(courierIndex)));
 
   const reference = history.originalReference;
   const current = history.currentReference;
@@ -136,7 +139,7 @@ export function buildOnlineScenario(
   const legs = retime(route.lineHaulMetres, lastMileMetres);
 
   const parcel: GeneratedParcel = {
-    epc: epcFor(ONLINE_COURIER_INDEX, serialFor(shipment.shipmentId)),
+    epc: epcFor(courierIndex, serialFor(shipment.shipmentId)),
     waybillNo: `WB-ON-${shipment.shipmentId.slice(0, 8).toUpperCase()}`,
     recipientName: shipment.recipientName?.trim() || courierParcels[0].recipientName,
     recipientPhone: shipment.recipientChannel,
@@ -158,11 +161,19 @@ export function buildOnlineScenario(
   });
 
   const overrides: Partial<Record<LegName, LegOverrides>> = {};
+  const storedDeliveryCondition: LegOverrides =
+    shipment.demoCondition === "mock_location" ? { mockLocation: true } : {};
   for (const leg of legs) {
     overrides[leg.name] = {
       eventID: eventIdFor(shipment.shipmentId, leg.name) as LegOverrides["eventID"],
       ...(leg.where === "recipient"
-        ? { scanPoint: { ...scan }, omitCell: true, omitWifi: true, ...context.deliveryOverrides }
+        ? {
+            scanPoint: { ...scan },
+            omitCell: true,
+            omitWifi: true,
+            ...storedDeliveryCondition,
+            ...context.deliveryOverrides,
+          }
         : {}),
     };
   }
