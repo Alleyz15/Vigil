@@ -9,6 +9,7 @@ const LABELS: Record<HandoffState, string> = {
   awaiting_cosignature: "Awaiting co-signature",
   timed_out: "Timed out",
   awaiting_evidence: "Evidence requested",
+  evidence_submitted: "Evidence submitted",
   awaiting_reroute_signatures: "Reroute signatures pending",
   resolved_approved: "Approved and sealed",
   resolved_rejected: "Rejected by operator",
@@ -37,6 +38,7 @@ export function HandoffStateBadge({
         "font-medium",
         state === "accepted" && "border-emerald-200 bg-emerald-50 text-emerald-800",
         state === "awaiting_cosignature" && "border-amber-200 bg-amber-50 text-amber-900",
+        state === "evidence_submitted" && "border-amber-200 bg-amber-50 text-amber-900",
         state === "timed_out" && "border-red-200 bg-red-50 text-red-800",
         state === "flagged" && "border-orange-200 bg-orange-50 text-orange-900",
       )}

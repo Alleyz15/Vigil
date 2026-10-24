@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw, MapPin, Package, PenLine, Shield } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw, RefreshCw, MapPin, Package, PenLine, Shield } from "lucide-react";
 import type { CourierOutcome, CourierOutcomeKind } from "@/lib/workbench/courier";
 import type { CourierQueueItem, CourierWorkspaceView } from "@/lib/workbench/service";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
-import { CourierShell } from "@/components/shells/courier-shell";
+import { CourierShell, type CourierMode } from "@/components/shells/courier-shell";
+import { EvidenceWorkspace, type EvidenceDraft } from "./evidence-workspace";
 import { RouteSummary } from "@/components/shipment/route-summary";
 import { cn } from "@/lib/utils";
 
@@ -37,71 +38,165 @@ export function CourierView({ initial }: { initial: CourierWorkspaceView }) {
   const [workspace, setWorkspace] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [actorId, setActorId] = useState(initial.identity.subject);
+  const [actorReady, setActorReady] = useState(true);
+  const ready = useRef(true);
+  const [mode, setMode] = useState<CourierMode>("handoffs");
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, EvidenceDraft>>({});
   const [selectedId, setSelectedId] = useState(initial.items[0]?.handoffId ?? null);
   const selected = workspace.items.find((item) => item.handoffId === selectedId) ?? workspace.items[0];
+  const evidenceItems = workspace.evidenceRequests ?? [];
+  const selectedEvidence = evidenceItems.find((item) => item.request.requestId === requestId) ?? evidenceItems[0];
+  const draftKey = `${actorId}:${selectedEvidence?.request.requestId ?? ""}`;
+  const identity = mode === "evidence" ? selectedEvidence?.identity ?? workspace.identity : selected?.identity ?? workspace.identity;
+  const readVersion = useRef(0);
+  const submitting = useRef(false);
 
-  async function refreshWorkspace() {
-    const listing = await fetch("/api/courier/handoffs", { cache: "no-store" });
-    if (!listing.ok) {
-      throw new Error("Could not refresh the handoff listing. Submission may have completed; reload before retrying.");
-    }
-    const next = (await listing.json()) as CourierWorkspaceView;
+  const adoptWorkspace = useCallback((next: CourierWorkspaceView) => {
     setWorkspace(next);
+    setActorId(next.identity.subject);
     setSelectedId((current) =>
       current && next.items.some((item) => item.handoffId === current)
         ? current
         : (next.items[0]?.handoffId ?? null),
     );
-  }
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const listing = await fetch("/api/courier/handoffs", { cache: "no-store" });
-        if (!listing.ok) throw new Error("Could not load the courier handoff queue.");
-        const next = (await listing.json()) as CourierWorkspaceView;
-        if (!active) return;
-        setWorkspace(next);
-        setSelectedId((current) =>
-          current && next.items.some((item) => item.handoffId === current)
-            ? current
-            : (next.items[0]?.handoffId ?? null),
-        );
-      } catch (caught) {
-        if (active) setError((caught as Error).message);
-      }
-    })();
-    return () => {
-      active = false;
-    };
+    setRequestId((current) => current && next.evidenceRequests?.some((item) => item.request.requestId === current)
+      ? current : next.evidenceRequests?.[0]?.request.requestId ?? null);
   }, []);
 
-  async function submit(handoffId: string, signed: boolean) {
-    setBusy(`${handoffId}:${signed}`);
+  const loadWorkspace = useCallback(async (courierId?: string, switchIdentity = false) => {
+    if (submitting.current) return;
+    if (switchIdentity && courierId !== undefined) {
+      setActorId(courierId);
+      ready.current = false;
+      setActorReady(false);
+    }
+    const version = ++readVersion.current;
+    setLoading(true);
     setError(null);
+    try {
+      const listing = await fetch(`/api/courier/handoffs${courierId !== undefined ? `?courierId=${encodeURIComponent(courierId)}` : ""}`, { cache: "no-store" });
+      const next = await listing.json() as CourierWorkspaceView & { error?: string };
+      if (!listing.ok) throw new Error(next.error ?? "Could not load the courier handoff queue.");
+      if (!next.identity || !Array.isArray(next.items) || (courierId !== undefined && next.identity.subject !== courierId)) {
+        throw new Error("The queue response did not match the requested courier.");
+      }
+      // A newer identity/read or a mutation owns the workspace now.
+      if (version !== readVersion.current) return;
+      adoptWorkspace(next);
+      ready.current = true;
+      setActorReady(true);
+    } catch (caught) {
+      if (version === readVersion.current) setError((caught as Error).message);
+    } finally {
+      if (version === readVersion.current) setLoading(false);
+    }
+  }, [adoptWorkspace]);
+
+  useEffect(() => {
+    const versionCounter = readVersion;
+    const queryActor = new URLSearchParams(window.location.search).get("courierId");
+    // Sync the page actor before the first fetch so a queued submit cannot use the old actor.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadWorkspace(queryActor ?? undefined, queryActor !== null);
+    return () => { versionCounter.current++; };
+  }, [loadWorkspace]);
+
+  function switchActor(courierId: string) {
+    if (submitting.current) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("courierId", courierId);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    void loadWorkspace(courierId, true);
+  }
+
+  function beginSubmission(label: string): boolean {
+    if (submitting.current || !ready.current) return false;
+    submitting.current = true;
+    readVersion.current++;
+    setLoading(false);
+    setBusy(label);
+    setError(null);
+    return true;
+  }
+
+  function updateDraft(patch: Partial<Pick<EvidenceDraft, "explanation" | "files">>) {
+    if (submitting.current) return;
+    setDrafts((current) => ({ ...current, [draftKey]: {
+      ...(current[draftKey] ?? { submissionId: crypto.randomUUID(), explanation: "", files: [] }), ...patch,
+    } }));
+  }
+
+  async function submitEvidence() {
+    const draft = drafts[draftKey];
+    if (!selectedEvidence || selectedEvidence.request.courierId !== actorId || !draft?.explanation.trim()
+      || selectedEvidence.request.submission || selectedEvidence.state !== "awaiting_evidence") return;
+    if (!beginSubmission("evidence")) return;
+    const form = new FormData();
+    form.set("courierId", actorId);
+    form.set("submissionId", draft.submissionId);
+    form.set("explanation", draft.explanation);
+    for (const file of draft.files) form.append("files", file);
+    try {
+      const response = await fetch(`/api/courier/evidence/${encodeURIComponent(selectedEvidence.request.requestId)}`, { method: "POST", body: form });
+      const payload = await response.json() as { error?: string; workspace?: CourierWorkspaceView };
+      if (!response.ok) throw new Error(payload.error ?? "Evidence submission failed.");
+      if (!payload.workspace?.identity || !Array.isArray(payload.workspace.items) || payload.workspace.identity.subject !== actorId) {
+        throw new Error("The submission response did not include the updated courier queue. Refresh requests before retrying.");
+      }
+      adoptWorkspace(payload.workspace);
+      setDrafts((current) => { const next = { ...current }; delete next[draftKey]; return next; });
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      submitting.current = false;
+      setBusy(null);
+    }
+  }
+
+  async function submit(handoffId: string, signed: boolean) {
+    if (!workspace.items.some((item) => item.handoffId === handoffId && item.courierId === actorId)) return;
+    if (!beginSubmission(`${handoffId}:${signed}`)) return;
     try {
       const response = await fetch(`/api/courier/handoffs/${encodeURIComponent(handoffId)}/submit`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ signed }),
+        body: JSON.stringify({ signed, courierId: actorId }),
       });
-      const payload = await response.json();
+      const payload = await response.json() as { error?: string; workspace?: CourierWorkspaceView };
       if (!response.ok) throw new Error(payload.error ?? "submission failed");
-      await refreshWorkspace();
+      if (!payload.workspace?.identity || !Array.isArray(payload.workspace.items) || payload.workspace.identity.subject !== actorId) {
+        throw new Error("The submission response did not include the updated courier queue. Submission may have completed; reload before retrying.");
+      }
+      adoptWorkspace(payload.workspace);
     } catch (caught) {
       setError((caught as Error).message);
     } finally {
+      submitting.current = false;
       setBusy(null);
     }
   }
 
   return (
-    <CourierShell identity={workspace.identity}>
+    <CourierShell identity={actorReady ? identity : { role: "courier", label: actorId, subject: actorId, keyFingerprint: null, note: "Awaiting courier workspace" }}
+      mode={mode} onModeChange={(next) => { if (!submitting.current) setMode(next); }} busy={busy !== null}
+      evidenceCount={evidenceItems.filter((item) => item.state === "awaiting_evidence" && !item.request.submission).length}
+      identityControls={<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <label htmlFor="demo-courier-identity" className="font-medium">Demo courier identity</label>
+        <select id="demo-courier-identity" value={actorId} disabled={busy !== null} onChange={(event) => switchActor(event.target.value)} className="min-h-9 max-w-full rounded-md border bg-background px-2 text-sm">
+          {!(workspace.couriers ?? [workspace.identity]).some((courier) => courier.subject === actorId) && <option value={actorId}>{actorId}</option>}
+          {(workspace.couriers ?? [workspace.identity]).map((courier) => <option key={courier.subject} value={courier.subject}>{courier.subject} · {courier.label}</option>)}
+        </select>
+        <span className="text-muted-foreground">Not authentication. Demo identities only.</span>
+      </div>}>
     <div>
-      <h1 className="text-2xl font-semibold">Your handoffs</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-semibold">{mode === "handoffs" ? "Your handoffs" : "Evidence requests"}</h1>
+        <Button size="sm" variant="outline" disabled={busy !== null || loading} onClick={() => void loadWorkspace(actorId)}><RefreshCw aria-hidden="true" className="size-4" />{mode === "evidence" ? "Refresh requests" : "Refresh handoffs"}</Button>
+      </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        Choose a prepared delivery scan and sign it with your device key.
+        {mode === "handoffs" ? "Choose a prepared delivery scan and sign it with your device key." : "Requests from your operator and your submitted supporting material."}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -114,13 +209,15 @@ export function CourierView({ initial }: { initial: CourierWorkspaceView }) {
         </p>
       )}
 
-      <div className="courier-workspace mt-6">
+      {!actorReady ? <p role="status" className="mt-6 text-sm text-muted-foreground">{loading ? "Loading courier workspace..." : "Courier workspace unavailable. Refresh or choose another demo courier."}</p> : mode === "evidence" ? (
+        <EvidenceWorkspace items={evidenceItems} selected={selectedEvidence} onSelect={setRequestId} draft={drafts[draftKey]} onChange={updateDraft} onSubmit={() => void submitEvidence()} busy={busy !== null} />
+      ) : <div className="courier-workspace mt-6">
       <section aria-label="Prepared delivery scans" className="min-w-0 overflow-hidden rounded-lg border bg-card">
         <div className="border-b p-5"><h2 className="text-sm font-semibold">Prepared delivery scans <Badge variant="secondary" className="ml-2">{workspace.items.length} handoffs</Badge></h2></div>
       <ul>
         {workspace.items.map((item) => (
           <li key={item.handoffId} className="border-b">
-            <button type="button" aria-pressed={selected?.handoffId === item.handoffId} onClick={() => setSelectedId(item.handoffId)} className={cn("w-full p-5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary", selected?.handoffId === item.handoffId && "bg-sidebar-accent")}>
+            <button type="button" disabled={busy !== null} aria-pressed={selected?.handoffId === item.handoffId} onClick={() => setSelectedId(item.handoffId)} className={cn("w-full p-5 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary", selected?.handoffId === item.handoffId && "bg-sidebar-accent")}>
               <span className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold">{item.title}</span><Badge variant="outline" className="text-xs font-normal">{sourceLabel(item.source)}</Badge></span>
               <span className="mt-3 flex items-center gap-2 font-mono text-xs"><Package aria-hidden="true" className="size-4 shrink-0" />{item.waybillNo}</span>
               <span className="mt-2 flex items-start gap-2 text-xs text-muted-foreground"><MapPin aria-hidden="true" className="size-4 shrink-0" />{item.route.destination.label}</span>
@@ -133,7 +230,7 @@ export function CourierView({ initial }: { initial: CourierWorkspaceView }) {
       <p className="flex gap-2 p-5 text-xs leading-5 text-muted-foreground"><Shield aria-hidden="true" className="mt-0.5 size-4 shrink-0" />The courier supplies evidence and a device signature. The verifier owns the decision.</p>
       </section>
       {selected ? <HandoffCard item={selected} busy={busy} onSubmit={(signed) => submit(selected.handoffId, signed)} /> : <p className="p-5 text-sm text-muted-foreground">No prepared delivery scans available.</p>}
-      </div>
+      </div>}
     </div>
     </CourierShell>
   );

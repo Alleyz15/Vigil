@@ -124,6 +124,26 @@ describe("an online shipment in the workbench", () => {
     const seeded = workbench.listHandoffs().items.find((item) => item.scenarioId === "S0")!;
     expect(workbench.getHandoff(seeded.eventId)!.locationEvidence).toBeNull();
   });
+
+  it("can demonstrate a mock-location contradiction without inventing cell or WiFi references", async () => {
+    const created = await workbench.createOnlineShipment(
+      { ...REQUEST, demoCondition: "mock_location" },
+      "wb-key-mock-location",
+    );
+    if (created.status !== "created") throw new Error(created.status);
+
+    const delivered = await workbench.deliverOnlineShipment(created.shipmentId);
+    if (!delivered.ok) throw new Error(delivered.reason);
+    const detail = workbench.getHandoff(delivered.eventId)!;
+
+    expect(detail.flags.map((flag) => flag.id)).toContain("I7");
+    expect(detail.checks.singleEvent).toContainEqual(
+      expect.objectContaining({ id: "I1", status: "not_evaluated" }),
+    );
+    expect(detail.checks.singleEvent).toContainEqual(
+      expect.objectContaining({ id: "I7", status: "triggered" }),
+    );
+  }, 60_000);
 });
 
 describe("the store's location on disk", () => {

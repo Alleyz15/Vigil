@@ -1,5 +1,5 @@
-import type { CourierDraft, RoleIdentity } from "@/lib/workbench/service";
-import type { AxisValue, HandoffDetail } from "@/lib/workbench/read-model";
+import type { CourierDraft, CourierQueueItem, RoleIdentity } from "@/lib/workbench/service";
+import type { AxisValue, HandoffDetail, HandoffState, HandoffSummary } from "@/lib/workbench/read-model";
 import { courierOutcome } from "@/lib/workbench/courier";
 
 /**
@@ -22,8 +22,177 @@ import { courierOutcome } from "@/lib/workbench/courier";
  * describes (rule 3g).
  */
 
-/** Which scenario the demo follows. S1's delivery leg is the one the gate sends to co-signature. */
-export const COSIGN_SCENARIO = "S1";
+export type CosignChoice = {
+  handoffId: string;
+  eventId: string;
+  source: "seeded" | "registered" | "online";
+  scenarioId: string;
+  waybillNo: string;
+  title: string;
+  eventTime: string;
+  state: HandoffState | "prepared";
+  queueItem: CourierQueueItem | null;
+  draft: CourierDraft | null;
+};
+
+export type CosignSubject = {
+  handoffId: string;
+  scenarioId: string;
+  source: CosignChoice["source"];
+  title: string;
+  epc: string;
+  waybillNo: string;
+  leg: string;
+  eventTime: string;
+  eventId: string;
+  attempts: CourierDraft["attempts"];
+  operatorSeal: CourierDraft["operatorSeal"];
+};
+
+function sourceOfScenario(scenarioId: string): CosignChoice["source"] {
+  if (scenarioId.startsWith("B-O-")) return "online";
+  if (scenarioId.startsWith("B-")) return "registered";
+  return "seeded";
+}
+
+export function buildCosignChoices(
+  queueItems: CourierQueueItem[],
+  handoffs: HandoffSummary[],
+  drafts: CourierDraft[] = [],
+): CosignChoice[] {
+  const summariesByEvent = new Map(handoffs.map((summary) => [summary.eventId, summary]));
+  const choices: CosignChoice[] = queueItems.map((item) => ({
+    handoffId: item.handoffId,
+    eventId: item.eventId,
+    source: item.source,
+    scenarioId: item.scenarioId,
+    waybillNo: item.waybillNo,
+    title: item.title,
+    eventTime: item.eventTime,
+    state:
+      summariesByEvent.get(item.eventId)?.state ??
+      (item.attempts.length === 0 ? "prepared" : "accepted"),
+    queueItem: item,
+    draft: null,
+  }));
+  const queuedEvents = new Set(choices.map((choice) => choice.eventId));
+  const representedSeededScenarios = new Set(
+    choices.filter((choice) => choice.source === "seeded").map((choice) => choice.scenarioId),
+  );
+
+  // `/courier` is intentionally scoped to one courier identity, so it may omit
+  // prepared drafts belonging to other seeded scenarios. This presentation
+  // selector is cross-scenario: merge those drafts here without weakening the
+  // production courier workspace's identity boundary.
+  for (const draft of drafts) {
+    if (queuedEvents.has(draft.eventId) || representedSeededScenarios.has(draft.scenarioId)) continue;
+    choices.push({
+      handoffId: `seeded:${draft.draftId}`,
+      eventId: draft.eventId,
+      source: "seeded",
+      scenarioId: draft.scenarioId,
+      waybillNo: draft.waybillNo,
+      title: draft.title,
+      eventTime: draft.eventTime,
+      state: draft.attempts.length === 0 ? "prepared" : "accepted",
+      queueItem: null,
+      draft,
+    });
+    queuedEvents.add(draft.eventId);
+    representedSeededScenarios.add(draft.scenarioId);
+  }
+
+  // S2 contains many deliveries by design. The demo rail names scenarios, so
+  // seeded history contributes one newest representative delivery per S0-S6,
+  // while sender-created shipments remain individually selectable.
+  const newestFirst = [...handoffs].sort((a, b) => Date.parse(b.eventTime) - Date.parse(a.eventTime));
+  for (const summary of newestFirst) {
+    if (summary.bizStep !== "delivering" || queuedEvents.has(summary.eventId)) continue;
+    const source = sourceOfScenario(summary.scenarioId);
+    if (source === "seeded" && representedSeededScenarios.has(summary.scenarioId)) continue;
+    choices.push({
+      handoffId: `history:${summary.eventId}`,
+      eventId: summary.eventId,
+      source,
+      scenarioId: summary.scenarioId,
+      waybillNo: summary.parcel.waybillNo,
+      title: `Delivery handoff — ${summary.scenarioId}`,
+      eventTime: summary.eventTime,
+      state: summary.state,
+      queueItem: null,
+      draft: null,
+    });
+    queuedEvents.add(summary.eventId);
+    if (source === "seeded") representedSeededScenarios.add(summary.scenarioId);
+  }
+
+  const sourceOrder = { online: 0, registered: 1, seeded: 2 } as const;
+  return choices.sort((a, b) => {
+    const sourceDifference = sourceOrder[a.source] - sourceOrder[b.source];
+    if (sourceDifference !== 0) return sourceDifference;
+    if (a.source === "seeded" && b.source === "seeded") {
+      const scenarioDifference = Number(a.scenarioId.slice(1)) - Number(b.scenarioId.slice(1));
+      if (Number.isFinite(scenarioDifference) && scenarioDifference !== 0) return scenarioDifference;
+      return a.scenarioId.localeCompare(b.scenarioId);
+    }
+    return Date.parse(b.eventTime) - Date.parse(a.eventTime);
+  });
+}
+
+export function selectCosignChoice(
+  choices: CosignChoice[],
+  requestedHandoffId?: string,
+): CosignChoice | undefined {
+  return choices.find((choice) => choice.handoffId === requestedHandoffId) ?? choices[0];
+}
+
+export function cosignSubjectFromQueue(item: CourierQueueItem): CosignSubject {
+  return {
+    handoffId: item.handoffId,
+    scenarioId: item.scenarioId,
+    source: item.source,
+    title: item.title,
+    epc: item.epc,
+    waybillNo: item.waybillNo,
+    leg: item.leg,
+    eventTime: item.eventTime,
+    eventId: item.eventId,
+    attempts: item.attempts,
+    operatorSeal: item.operatorSeal,
+  };
+}
+
+export function cosignSubjectFromDraft(draft: CourierDraft): CosignSubject {
+  return {
+    handoffId: `seeded:${draft.draftId}`,
+    scenarioId: draft.scenarioId,
+    source: "seeded",
+    title: draft.title,
+    epc: draft.epc,
+    waybillNo: draft.waybillNo,
+    leg: draft.leg,
+    eventTime: draft.eventTime,
+    eventId: draft.eventId,
+    attempts: draft.attempts,
+    operatorSeal: draft.operatorSeal,
+  };
+}
+
+export function cosignSubjectFromDetail(detail: HandoffDetail): CosignSubject {
+  return {
+    handoffId: `history:${detail.summary.eventId}`,
+    scenarioId: detail.summary.scenarioId,
+    source: sourceOfScenario(detail.summary.scenarioId),
+    title: `Delivery handoff — ${detail.summary.scenarioId}`,
+    epc: detail.summary.parcel.epc,
+    waybillNo: detail.summary.parcel.waybillNo,
+    leg: detail.summary.bizStep,
+    eventTime: detail.summary.eventTime,
+    eventId: detail.summary.eventId,
+    attempts: [],
+    operatorSeal: null,
+  };
+}
 
 export type CosignPhase =
   /** The courier holds a draft. Nothing signed, nothing submitted, nothing queued. */
@@ -45,6 +214,7 @@ export type CosignModel = {
   phase: CosignPhase;
   /** The fact both panes share, and the reason this is one handoff and not two. */
   shared: {
+    source: CosignChoice["source"];
     eventId: string;
     waybillNo: string;
     epc: string;
@@ -63,7 +233,7 @@ export type CosignModel = {
     detail: string;
     /** Verbatim verifier output, never our paraphrase of it. */
     problems: string[];
-    draftId: string;
+    handoffId: string;
   };
   operator: {
     identity: RoleIdentity;
@@ -83,11 +253,18 @@ export type CosignModel = {
 };
 
 export function buildCosignModel(input: {
-  draft: CourierDraft;
+  draft?: CourierDraft;
+  subject?: CosignSubject;
   detail: HandoffDetail | undefined;
   identities: { courier: RoleIdentity; operator: RoleIdentity };
 }): CosignModel {
-  const { draft, detail, identities } = input;
+  const { detail, identities } = input;
+  const draft = input.subject ?? (input.draft ? {
+    ...input.draft,
+    handoffId: `seeded:${input.draft.draftId}`,
+    source: "seeded" as const,
+  } : undefined);
+  if (!draft) throw new Error("A co-sign handoff subject is required.");
 
   const attempt = draft.attempts.at(-1);
 
@@ -119,6 +296,7 @@ export function buildCosignModel(input: {
   return {
     phase,
     shared: {
+      source: draft.source,
       eventId: draft.eventId,
       waybillNo: draft.waybillNo,
       epc: draft.epc,
@@ -136,7 +314,7 @@ export function buildCosignModel(input: {
         outcome?.detail ??
         "Nothing has been sent yet. Submitting signs this scan with the device key held on this handset.",
       problems: outcome?.problems ?? [],
-      draftId: draft.draftId,
+      handoffId: draft.handoffId,
     },
     operator: {
       identity: identities.operator,
@@ -184,6 +362,13 @@ function arithmeticOf(credential: CosignModel["credential"]): {
   }
 
   if (credential.valid) {
+    if (!credential.cosignRequired) {
+      return {
+        headline: "Courier signature = a credential that verifies",
+        detail:
+          "The courier signed the event; an operator signature was not required by this handoff's mandate.",
+      };
+    }
     return {
       headline: "Courier signature + operator signature = a credential that verifies",
       detail:

@@ -1,0 +1,75 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createMigratedDb } from "@/lib/db/migrate";
+import { createWorkbench, type OperatorWorkbench } from "@/lib/workbench";
+import { resolveRuntimeLlm } from "@/lib/llm/runtime";
+import { POST as createOnline } from "./sender/online-shipments/route";
+import { POST as assign } from "./operator/dispatches/[dispatchId]/assign/route";
+import { GET as courier } from "./courier/handoffs/route";
+import { POST as sign } from "./courier/handoffs/[handoffId]/submit/route";
+import { POST as action } from "./operator/handoffs/[eventId]/actions/route";
+import { POST as evidence } from "./courier/evidence/[requestId]/route";
+import { GET as attachment } from "./evidence/attachments/[attachmentId]/route";
+import { GET as dispatches } from "./operator/dispatches/route";
+import CourierPage from "@/app/(standalone)/courier/page";
+
+let wb: OperatorWorkbench;
+beforeAll(async () => {
+  wb = await createWorkbench({ scenarioIds: ["S0"], runtimeLlm: resolveRuntimeLlm({}) });
+  wb.configureOnline({ store: createMigratedDb(":memory:"), boundary: { version: "test", source: "test fixture", licence: "n/a", area: { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[[101.6, 3.1], [101.8, 3.1], [101.8, 3.2], [101.6, 3.2], [101.6, 3.1]]] } } } });
+  globalThis.__vigilOperatorWorkbench = Promise.resolve(wb);
+}, 120_000);
+afterAll(() => { globalThis.__vigilOperatorWorkbench = undefined; wb?.close(); });
+const post = (body: unknown) => new Request("http://localhost/api/action", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": "api-dispatch" }, body: JSON.stringify(body) });
+
+describe("the complete page-facing API flow", () => {
+  it("renders the selected courier in the initial page, without briefly exposing another courier's queue", async () => {
+    const page = await CourierPage({ searchParams: Promise.resolve({ courierId: "CR-1003" }) });
+    expect(page.props.initial.identity.subject).toBe("CR-1003");
+    expect(page.props.initial.items.every((item: { courierId: string }) => item.courierId === "CR-1003")).toBe(true);
+  });
+  it("creates, assigns, signs, requests evidence, returns an upload to review, and seals the original Flag", async () => {
+    const created = await createOnline(post({ origin: { latitude: 3.13, longitude: 101.67 }, destination: { latitude: 3.165, longitude: 101.73, addressClaim: "Destination" }, declaredValueSen: 90_000, recipientChannel: "+60119990007", demoCondition: "mock_location" }));
+    expect(created.status).toBe(201);
+    const body = await created.json();
+    expect(body).toMatchObject({ running: false, awaitingAssignment: true });
+    expect(body.items[0].assignmentState).toBe("awaiting_assignment");
+    const handoffId = `online:${body.shipmentId}`;
+    const assigned = await assign(post({ courierId: "CR-1002" }), { params: Promise.resolve({ dispatchId: handoffId }) });
+    expect(assigned.status).toBe(200);
+    expect((await assigned.json()).items[0]).toMatchObject({ state: "assigned", courierId: "CR-1002" });
+    const listing = await courier(new Request("http://localhost/api/courier/handoffs?courierId=CR-1002"));
+    const workspace = await listing.json();
+    expect(workspace.items.some((item: { handoffId: string }) => item.handoffId === handoffId)).toBe(true);
+    const signed = await sign(post({ signed: true, courierId: "CR-1002" }), { params: Promise.resolve({ handoffId }) });
+    expect(signed.status).toBe(200);
+    const signedBody = await signed.json();
+    expect(signedBody.workspace.identity.subject).toBe("CR-1002");
+    expect(signedBody.cosignState.selectedHandoffId).toBe(handoffId);
+    const eventId = signedBody.item.eventId;
+    const requested = await action(post({ action: "request_evidence", note: "Explain the mock-location finding and attach a receipt." }), { params: Promise.resolve({ eventId }) });
+    expect(requested.status).toBe(200);
+    const requestId = (await requested.json()).supportingEvidence[0].requestId;
+    const form = new FormData();
+    form.set("courierId", "CR-1002"); form.set("submissionId", "api-reply-1"); form.set("explanation", "Receipt for operator review, not proof that the GPS was genuine.");
+    form.append("files", new File(["%PDF-1.4\n<<>>\n%%EOF"], "receipt.pdf", { type: "application/pdf" }));
+    const uploaded = await evidence(new Request("http://localhost/api/evidence", { method: "POST", body: form }), { params: Promise.resolve({ requestId }) });
+    expect(uploaded.status).toBe(200);
+    const uploadedBody = await uploaded.json();
+    const evidenceItem = uploadedBody.workspace.evidenceRequests[0];
+    expect(evidenceItem.state).toBe("evidence_submitted");
+    const attachmentId = evidenceItem.request.submission.attachments[0].attachmentId;
+    const file = await attachment(new Request("http://localhost/api/file?role=operator"), { params: Promise.resolve({ attachmentId }) });
+    expect(file.status).toBe(200);
+    expect(file.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(file.headers.get("content-disposition")).toMatch(/^attachment;/);
+    expect(await file.text()).toContain("%PDF");
+    const refused = await attachment(new Request("http://localhost/api/file?courierId=CR-1000"), { params: Promise.resolve({ attachmentId }) });
+    expect(refused.status).toBe(404);
+    const approval = await action(post({ action: "approve", note: "Reviewed supporting material; the I7 flag remains." }), { params: Promise.resolve({ eventId }) });
+    expect(approval.status).toBe(200);
+    const approved = await approval.json();
+    expect(approved.summary).toMatchObject({ decision: "flag", sealed: true, state: "resolved_approved" });
+    expect(approved.flags.map((flag: { id: string }) => flag.id)).toContain("I7");
+    expect((await (await dispatches()).json()).items[0].courierId).toBe("CR-1002");
+  }, 120_000);
+});

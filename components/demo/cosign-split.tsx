@@ -1,9 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import { ArrowLeft, CheckCircle2, CircleDashed, ShieldAlert, XCircle } from "lucide-react";
 import Link from "next/link";
 import { IdentityBar } from "@/components/shells/identity-bar";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
 import { CosignActions } from "./cosign-actions";
-import { COSIGN_STEPS, type CosignModel } from "@/lib/demo/cosign";
+import { COSIGN_STEPS, type CosignChoice, type CosignModel } from "@/lib/demo/cosign";
 import { formatEvidenceValue } from "@/lib/display/evidence";
 import { cn } from "@/lib/utils";
 
@@ -23,14 +26,24 @@ import { cn } from "@/lib/utils";
  * shapes a viewer will see again on the real pages rather than inventing a
  * third visual language for the demo.
  */
-export function CosignSplit({ model }: { model: CosignModel }) {
+export function CosignSplit({
+  model: initialModel,
+  choices,
+  selectedHandoffId,
+}: {
+  model: CosignModel;
+  choices: CosignChoice[];
+  selectedHandoffId: string;
+}) {
+  const [model, setModel] = useState(initialModel);
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <TopRail model={model} />
 
-      <div className="grid flex-1 grid-cols-1 lg:grid-cols-2">
-        <CourierPane model={model} />
-        <OperatorPane model={model} />
+      <div className="grid flex-1 grid-cols-1 lg:grid-cols-[17rem_minmax(0,1fr)_minmax(0,1fr)]">
+        <HandoffRail choices={choices} selectedHandoffId={selectedHandoffId} />
+        <CourierPane model={model} onModelChange={setModel} />
+        <OperatorPane model={model} onModelChange={setModel} />
       </div>
 
       <CredentialBar model={model} />
@@ -38,9 +51,119 @@ export function CosignSplit({ model }: { model: CosignModel }) {
   );
 }
 
+export function HandoffRail({
+  choices,
+  selectedHandoffId,
+}: {
+  choices: CosignChoice[];
+  selectedHandoffId: string;
+}) {
+  const groups = [
+    {
+      source: "online" as const,
+      label: "Point-to-point dispatch",
+      empty: (
+        <p className="px-4 py-3 text-xs leading-5 text-muted-foreground">
+          No active point-to-point handoff in this server process.{" "}
+          <Link href="/sender" className="font-medium text-foreground underline underline-offset-2">
+            Create one on Sender
+          </Link>
+          .
+        </p>
+      ),
+    },
+    {
+      source: "registered" as const,
+      label: "Sender dispatches",
+      empty: (
+        <p className="px-4 py-3 text-xs leading-5 text-muted-foreground">
+          No active registered-address handoff.
+        </p>
+      ),
+    },
+    {
+      source: "seeded" as const,
+      label: "Seeded scenarios",
+      empty: (
+        <p className="px-4 py-3 text-xs leading-5 text-muted-foreground">
+          No seeded delivery scenario is available.
+        </p>
+      ),
+    },
+  ];
+
+  return (
+    <aside className="border-b bg-muted/20 lg:border-b-0 lg:border-r" aria-label="Available handoffs">
+      <div className="border-b px-4 py-3">
+        <h2 className="text-sm font-semibold">Available handoffs</h2>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Every delivery source uses the same credential verifier.
+        </p>
+      </div>
+      <nav className="max-h-64 overflow-y-auto lg:max-h-[calc(100vh-15rem)]" aria-label="Choose a handoff">
+        {groups.map((group) => {
+          const items = choices.filter((choice) => choice.source === group.source);
+          return (
+            <section key={group.source} aria-labelledby={`handoff-group-${group.source}`}>
+              <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-2">
+                <h3 id={`handoff-group-${group.source}`} className="text-xs font-semibold">
+                  {group.label}
+                </h3>
+                <span className="font-mono text-xs text-muted-foreground">{items.length}</span>
+              </div>
+              {items.length === 0
+                ? group.empty
+                : items.map((choice) => {
+                    const selected = choice.handoffId === selectedHandoffId;
+                    return (
+                      <Link
+                        key={choice.handoffId}
+                        href={`/demo/cosign?handoff=${encodeURIComponent(choice.handoffId)}`}
+                        aria-current={selected ? "page" : undefined}
+                        className={cn(
+                          "block border-b px-4 py-3 hover:bg-muted/60",
+                          selected && "bg-primary/10",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs font-semibold">
+                            {choice.source === "seeded" ? choice.scenarioId : choice.title}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {choice.state.replaceAll("_", " ")}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm font-medium leading-5">{choice.waybillNo}</p>
+                      </Link>
+                    );
+                  })}
+            </section>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
+
 /** The shared fact. One event id, printed once, above both panes. */
 function TopRail({ model }: { model: CosignModel }) {
-  const reached = COSIGN_STEPS.findIndex((step) => step.phase === model.phase);
+  const steps = model.credential?.cosignRequired === false
+    ? [
+        { phase: "unsubmitted" as const, label: "Courier holds the scan" },
+        { phase: "sealed" as const, label: "Courier signed and sealed" },
+      ]
+    : COSIGN_STEPS;
+  const reached = steps.findIndex((step) => step.phase === model.phase);
+  const title = model.credential?.cosignRequired === false
+    ? "One handoff. One required signature."
+    : model.credential?.cosignRequired
+      ? "One handoff. Two people. Two keys."
+      : "One handoff. One verifier.";
+  const authorityLine = model.credential?.cosignRequired === false
+    ? "The courier signature is sufficient under this mandate; an operator signature is not required."
+    : model.credential?.cosignRequired
+      ? "This handoff requires courier and operator signatures over the same event bytes."
+      : "Submit the prepared scan to learn whether this mandate requires one signature or two.";
 
   return (
     <div className="border-b px-6 py-3">
@@ -61,15 +184,18 @@ function TopRail({ model }: { model: CosignModel }) {
             <ArrowLeft aria-hidden="true" className="size-3.5" />
             Back to the console
           </Link>
-          <h1 className="mt-1 text-base font-semibold">One handoff. Two people. Two keys.</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Both panes read the same live workbench state. Neither signature alone assembles a
-            valid credential.
-          </p>
+          <h1 className="mt-1 text-base font-semibold">{title}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{authorityLine}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <ProvenanceLabel>Seeded synthetic · real Ed25519 signatures</ProvenanceLabel>
+          <ProvenanceLabel>
+            {model.shared.source === "online"
+              ? "Point-to-point · synthetic events · real Ed25519 signatures"
+              : model.shared.source === "registered"
+                ? "Sender dispatch · synthetic events · real Ed25519 signatures"
+                : "Seeded scenario · synthetic events · real Ed25519 signatures"}
+          </ProvenanceLabel>
         </div>
 
         <dl className="flex w-full flex-wrap items-baseline gap-x-6 gap-y-1 font-mono text-xs text-muted-foreground lg:w-auto">
@@ -92,7 +218,7 @@ function TopRail({ model }: { model: CosignModel }) {
 
       {/* The sequence, so a viewer landing mid-flow knows which beat they are on. */}
       <ol className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-xs">
-        {COSIGN_STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const done = reached >= 0 && index < reached;
           const here = step.phase === model.phase;
           return (
@@ -120,7 +246,7 @@ function TopRail({ model }: { model: CosignModel }) {
  * There is no navigation and no queue, exactly as on `/courier`. The absence is
  * the fastest signal in the frame that this is not the console.
  */
-function CourierPane({ model }: { model: CosignModel }) {
+function CourierPane({ model, onModelChange }: { model: CosignModel; onModelChange: (model: CosignModel) => void }) {
   const { courier } = model;
 
   return (
@@ -159,7 +285,7 @@ function CourierPane({ model }: { model: CosignModel }) {
           )}
 
           <div className="mt-5">
-            <CosignActions model={model} side="courier" />
+            <CosignActions model={model} side="courier" onModelChange={onModelChange} />
           </div>
 
           {courier.attempts > 0 && (
@@ -182,7 +308,7 @@ function CourierPane({ model }: { model: CosignModel }) {
  * display convention here — a viewer who reads a single combined risk score has
  * been shown a different system.
  */
-function OperatorPane({ model }: { model: CosignModel }) {
+function OperatorPane({ model, onModelChange }: { model: CosignModel; onModelChange: (model: CosignModel) => void }) {
   const { operator } = model;
 
   if (!operator.queued) {
@@ -281,7 +407,7 @@ function OperatorPane({ model }: { model: CosignModel }) {
           </div>
         )}
 
-        <CosignActions model={model} side="operator" />
+        <CosignActions model={model} side="operator" onModelChange={onModelChange} />
       </div>
     </section>
   );
@@ -296,6 +422,7 @@ function OperatorPane({ model }: { model: CosignModel }) {
  */
 function CredentialBar({ model }: { model: CosignModel }) {
   const { credential, ledger, arithmetic } = model;
+  const operatorRequired = credential?.cosignRequired ?? null;
 
   return (
     <div className="border-t bg-muted/40 px-6 py-4">
@@ -303,10 +430,22 @@ function CredentialBar({ model }: { model: CosignModel }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <Half ok={credential?.courierValid ?? false} label="courier" />
-            <span aria-hidden="true" className="text-muted-foreground">
-              +
-            </span>
-            <Half ok={credential?.operatorValid ?? false} label="operator" />
+            {operatorRequired === true ? (
+              <>
+                <span aria-hidden="true" className="text-muted-foreground">
+                  +
+                </span>
+                <Half ok={credential?.operatorValid ?? false} label="operator" />
+              </>
+            ) : operatorRequired === false ? (
+              <span className="rounded-md bg-muted px-2.5 py-1 text-sm text-muted-foreground">
+                operator not required
+              </span>
+            ) : (
+              <span className="rounded-md bg-muted px-2.5 py-1 text-sm text-muted-foreground">
+                operator requirement pending
+              </span>
+            )}
             <span aria-hidden="true" className="text-muted-foreground">
               =
             </span>

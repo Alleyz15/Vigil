@@ -23,6 +23,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ shi
   const location = await toLocationInput(parsed.data);
   if (!location.ok) return NextResponse.json({ ok: false, code: "unverified_address", reason: location.reason }, { status: 422 });
 
-  const result = (await getWorkbench()).correctOnlineShipment(shipmentId, location.location);
-  return NextResponse.json(result, { status: result.ok ? 200 : 422 });
+  const workbench = await getWorkbench();
+  const result = workbench.correctOnlineShipment(shipmentId, location.location);
+  return NextResponse.json(result.ok
+    ? { ...result, shipment: workbench.listSenderShipments().find((item) => item.shipmentId === shipmentId) }
+    : result, { status: result.ok ? 200 : 422 });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { OperatorActionRequest, getWorkbench } from "@/lib/workbench";
+import { buildCosignPageState } from "@/lib/demo/cosign-state";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,11 @@ export async function POST(
   }
 
   try {
-    return NextResponse.json(await workbench.resolveHandoff(eventId, parsed.data));
+    const detail = await workbench.resolveHandoff(eventId, parsed.data);
+    return NextResponse.json({
+      ...detail,
+      cosignState: buildCosignPageState(workbench, eventId),
+    });
   } catch (error) {
     const message = (error as Error).message;
     if (/case is already resolved/i.test(message)) {

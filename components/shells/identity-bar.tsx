@@ -54,16 +54,18 @@ const ROLE_STYLE = {
 export function IdentityBar({
   identity,
   expiresIn,
+  className,
 }: {
   identity: RoleIdentity;
   /** Recipient only: how long the one-time link remains usable. */
   expiresIn?: string | null;
+  className?: string;
 }) {
   const style = ROLE_STYLE[identity.role];
   const Icon = style.Icon;
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-3 px-4 py-2", style.band)}>
+    <div className={cn("flex flex-wrap items-center gap-3 px-4 py-2", style.band, className)}>
       <Icon aria-hidden="true" className="size-4 shrink-0" />
 
       <span className="text-xs font-semibold uppercase tracking-widest">{identity.role}</span>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MapPinned, PackageCheck, Truck } from "lucide-react";
+import Link from "next/link";
+import { MapPinned, PackageCheck, RefreshCw, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
@@ -12,17 +13,8 @@ import { OnlineCorrectionControl } from "./online-correction-control";
 import { SimulatedClockLabel } from "@/components/operator/simulated-clock-label";
 
 /**
- * Shipments this sender has dispatched, and what they can still do about them.
- *
- * BOTH ACTIONS HERE ARE PRODUCT BEHAVIOUR. Correcting an address is what a
- * merchant does when a customer moves; confirming delivery is the courier's
- * scan arriving. Neither belongs behind the fault-injection panel, and the
- * separation is structural rather than a label asking the viewer to remember
- * which half they are in.
- *
- * THE CORRECTION IS THE POINT. It does not rewrite the delivery point on
- * record — that stays as captured at dispatch, which is exactly the stale
- * record the system is sensitive to. The courier is told; the registry is not.
+ * Pending declarations and assigned shipments. Corrections preserve the
+ * original reference; correction and demo delivery require assignment.
  */
 export function SenderShipments({
   shipments,
@@ -34,45 +26,74 @@ export function SenderShipments({
   clockAnchorIso?: string;
 }) {
   const [visibleShipments, setVisibleShipments] = useState(shipments);
-  const loadOnline = useCallback(async () => {
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const correctionVersion = useRef(0);
+  const loadVersion = useRef(0);
+  const applyCorrection = (updated: SenderShipmentView) => {
+    correctionVersion.current++;
+    setVisibleShipments((current) => current.map((item) => item.runId === updated.runId ? updated : item));
+  };
+  const loadShipments = useCallback(async () => {
+    const version = correctionVersion.current;
+    const request = ++loadVersion.current;
+    setLoading(true);
+    setLoadError(null);
     try {
-      const response = await fetch("/api/sender/online-shipments");
+      const response = await fetch("/api/sender/shipments", { cache: "no-store" });
       const body = await response.json().catch(() => null);
-      if (!response.ok || !Array.isArray(body?.items)) return;
-      setVisibleShipments((current) => {
-        const onlineIds = new Set(body.items.map((item: SenderShipmentView) => item.runId));
-        return [
-          ...current.filter((item) => item.kind !== "online" || !onlineIds.has(item.runId)),
-          ...body.items,
-        ];
-      });
+      if (request !== loadVersion.current || version !== correctionVersion.current) return;
+      if (!response.ok || !Array.isArray(body?.items)) throw new Error("Shipment list unavailable");
+      setVisibleShipments(body.items);
     } catch {
-      // The server-rendered list remains truthful when the route is unavailable.
+      if (request === loadVersion.current && version === correctionVersion.current) {
+        setLoadError("Pending shipments could not be refreshed. The last loaded list is shown. Try Refresh again.");
+      }
+    } finally {
+      if (request === loadVersion.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const initialLoad = window.setTimeout(() => void loadOnline(), 0);
-    const refresh = () => void loadOnline();
+    const initialLoad = window.setTimeout(() => void loadShipments(), 0);
+    const refresh = (event: Event) => {
+      window.clearTimeout(initialLoad);
+      const items = (event as CustomEvent<{ items?: SenderShipmentView[] }>).detail?.items;
+      if (Array.isArray(items)) {
+        // A mutation snapshot supersedes reads that started before it.
+        correctionVersion.current++;
+        loadVersion.current++;
+        setVisibleShipments(items);
+        setLoadError(null);
+        setLoading(false);
+      } else void loadShipments();
+    };
     window.addEventListener("vigil:sender-shipments-changed", refresh);
     return () => {
       window.clearTimeout(initialLoad);
       window.removeEventListener("vigil:sender-shipments-changed", refresh);
     };
-  }, [loadOnline]);
+  }, [loadShipments]);
 
   return (
     <section id="pending-deliveries" className="mt-10 scroll-mt-6 border-t pt-6">
-      <h2 className="text-lg font-semibold">Awaiting delivery scan</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Pending shipments</h2>
+        <Button variant="outline" disabled={loading} aria-busy={loading} onClick={() => void loadShipments()}>
+          <RefreshCw data-icon="inline-start" />
+          Refresh
+        </Button>
+      </div>
       <p className="mt-1 max-w-prose text-xs leading-5 text-muted-foreground">
-        Pending delivery scans only — not complete shipment history or live tracking.
+        Awaiting assignment or delivery scan.
       </p>
       <div className="mt-2"><SimulatedClockLabel anchorIso={clockAnchorIso} /></div>
-      {visibleShipments.length === 0 && <p className="mt-4 text-sm text-muted-foreground">No pending delivery scans.</p>}
+      {loadError && <p role="alert" className="mt-3 text-sm leading-6 text-red-700 dark:text-red-400">{loadError}</p>}
+      {visibleShipments.length === 0 && <p className="mt-4 text-sm text-muted-foreground">No pending shipments.</p>}
 
       <ul className="mt-4 flex flex-col gap-3">
         {visibleShipments.map((shipment) => (
-          <Shipment key={shipment.runId} shipment={shipment} addresses={addresses} />
+          <Shipment key={shipment.runId} shipment={shipment} addresses={addresses} onCorrected={applyCorrection} />
         ))}
       </ul>
     </section>
@@ -82,11 +103,14 @@ export function SenderShipments({
 function Shipment({
   shipment,
   addresses,
+  onCorrected,
 }: {
   shipment: SenderShipmentView;
   addresses: SenderAddress[];
+  onCorrected: (shipment: SenderShipmentView) => void;
 }) {
   const router = useRouter();
+  const awaitingAssignment = shipment.assignmentState === "awaiting_assignment";
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [target, setTarget] = useState<number>(
@@ -111,7 +135,8 @@ function Shipment({
         return;
       }
       if (then) then(result);
-      else router.refresh();
+      else if (result.shipment?.correction) onCorrected(result.shipment);
+      else setError("The correction was recorded, but its updated shipment was not returned. Reload before retrying.");
       } catch {
         setError("The request could not be confirmed. Reload before retrying; the action may have completed.");
       }
@@ -129,17 +154,24 @@ function Shipment({
       </div>
 
       <dl className="mt-3 space-y-1.5 text-sm">
+        <Row label="State" value={awaitingAssignment ? "Awaiting operator assignment" : "Assigned"} />
+        {!awaitingAssignment && shipment.assignedCourier && <Row label="Courier" value={shipment.assignedCourier} />}
         <Row label="Delivery point on record" value={shipment.recordedAddress} />
         {shipment.correction && (
           <Row
             label="Corrected to"
             value={shipment.correction.toLabel}
-            hint={`at ${shipment.correction.correctedAt.replace("T", " ").slice(0, 16)} — the courier was told; the record above was not`}
+            hint={`at ${shipment.correction.correctedAt.replace("T", " ").slice(0, 16)}${awaitingAssignment ? "" : " — the courier was told; the record above was not"}`}
             emphasise
           />
         )}
       </dl>
       </div>
+      {awaitingAssignment ? (
+        <div className="min-w-0 border-t p-5 text-sm leading-6">
+          <Link href="/operator/handoffs" className="underline underline-offset-2">Open operator assignment</Link>
+        </div>
+      ) : <>
       <div className="min-w-0 border-t p-5">
 
       {!shipment.correction && (
@@ -152,7 +184,7 @@ function Shipment({
             The customer has moved. The courier will be told directly.
           </p>
           {shipment.kind === "online" && shipment.shipmentId ? (
-            <OnlineCorrectionControl shipmentId={shipment.shipmentId} onCorrected={() => router.refresh()} />
+            <OnlineCorrectionControl shipmentId={shipment.shipmentId} onCorrected={onCorrected} />
           ) : <div className="mt-2 flex flex-wrap items-center gap-2">
             <select
               aria-label={`Correct address for ${shipment.waybillNo}`}
@@ -212,6 +244,7 @@ function Shipment({
         </span>
         <p className="text-xs leading-5 text-muted-foreground">After the scan, open operator detail. The result may be sealed or still awaiting co-signature.</p>
       </div>
+      </>}
 
       {error && (
           <p role="alert" className="p-5 text-xs leading-5 text-red-700 dark:text-red-400">

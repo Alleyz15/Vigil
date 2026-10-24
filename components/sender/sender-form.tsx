@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { FlaskConical, PackagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
@@ -33,9 +33,9 @@ export function SenderForm({
   /** Derived from the boundary's own member list; see `RegisteredAddressMap`. */
   serviceArea: string;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [createdRunId, setCreatedRunId] = useState<string | null>(null);
 
   const [originIndex, setOriginIndex] = useState(addresses.find((a) => a.index === 0)?.index ?? addresses[0]?.index ?? 0);
   const [destinationIndex, setDestinationIndex] = useState(addresses.find((a) => a.index === 20)?.index ?? addresses[1]?.index ?? 0);
@@ -69,6 +69,7 @@ export function SenderForm({
 
   const submit = () => {
     setError(null);
+    setCreatedRunId(null);
     startTransition(async () => {
       try {
       const response = await fetch("/api/sender/shipments", {
@@ -89,9 +90,8 @@ export function SenderForm({
         setError(body?.reason ?? body?.error ?? "That shipment could not be created.");
         return;
       }
-      // Stays here: the parcel is out for delivery and the delivery scan is a
-      // separate act. That gap is what makes a mid-route correction possible.
-      router.refresh();
+      setCreatedRunId(body.runId);
+      window.dispatchEvent(new CustomEvent("vigil:sender-shipments-changed", { detail: { items: body.items } }));
       } catch {
         setError("The request could not be confirmed. Reload before retrying; creation may have completed.");
       }
@@ -182,12 +182,18 @@ export function SenderForm({
       <div className="mt-7">
         <Button size="lg" disabled={!canSubmit} onClick={submit}>
           <PackagePlus data-icon="inline-start" />
-          {pending ? "Dispatching…" : "Create and dispatch"}
+          {pending ? "Creating…" : "Create shipment"}
         </Button>
         <p className="mt-2 max-w-prose text-xs leading-5 text-muted-foreground">
-          Collection through to out-for-delivery runs immediately, through the same agent as a
-          seeded scenario. The delivery scan waits below, so you can correct the address first.
+          The shipment waits for an operator to assign a courier before collection begins.
         </p>
+        {createdRunId && (
+          <div role="status" className="mt-4 border-l-2 border-emerald-600 pl-3 text-sm leading-6">
+            <p className="font-medium">Shipment created. Awaiting operator assignment.</p>
+            <p className="break-all font-mono text-xs">{createdRunId}</p>
+            <Link href="/operator/handoffs" className="underline underline-offset-2">Open operator assignment</Link>
+          </div>
+        )}
         {error && (
           <p role="alert" className="mt-3 max-w-prose text-sm leading-6 text-red-700 dark:text-red-400">
             {error}

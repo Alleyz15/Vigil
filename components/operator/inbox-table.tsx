@@ -67,7 +67,10 @@ export function InboxTable({
   return (
     <div className="flex flex-col gap-6">
       {INBOX_GROUPS.map((group) => {
-        const rows = items.filter((item) => item.inboxGroup === group.id);
+        const rows = items.filter((item) => {
+          const groupId = item.state === "evidence_submitted" && item.inboxGroup !== "refused" ? "waiting" : item.inboxGroup;
+          return groupId === group.id;
+        });
         if (rows.length === 0) return null;
         const collapsible = group.id === "other";
         const open = !collapsible || expanded.other;
@@ -91,7 +94,7 @@ export function InboxTable({
                 </h2>
               )}
               <span className="font-mono text-sm font-semibold tabular-nums">{rows.length}</span>
-              <span className="text-xs text-muted-foreground">{group.detail}</span>
+              <span className="text-xs text-muted-foreground">{group.id === "waiting" && rows.some((item) => item.state === "evidence_submitted") ? "Co-signature or supporting evidence needs operator review." : group.detail}</span>
             </header>
             {open && <GroupTable groupId={group.id} rows={rows} detailMode={detailMode} />}
           </section>

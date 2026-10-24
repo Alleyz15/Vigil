@@ -258,6 +258,12 @@ await runSequence("stale-record", [
   },
   {
     kind: "post",
+    describe: "operator assigns the sender request before any courier scan",
+    path: (ctx) => `/api/operator/dispatches/${encodeURIComponent(`registered:${ctx.runId}`)}/assign`,
+    body: () => ({ courierId: "CR-1001" }),
+  },
+  {
+    kind: "post",
     describe: "sender corrects the address while the parcel is in transit",
     path: (ctx) => `/api/sender/shipments/${ctx.runId}/correct`,
     body: () => ({ addressIndex: 3 }),

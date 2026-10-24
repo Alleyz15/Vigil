@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Check, FileQuestion, Route, ShieldAlert, X } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { Check, FileQuestion, Route, Send, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { HandoffDetail, HandoffState } from "@/lib/workbench";
 import type { OperatorActionName } from "@/lib/workbench/types";
@@ -13,6 +13,7 @@ export function OperatorActions({
   rerouteAvailable,
   rerouteReason,
   sealed,
+  canApprove,
   onDetailChange,
 }: {
   eventId: string;
@@ -20,32 +21,49 @@ export function OperatorActions({
   rerouteAvailable: boolean;
   rerouteReason: string;
   sealed: boolean;
+  canApprove?: boolean;
   onDetailChange: (detail: HandoffDetail) => void;
 }) {
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
+  const noteId = useId();
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const availability = operatorActionAvailability({ state, rerouteAvailable });
+  const availability = operatorActionAvailability({ state, rerouteAvailable, canApprove, sealed });
   const resolved = state.startsWith("resolved_") || state === "accepted";
 
-  const act = (action: OperatorActionName) => {
+  const act = async (action: OperatorActionName) => {
+    if (inFlight.current || !availability[action] || (action === "request_evidence" && !note.trim())) return;
+    inFlight.current = true;
+    setPending(true);
     setError(null);
-    startTransition(async () => {
-      const response = await fetch(`/api/operator/handoffs/${eventId}/actions`, {
+    try {
+      const response = await fetch(`/api/operator/handoffs/${encodeURIComponent(eventId)}/actions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify(action === "request_evidence" ? { action, note: note.trim() } : { action }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
         if (body?.code === "CASE_ALREADY_RESOLVED" && body.detail) {
           onDetailChange(body.detail as HandoffDetail);
+          setRequestOpen(false);
           return;
         }
         setError(body?.error ?? "The action could not be recorded.");
         return;
       }
+      if (!body) throw new Error("Missing action response");
       onDetailChange(body as HandoffDetail);
-    });
+      setRequestOpen(false);
+      setNote("");
+    } catch {
+      setError("The action could not be recorded. Check the connection and retry.");
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+    }
   };
 
   if (resolved) {
@@ -62,7 +80,7 @@ export function OperatorActions({
       )}
 
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <Button variant="outline" disabled={pending} onClick={() => act("request_evidence")}>
+        <Button variant="outline" disabled={pending || !availability.request_evidence} aria-expanded={requestOpen} onClick={() => setRequestOpen(true)}>
           <FileQuestion data-icon="inline-start" />
           Request evidence
         </Button>
@@ -103,6 +121,26 @@ export function OperatorActions({
         </Button>
       </div>
 
+      {requestOpen && availability.request_evidence && (
+        <form className="mt-3 border-t pt-3" onSubmit={(event) => { event.preventDefault(); void act("request_evidence"); }}>
+          <label htmlFor={noteId} className="text-xs font-semibold">Evidence request note</label>
+          <textarea
+            id={noteId}
+            required
+            autoFocus
+            rows={3}
+            value={note}
+            disabled={pending}
+            onChange={(event) => setNote(event.target.value)}
+            className="mt-2 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm leading-5 outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button type="submit" disabled={pending || !note.trim()}><Send data-icon="inline-start" />Send request</Button>
+            <Button type="button" variant="ghost" disabled={pending} onClick={() => { setRequestOpen(false); setError(null); }}><X data-icon="inline-start" />Cancel</Button>
+          </div>
+        </form>
+      )}
+      {state === "awaiting_evidence" && <p className="mt-3 text-xs leading-5 text-muted-foreground">Waiting for the courier response to the current evidence request.</p>}
       {!rerouteAvailable && <p className="mt-2 text-xs leading-4 text-muted-foreground">{rerouteReason}</p>}
       {error && <p role="alert" className="mt-3 text-xs font-medium text-destructive">{error}</p>}
     </div>

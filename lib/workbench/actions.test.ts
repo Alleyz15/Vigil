@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canonicalHash } from "@/lib/ledger";
 import { handoffCases, verdicts } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { createMigratedDb } from "@/lib/db/migrate";
 import { createWorkbench, type OperatorWorkbench } from "./service";
 import { OperatorActionName } from "./types";
 
@@ -44,6 +45,7 @@ describe("no operator action mutates a sealed verdict", () => {
 
   beforeAll(async () => {
     workbench = await createWorkbench({ scenarioIds: ["S0", "S1", "S2", "S3", "S4", "S5", "S6"] });
+    workbench.configureOnline({ store: createMigratedDb(":memory:"), boundary: null });
   }, 60_000);
 
   afterAll(() => workbench.close());
@@ -89,7 +91,7 @@ describe("no operator action mutates a sealed verdict", () => {
 
     for (const { action, eventId } of cases) {
       const before = verdictRows(eventId);
-      await workbench.resolveHandoff(eventId, { action });
+      await workbench.resolveHandoff(eventId, { action, ...(action === "request_evidence" ? { note: "Please provide supporting evidence for this finding." } : {}) });
       const after = verdictRows(eventId);
 
       expect([...after.keys()].sort(), `${action} changed which verdict rows exist`).toEqual(

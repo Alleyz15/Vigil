@@ -1,6 +1,6 @@
 import type { CaseState, OperatorActionName } from "./types";
 
-const QUEUE_STATES = new Set<CaseState>(["flagged", "awaiting_cosignature", "timed_out"]);
+const QUEUE_STATES = new Set<CaseState>(["flagged", "awaiting_cosignature", "timed_out", "evidence_submitted"]);
 const TERMINAL_STATES = new Set<CaseState>([
   "resolved_approved",
   "resolved_rejected",
@@ -23,7 +23,7 @@ export function transitionCase(state: CaseState, action: OperatorActionName): Ca
 
   switch (action) {
     case "approve":
-      if (state !== "awaiting_cosignature") {
+      if (state !== "awaiting_cosignature" && state !== "evidence_submitted") {
         throw new Error(`cannot approve a case in ${state}`);
       }
       return "resolved_approved";

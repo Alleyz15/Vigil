@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { booleanPointInPolygon } from "@turf/turf";
-import { Crosshair, MapPinned, PackagePlus } from "lucide-react";
+import { Crosshair, MapPinned, PackagePlus, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
 import { GEOCODE_ATTRIBUTION } from "@/lib/geocode/messages";
@@ -60,6 +61,7 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
   const [valueRinggit, setValueRinggit] = useState("180.00");
   const [channel, setChannel] = useState("+60119990007");
   const [recipientName, setRecipientName] = useState("");
+  const [demoCondition, setDemoCondition] = useState<"normal" | "mock_location">("normal");
 
   const [reverseNote, setReverseNote] = useState<ReverseNote | null>(null);
 
@@ -174,6 +176,7 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
           declaredValueSen,
           recipientChannel: channel.trim(),
           recipientName: recipientName.trim() || undefined,
+          demoCondition,
         }),
       });
       const body = await response.json().catch(() => null);
@@ -181,17 +184,20 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
         setOutcome({ kind: "error", message: "The server's answer could not be read. Reload before retrying." });
         return;
       }
-      if (body.status === "created" || (body.status === "replayed" && body.running)) {
+      if (response.ok && (body.status === "created" || (body.status === "replayed" && (body.awaitingAssignment || body.running)))) {
         idempotencyKey.current = null;
-        setOutcome({
+        const receipt: Extract<Outcome, { kind: "created" }> = {
           kind: "created",
           shipmentId: body.shipmentId,
           replayed: body.status === "replayed",
-          legs: body.eventIds?.length ?? 0,
+          awaitingAssignment: body.awaitingAssignment === true,
           boundaryLabel: body.boundary?.label ?? "",
-          stored: await storedReference(body.shipmentId),
-        });
-        window.dispatchEvent(new Event("vigil:sender-shipments-changed"));
+          stored: null,
+        };
+        setOutcome(receipt);
+        window.dispatchEvent(new CustomEvent("vigil:sender-shipments-changed", { detail: { items: body.items } }));
+        const stored = await storedReference(body.shipmentId);
+        setOutcome((current) => current === receipt ? { ...current, stored } : current);
         return;
       }
       setOutcome({
@@ -303,6 +309,39 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
             />
           </Labelled>
 
+          <fieldset className="mt-5 rounded-md border border-amber-200 bg-amber-50/70 p-3">
+            <legend className="px-1 text-xs font-semibold text-amber-950">Demo delivery condition</legend>
+            <div className="mt-1 inline-flex rounded-md border border-amber-300 bg-white p-1">
+              <button
+                type="button"
+                aria-pressed={demoCondition === "normal"}
+                onClick={() => setDemoCondition("normal")}
+                className={cn(
+                  "h-8 rounded px-3 text-xs font-medium",
+                  demoCondition === "normal" ? "bg-foreground text-background" : "text-muted-foreground",
+                )}
+              >
+                Normal scan
+              </button>
+              <button
+                type="button"
+                aria-pressed={demoCondition === "mock_location"}
+                onClick={() => setDemoCondition("mock_location")}
+                className={cn(
+                  "flex h-8 items-center gap-1.5 rounded px-3 text-xs font-medium",
+                  demoCondition === "mock_location" ? "bg-amber-600 text-white" : "text-amber-900",
+                )}
+              >
+                <ShieldAlert className="size-3.5" aria-hidden="true" />
+                Mock location app
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-amber-950">
+              Demo control · not product behaviour. This reports the handset&apos;s mock-location flag so I7 can
+              detect it. It does not invent cell or WiFi reference IDs, and it never sets the verdict directly.
+            </p>
+          </fieldset>
+
           <ValueConsequence policy={policy} declaredValueSen={declaredValueSen} />
 
           <div className="mt-7">
@@ -362,7 +401,7 @@ type Outcome =
       kind: "created";
       shipmentId: string;
       replayed: boolean;
-      legs: number;
+      awaitingAssignment: boolean;
       boundaryLabel: string;
       stored: { latitude: number; longitude: number } | null;
     }
@@ -533,15 +572,19 @@ function OutcomePanel({ outcome }: { outcome: Outcome }) {
   if (outcome.kind === "created") {
     const stored = outcome.stored;
     return (
-      <div className="mt-6 rounded-md border-2 border-emerald-600/60 bg-emerald-500/5 p-4">
+      <div role="status" className="mt-6 rounded-md border-2 border-emerald-600/60 bg-emerald-500/5 p-4">
         <p className="text-sm font-semibold">
           {outcome.replayed ? "That request was already on file — the same parcel" : "Shipment created"}
         </p>
         <p className="mt-1 break-all font-mono text-xs">{outcome.shipmentId}</p>
         <p className="mt-2 text-sm leading-6">
-          {outcome.legs} legs ran through the same agent as a seeded scenario, up to out-for-delivery.
-          The delivery scan is a separate act by the courier.
+          {outcome.awaitingAssignment
+            ? "Awaiting operator assignment. Collection begins after a courier is assigned."
+            : "A courier is assigned. The delivery scan is a separate act by the courier."}
         </p>
+        {outcome.awaitingAssignment && (
+          <Link href="/operator/handoffs" className="mt-2 inline-block text-sm underline underline-offset-2">Open operator assignment</Link>
+        )}
         {stored && (
           <p className="mt-2 text-sm leading-6">
             The delivery reference on file reads{" "}
@@ -554,10 +597,10 @@ function OutcomePanel({ outcome }: { outcome: Outcome }) {
         {outcome.boundaryLabel && (
           <p className="mt-2 text-xs leading-5 text-muted-foreground">{outcome.boundaryLabel}</p>
         )}
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+        {!outcome.awaitingAssignment && <p className="mt-2 text-xs leading-5 text-muted-foreground">
           The location is stored; the run is not restartable. A restart keeps the points and says so
           rather than resuming anything.
-        </p>
+        </p>}
       </div>
     );
   }

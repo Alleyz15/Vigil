@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, CloudRain, Link2, Map, MapPinned, MessageSquareText, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, CloudRain, Link2, Map, MapPinned, MessageSquareText, RefreshCw, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { HandoffDetail } from "@/lib/workbench";
@@ -13,6 +13,7 @@ import {
   acceptanceExplanation,
   attemptHistoryLabel,
   citationTarget,
+  cosignConditionPresentation,
   detailStatusMessage,
   ledgerReferencePresentation,
   primaryFlagCard,
@@ -26,6 +27,7 @@ import { PlanAlternatives, RerouteAlternatives } from "./rejected-alternatives";
 import { ShipmentMap } from "./shipment-map";
 import { HandoffStateBadge } from "./status-badge";
 import { SimulatedClockLabel } from "./simulated-clock-label";
+import { SupportingEvidence } from "./supporting-evidence";
 import { StreamView } from "@/components/console/stream-view";
 import { OperatorJourneySummary } from "@/components/shipment/route-summary";
 
@@ -43,6 +45,38 @@ export function HandoffDetailView({
   clockAnchorIso?: string;
 }) {
   const [detail, setDetail] = useState(initialDetail);
+  const [refreshing, setRefreshing] = useState(true);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const detailRevision = useRef(0);
+  const inFlight = useRef(false);
+  const eventId = initialDetail.summary.eventId;
+  const adoptActionDetail = useCallback((next: HandoffDetail) => {
+    detailRevision.current += 1;
+    setDetail(next);
+    setRefreshError(null);
+  }, []);
+  const refresh = useCallback(() => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    const revision = detailRevision.current;
+    void fetch(`/api/operator/handoffs/${encodeURIComponent(eventId)}`, { cache: "no-store" }).then(async (response) => {
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Handoff could not be loaded. Refresh to retry.");
+      if (!body?.summary || body.summary.eventId !== eventId) throw new Error("Handoff response unavailable. Refresh to retry.");
+      return body as HandoffDetail;
+    }).then((next) => {
+      // An action response owns any state newer than this GET's starting revision.
+      if (detailRevision.current === revision) setDetail(next);
+    }).catch((cause: unknown) => {
+      if (detailRevision.current === revision) {
+        setRefreshError(cause instanceof Error ? cause.message : "Handoff could not be loaded. Refresh to retry.");
+      }
+    }).finally(() => {
+      inFlight.current = false;
+      setRefreshing(false);
+    });
+  }, [eventId]);
+  useEffect(() => { void refresh(); }, [refresh]);
   const [activeLegIndex, setActiveLegIndex] = useState(detail.summary.legIndex);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
   const [aiTab, setAiTab] = useState<"model" | "fallback">("model");
@@ -90,6 +124,7 @@ export function HandoffDetailView({
             {detail.summary.courier.displayName} · {detail.summary.bizStep} · scenario {detail.summary.scenarioId} · event {detail.summary.eventId.slice(0, 4)}…{detail.summary.eventId.slice(-4)}
           </p>
         </div>
+        <Button variant="outline" size="icon-sm" aria-label="Refresh handoff" title="Refresh handoff" disabled={refreshing} onClick={() => { setRefreshing(true); setRefreshError(null); void refresh(); }}><RefreshCw /></Button>
         <HandoffStateBadge state={detail.summary.state} provenance={detail.summary.stateProvenance} decision={detail.summary.decision} />
         <Badge variant="secondary">{detail.summary.sealed ? "sealed" : "nothing sealed"}</Badge>
         <div className="flex h-9 min-w-36 items-center justify-center gap-2 rounded-md border bg-muted/60 px-3 text-xs font-semibold">
@@ -98,6 +133,9 @@ export function HandoffDetailView({
         </div>
         <SimulatedClockLabel anchorIso={clockAnchorIso} />
       </div>
+
+      {refreshError && <p role="alert" className="text-xs text-destructive">{refreshError}</p>}
+      {refreshing && <p role="status" className="text-xs text-muted-foreground">Refreshing handoff...</p>}
 
       {detail.route && (
         <section aria-label="Shipment route" className="border-y bg-card px-4 py-3">
@@ -240,7 +278,8 @@ export function HandoffDetailView({
                 rerouteAvailable={rerouteAvailable}
                 rerouteReason={rerouteReason}
                 sealed={detail.summary.sealed}
-                onDetailChange={setDetail}
+                canApprove={detail.summary.abort ? false : detail.canApprove}
+                onDetailChange={adoptActionDetail}
               />
             </div>
           </section>
@@ -260,6 +299,11 @@ export function HandoffDetailView({
       </div>
 
       <div className="space-y-4 border-t pt-6">
+        <SupportingEvidence
+          rounds={detail.supportingEvidence ?? []}
+          archivedEvidenceCount={detail.archivedEvidenceCount}
+          closed={detail.summary.state === "accepted" || detail.summary.state.startsWith("resolved_")}
+        />
         {showEvidenceDetails && <section id="evidence-details">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold">Evidence details</h2>
@@ -287,6 +331,8 @@ export function HandoffDetailView({
             ))}
           </div>
         </section>}
+
+        <DeterministicCheckLedger checks={detail.checks} />
 
         <div className="grid grid-cols-3 items-start gap-4 [grid-auto-flow:dense]">
           <AiInvestigation
@@ -364,6 +410,48 @@ export function HandoffDetailView({
   );
 }
 
+function DeterministicCheckLedger({ checks }: { checks: HandoffDetail["checks"] }) {
+  const axis = (title: string, items: HandoffDetail["checks"]["singleEvent"]) => (
+    <div className="min-w-0">
+      <h3 className="text-xs font-semibold uppercase text-muted-foreground">{title}</h3>
+      <div className="mt-2 divide-y rounded-md border bg-card">
+        {items.map((check) => (
+          <div key={check.id} className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-start gap-2 px-3 py-2 text-xs">
+            <span className="font-mono font-semibold">{check.id}</span>
+            <span className="min-w-0">
+              <span className="block font-medium">{check.label}</span>
+              {check.reason && <span className="mt-0.5 block leading-4 text-muted-foreground">{check.reason}</span>}
+            </span>
+            <Badge
+              variant="outline"
+              className={cn(
+                "h-auto px-1.5 py-0.5 font-mono text-xs",
+                check.status === "triggered" && "border-red-300 bg-red-50 text-red-800",
+                check.status === "clear" && "border-emerald-200 bg-emerald-50 text-emerald-800",
+                check.status === "not_evaluated" && "bg-muted text-muted-foreground",
+              )}
+            >
+              {check.status.replace("not_evaluated", "not evaluated")}
+            </Badge>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <details className="rounded-lg border bg-card" open>
+      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+        Deterministic checks · 16 single-event + 5 pattern
+      </summary>
+      <div className="grid gap-4 border-t p-4 lg:grid-cols-2">
+        {axis("Single-event checks", checks.singleEvent)}
+        {axis("Pattern checks", checks.pattern)}
+      </div>
+    </details>
+  );
+}
+
 function MapProvenance({ detail }: { detail: HandoffDetail }) {
   if (detail.locationEvidence) {
     return (
@@ -400,13 +488,14 @@ function AiInvestigation({
 }) {
   const modelId = detail.explanation.modelId ?? detail.plan.modelId;
   const selectedCount = detail.plan.selectedTools.length;
+  const waitingForSeal = !detail.verdictHash && !detail.explanation.text;
   return (
     <section className="col-span-3 rounded-lg border bg-card p-4 shadow-sm" aria-label="AI investigation">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-semibold">AI investigation</h2>
-            <ProvenanceLabel>Advisory only · verdict already sealed</ProvenanceLabel>
+            <ProvenanceLabel>{detail.verdictHash ? "Advisory only · verdict already sealed" : "Advisory only · no verdict sealed"}</ProvenanceLabel>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Model: <span className="font-mono text-foreground">{modelId ?? "none"}</span>
@@ -415,7 +504,7 @@ function AiInvestigation({
         <div className="text-right">
           <p className="text-xs font-medium">Authority boundary</p>
           <p className="mt-1 font-mono text-xs text-muted-foreground">
-            sealed verdict {detail.verdictHash ? detail.verdictHash.slice(0, 12) : "not available"}
+            {detail.verdictHash ? `sealed verdict ${detail.verdictHash.slice(0, 12)}` : "No sealed verdict hash"}
           </p>
         </div>
       </div>
@@ -423,12 +512,15 @@ function AiInvestigation({
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <section className="min-w-0 rounded-md border p-3">
           <p className="text-xs font-semibold uppercase text-muted-foreground">1 · Plan</p>
+          <p className="mt-1 text-xs text-muted-foreground">Model: {detail.plan.modelId ?? "none"}</p>
+          {detail.plan.failoverReason && <p className="mt-1 text-xs leading-5 text-muted-foreground">Provider failover: {detail.plan.failoverReason}</p>}
           <p className="mt-2 text-sm font-semibold">Selected {selectedCount} of 2 available tool slots</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {planPresentation({
               source: detail.plan.source,
               selectedTools: detail.plan.selectedTools,
               runtimeReason: detail.plan.runtimeReason,
+              rejection: detail.plan.rejection,
             })}
           </p>
           <div className="mt-3">
@@ -464,7 +556,8 @@ function AiInvestigation({
 
         <section className="min-w-0 rounded-md border p-3">
           <p className="text-xs font-semibold uppercase text-muted-foreground">3 · Explain</p>
-          <div className="mt-2 inline-flex rounded-md border bg-muted/40 p-1">
+          {!waitingForSeal && detail.explanation.failoverReason && <p className="mt-1 text-xs leading-5 text-muted-foreground">Provider failover: {detail.explanation.failoverReason}</p>}
+          {!waitingForSeal && <div className="mt-2 inline-flex rounded-md border bg-muted/40 p-1">
             <button
               type="button"
               className={cn("rounded px-2.5 py-1.5 text-xs font-medium", tab === "model" && "bg-background shadow-sm")}
@@ -479,9 +572,11 @@ function AiInvestigation({
             >
               Without model
             </button>
-          </div>
+          </div>}
 
-          {tab === "model" ? (
+          {waitingForSeal ? (
+            <p className="mt-3 text-sm leading-6">Waiting for seal. Explain runs only after a verdict is sealed.</p>
+          ) : tab === "model" ? (
             <div className="mt-3">
               <p className="text-sm leading-6">{detail.explanation.text ?? "No model explanation was produced."}</p>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
@@ -519,7 +614,9 @@ function AiInvestigation({
           )}
 
           <p className="mt-3 border-t pt-3 text-xs leading-5 text-muted-foreground">
-            Both views read the same sealed verdict hash. Model removal changes the prose, not the decision.
+            {detail.verdictHash
+              ? "Both views read the same sealed verdict hash. Model removal changes the prose, not the decision."
+              : "No verdict has been sealed. Model output cannot determine the decision."}
           </p>
         </section>
       </div>
@@ -626,12 +723,6 @@ function StatusCard({
   );
 }
 
-function formatSen(value: number | string | null): string {
-  return typeof value === "number"
-    ? new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(value / 100)
-    : "unavailable";
-}
-
 function CosignReason({ detail }: { detail: HandoffDetail }) {
   return (
     <section className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-950">
@@ -641,21 +732,21 @@ function CosignReason({ detail }: { detail: HandoffDetail }) {
       </ul>
       {detail.cosignPolicyEvidence.length > 0 && (
         <div className="mt-2 border-t border-amber-200 pt-2">
-          <p className="text-xs font-medium">Mandate conditions on file · actual / threshold</p>
-        <dl className="mt-1 space-y-1 text-xs">
-          {detail.cosignPolicyEvidence.map((item) => (
-            <div key={item.kind} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
-              <dt className="break-words">{item.kind.replaceAll("_", " ")}</dt>
-              <dd className="font-mono text-right">
-                {item.kind === "parcel_value_over_sen"
-                  ? `${formatSen(item.actual)} / ${formatSen(item.threshold)}`
-                  : item.threshold === null
-                    ? String(item.actual ?? "unavailable")
-                    : `${item.actual ?? "unavailable"} / ${item.threshold}`}
-              </dd>
-            </div>
-          ))}
-        </dl>
+          <p className="text-xs font-medium">Mandate conditions on file</p>
+          <dl className="mt-1 divide-y divide-amber-200 text-xs">
+            {detail.cosignPolicyEvidence.map((item) => {
+              const condition = cosignConditionPresentation(item);
+              return (
+                <div key={item.kind} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 py-1.5">
+                  <dt className="font-medium">{condition.label}</dt>
+                  <dd className={condition.triggered ? "font-semibold" : "text-amber-800"}>{condition.status}</dd>
+                  <dt className="text-amber-800">{condition.actualLabel}</dt>
+                  <dd className="font-mono text-right">{condition.actual}</dd>
+                  <dt className="col-span-2 text-amber-800">{condition.trigger}</dt>
+                </div>
+              );
+            })}
+          </dl>
         </div>
       )}
     </section>

@@ -8,6 +8,8 @@ import type { BuiltEvent, GeneratedScenario, GeneratedWorld } from "@/lib/genera
 import type { ShipmentMapModel } from "./map-model";
 import type { CaseState, OperatorActionName } from "./types";
 import { abortKindOf, inboxGroupOf, shortReasonFor, type AbortKind, type InboxGroupId } from "./inbox";
+import { INCONSISTENCY_RULES } from "@/lib/engine/inconsistency";
+import { PATTERN_RULES } from "@/lib/pattern/rules";
 
 export type HandoffState = CaseState | "accepted";
 
@@ -120,6 +122,76 @@ export type RouteLocationView = {
   senderClaim: string | null;
 };
 
+export type CheckView = {
+  id: string;
+  label: string;
+  status: "triggered" | "clear" | "not_evaluated";
+  reason: string | null;
+  points: number;
+};
+
+const CHECK_LABELS: Record<string, string> = {
+  I1: "GPS against registered cell and WiFi",
+  I2: "Claimed movement against accelerometer",
+  I3: "Implied travel speed",
+  I4: "Device clock ahead of server",
+  I5: "Delayed or offline receipt",
+  I6: "Scanning handset against courier binding",
+  I7: "Mock-location provider reported",
+  I8: "Device integrity attestation",
+  I9: "Photo time against scan time",
+  I10: "Distance from delivery reference",
+  I11: "Severe distance from delivery reference",
+  I12: "Proof-of-delivery evidence",
+  I13: "Courier working-time mandate",
+  I14: "Battery use against claimed movement",
+  I15: "OTP claim against verifier record",
+  I16: "Attestation against device enrollment",
+  P1: "Delivery burst rate",
+  P2: "Recipient disputes against fleet baseline",
+  P3: "Repeated near-threshold score shape",
+  P4: "Scan clustering against recipient addresses",
+  P5: "Recurring contradiction type",
+};
+
+function axisChecks(
+  ids: string[],
+  flags: NonNullable<AgentContext["engineResult"]>["flags"],
+  notEvaluated: Array<{ id: string; reason: string }>,
+): CheckView[] {
+  const flagsById = new Map(flags.map((flag) => [flag.id, flag]));
+  const missingById = new Map(notEvaluated.map((item) => [item.id, item.reason]));
+  return ids.map((id) => {
+    const flag = flagsById.get(id);
+    if (flag) {
+      return { id, label: CHECK_LABELS[id] ?? flag.label, status: "triggered", reason: flag.label, points: flag.points };
+    }
+    const reason = missingById.get(id);
+    if (reason) return { id, label: CHECK_LABELS[id] ?? id, status: "not_evaluated", reason, points: 0 };
+    return { id, label: CHECK_LABELS[id] ?? id, status: "clear", reason: null, points: 0 };
+  });
+}
+
+/** The complete three-state rule ledger shown to an operator; missing is never clean. */
+export function checksFrom(ctx: AgentContext): HandoffDetail["checks"] {
+  const engine = ctx.engineResult;
+  const pattern = ctx.patternOutcome;
+  const inconsistencyIds = INCONSISTENCY_RULES.flatMap((rule) => rule.ids);
+  const patternIds = PATTERN_RULES.flatMap((rule) => rule.ids);
+  return {
+    singleEvent: axisChecks(
+      inconsistencyIds,
+      [...(engine?.hardFailures ?? []), ...(engine?.flags ?? [])],
+      engine?.coverage.notEvaluated ?? inconsistencyIds.map((id) => ({ id, reason: "single-event engine did not run" })),
+    ),
+    pattern: axisChecks(
+      patternIds,
+      pattern?.flags ?? [],
+      pattern?.coverage.notEvaluated ?? patternIds.map((id) => ({ id, reason: "pattern engine did not run" })),
+    ),
+  };
+}
+
 export type ShipmentRouteView = {
   origin: RouteLocationView | null;
   destination: RouteLocationView;
@@ -130,10 +202,14 @@ export type ShipmentRouteView = {
 };
 
 export type HandoffDetail = {
+  supportingEvidence?: import("./operations-types").EvidenceRequestView[];
+  archivedEvidenceCount?: number;
+  canApprove?: boolean;
   summary: HandoffSummary;
   /** The shipment endpoints when this workbench owns their source records. */
   route: ShipmentRouteView | null;
   event: unknown;
+  checks: { singleEvent: CheckView[]; pattern: CheckView[] };
   flags: Array<{ id: string; points: number; label: string; evidence: Array<{ field: string; value: unknown }> }>;
   /** A ledger rejection that stopped the engine before its normal flag sources existed. */
   abortEvidence: {
@@ -193,6 +269,7 @@ export type HandoffDetail = {
    */
   planConsidered: ToolConsideration[];
   plan: {
+    failoverReason?: string;
     selectedTools: string[];
     rationale: string | null;
     source: "model" | "heuristic" | "unavailable";
@@ -204,6 +281,7 @@ export type HandoffDetail = {
   toolResults: NonNullable<AgentContext["toolResults"]>;
   reroute: AgentContext["reroute"] | null;
   explanation: {
+    failoverReason?: string;
     text: string | null;
     source: "model" | "fallback" | "unavailable";
     rejection: string | null;

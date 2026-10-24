@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { SenderForm, type SenderAddress } from "./sender-form";
 import { OnlineShipmentPanel } from "./online-shipment-panel";
+import { SenderShipments } from "./sender-shipments";
+import type { SenderShipmentView } from "@/lib/workbench/service";
 const router = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
@@ -30,16 +32,29 @@ describe("Sender registered declaration", () => {
     const view = render(createElement(SenderForm, { addresses, policy, serviceArea }));
     fireEvent.click(view.getByRole("button", { name: "Batch scanning" }));
     expect(view.getByText(/property of a set, not of one parcel/)).toBeTruthy();
-    expect((view.getByRole("button", { name: "Create and dispatch" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((view.getByRole("button", { name: "Create shipment" }) as HTMLButtonElement).disabled).toBe(true);
   });
   it("uses registered map selection and sends only the unchanged API declaration", async () => {
-    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    const queued: SenderShipmentView = { runId: "pending-registered", waybillNo: "WB-PENDING", originLabel: "Pickup", recordedAddress: "Correction", declaredValueSen: 12000, delivered: false, deliveryEventId: null, assignmentState: "awaiting_assignment", assignedCourier: null };
+    const fetcher = vi.fn(async (_url: string, options?: RequestInit) => ({ ok: true, json: async () => options?.method === "POST"
+      ? { ok: true, runId: queued.runId, eventIds: [], landOnEventId: null, inTransit: false, awaitingAssignment: true, items: [queued] }
+      : { items: [] } }));
     vi.stubGlobal("fetch", fetcher);
-    const view = render(createElement(SenderForm, { addresses, policy, serviceArea }));
+    const view = render(createElement("div", null,
+      createElement(SenderForm, { addresses, policy, serviceArea }),
+      createElement(SenderShipments, { shipments: [], addresses }),
+    ));
+    await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/sender/shipments", expect.anything()));
     fireEvent.click(view.getByRole("button", { name: "Choose Correction" }));
-    fireEvent.click(view.getByRole("button", { name: "Create and dispatch" }));
-    await waitFor(() => expect(router.refresh).toHaveBeenCalledOnce());
-    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ originIndex: 0, destinationIndex: 16, declaredValueSen: 12000, recipientChannel: "+60119990001", fault: "none" });
+    fireEvent.click(view.getByRole("button", { name: "Create shipment" }));
+    await view.findByText("WB-PENDING");
+    expect(view.getByRole("status").textContent).toMatch(/awaiting operator assignment/i);
+    expect(view.queryByText(/out-for-delivery/i)).toBeNull();
+    expect(view.queryByRole("button", { name: "Courier delivers" })).toBeNull();
+    expect(router.refresh).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const creation = fetcher.mock.calls.find(([, options]) => options?.method === "POST");
+    expect(JSON.parse(creation![1]!.body as string)).toEqual({ originIndex: 0, destinationIndex: 16, declaredValueSen: 12000, recipientChannel: "+60119990001", fault: "none" });
   });
 });
 

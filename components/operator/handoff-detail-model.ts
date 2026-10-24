@@ -27,12 +27,14 @@ export function resolvedActionMessage(sealed: boolean): string {
 export function operatorActionAvailability(input: {
   state: HandoffState;
   rerouteAvailable: boolean;
+  canApprove?: boolean;
+  sealed?: boolean;
 }): Record<OperatorActionName, boolean> {
   const resolved = input.state.startsWith("resolved_") || input.state === "accepted";
   return {
-    approve: !resolved && input.state === "awaiting_cosignature",
+    approve: !resolved && !input.sealed && (input.canApprove ?? input.state === "awaiting_cosignature"),
     reject: !resolved,
-    request_evidence: !resolved,
+    request_evidence: !resolved && input.state !== "awaiting_evidence",
     propose_reroute: !resolved && input.rerouteAvailable,
     escalate: !resolved,
   };
@@ -54,6 +56,55 @@ function axisCoverage(line: string, axis: "single-event" | "pattern"): string {
 
 function money(sen: number): string {
   return new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR" }).format(sen / 100);
+}
+
+type CosignPolicyEvidence = {
+  kind: "parcel_value_over_sen" | "recipient_address_not_in_scope" | "inconsistency_score_at_least" | "pattern_score_at_least";
+  actual: number | string | null;
+  threshold: number | null;
+};
+
+export function cosignConditionPresentation(item: CosignPolicyEvidence): {
+  label: string;
+  status: "Triggered" | "Not triggered" | "Unavailable" | "Evaluated by gate";
+  actualLabel: string;
+  actual: string;
+  trigger: string;
+  triggered: boolean | null;
+} {
+  if (item.kind === "recipient_address_not_in_scope") {
+    return {
+      label: "Recipient scope condition",
+      status: "Evaluated by gate",
+      actualLabel: "Recipient address",
+      actual: String(item.actual ?? "Unavailable"),
+      trigger: "Co-signature triggers outside the assigned route",
+      triggered: null,
+    };
+  }
+
+  const actual = typeof item.actual === "number" ? item.actual : null;
+  const threshold = item.threshold;
+  const unavailable = actual === null || threshold === null;
+  const isValue = item.kind === "parcel_value_over_sen";
+  const triggered = unavailable ? null : isValue ? actual > threshold : actual >= threshold;
+
+  return {
+    label: isValue
+      ? "Parcel value condition"
+      : item.kind === "inconsistency_score_at_least"
+        ? "Inconsistency condition"
+        : "Pattern condition",
+    status: triggered === null ? "Unavailable" : triggered ? "Triggered" : "Not triggered",
+    actualLabel: isValue ? "Declared value" : "Actual score",
+    actual: actual === null ? "Unavailable" : isValue ? money(actual) : String(actual),
+    trigger: threshold === null
+      ? "Trigger unavailable"
+      : isValue
+        ? `Co-signature triggers above ${money(threshold)}`
+        : `Co-signature triggers at \u2265 ${threshold}`,
+    triggered,
+  };
 }
 
 export function acceptanceExplanation(input: {
@@ -110,6 +161,7 @@ export function planPresentation(input: {
   source: "model" | "heuristic" | "unavailable";
   selectedTools: string[];
   runtimeReason: string | null;
+  rejection: string | null;
 }): string {
   if (input.source === "model") {
     const selection = input.selectedTools.length > 0
@@ -118,11 +170,12 @@ export function planPresentation(input: {
     return `The model selected ${selection}. Its free-text planning rationale is not used as evidence; the auditable deterministic comparison appears below.`;
   }
   if (input.source === "heuristic") {
-    return input.runtimeReason
-      ? `Structured fallback used: ${input.runtimeReason}`
+    const reason = input.rejection ?? input.runtimeReason;
+    return reason
+      ? `Model plan was not used: ${reason}. The deterministic heuristic selected the optional context tools shown below.`
       : "The deterministic heuristic selected the optional context tools shown below.";
   }
-  return input.runtimeReason ?? "No planning result was available.";
+  return input.rejection ?? input.runtimeReason ?? "No planning result was available.";
 }
 
 export function citationTarget(citation: string): { href: string; evidenceId: string | null } {

@@ -33,5 +33,8 @@ export async function POST(
   }
 
   const workbench = await getWorkbench();
-  return NextResponse.json(workbench.correctAddress(runId, parsed.data.addressIndex));
+  const result = workbench.correctAddress(runId, parsed.data.addressIndex);
+  return NextResponse.json(result.ok
+    ? { ...result, shipment: workbench.listSenderShipments().find((item) => item.runId === runId) }
+    : result);
 }

@@ -5,6 +5,7 @@ export const CaseState = z.enum([
   "awaiting_cosignature",
   "timed_out",
   "awaiting_evidence",
+  "evidence_submitted",
   "awaiting_reroute_signatures",
   "resolved_approved",
   "resolved_rejected",

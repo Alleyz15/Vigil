@@ -54,35 +54,55 @@ describe("Courier prepared handoff workspace", () => {
     expect(view.getByText("event-1")).toBeTruthy();
   });
 
-  it("submits the selected handoff through the unified API and refreshes identity with the listing", async () => {
+  it("renders the submission response without a second queue read", async () => {
+    const updated = { ...workspace, identity: { ...workspace.identity, label: "Confirmed courier" }, items: [{ ...items[1], attempts: [{
+      run: { run: 1, eventHash: "hash", decision: "accept", halted: null, sealed: true, ledgerStatus: "recorded", credential: null, trace: [] },
+      outcome: { kind: "sealed", headline: "Recorded", detail: "Verified and sealed.", sealed: true, problems: [] },
+    }] }] };
     const fetcher = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => workspace })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
-      .mockResolvedValueOnce({ ok: true, json: async () => workspace });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ workspace: updated }) })
+      .mockRejectedValue(new Error("queue read must not be required"));
     vi.stubGlobal("fetch", fetcher);
     const view = render(createElement(CourierView, { initial: workspace }));
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
     fireEvent.click(view.getByRole("button", { name: /Delivery scan 1/ }));
     fireEvent.click(view.getByRole("button", { name: "Submit without signing" }));
-    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(view.getByText("Recorded in the ledger.")).toBeTruthy());
+    expect(view.getByText("Confirmed courier")).toBeTruthy();
+    expect(view.getByRole("button", { name: "Submit again" })).toBeTruthy();
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls[1]).toEqual(["/api/courier/handoffs/online%3Aitem-1/submit", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ signed: false }),
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ signed: false, courierId: "CR-1001" }),
     }]);
-    expect(fetcher.mock.calls[2]).toEqual(["/api/courier/handoffs", { cache: "no-store" }]);
   });
 
-  it("keeps the signed submit contract and reports a failed refresh without inventing an outcome", async () => {
+  it("reports an incomplete submission response without inventing an outcome", async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => workspace })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) })
-      .mockResolvedValueOnce({ ok: false });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
     vi.stubGlobal("fetch", fetcher);
     const view = render(createElement(CourierView, { initial: workspace }));
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
     fireEvent.click(view.getByRole("button", { name: "Sign and submit" }));
-    await waitFor(() => expect(view.getByRole("alert").textContent).toContain("Submission may have completed"));
-    expect(fetcher.mock.calls[1][1].body).toBe(JSON.stringify({ signed: true }));
+    await waitFor(() => expect(view.getByRole("alert").textContent).toContain("updated courier queue"));
+    expect(fetcher.mock.calls[1][1].body).toBe(JSON.stringify({ signed: true, courierId: "CR-1001" }));
     expect(view.queryByText("Recorded in the ledger.")).toBeNull();
+  });
+
+  it("does not let a late initial queue response erase a successful submission", async () => {
+    let finishInitial!: (response: unknown) => void;
+    const initialRead = new Promise((resolve) => { finishInitial = resolve; });
+    const updated = { ...workspace, identity: { ...workspace.identity, label: "Confirmed courier" } };
+    const fetcher = vi.fn().mockReturnValueOnce(initialRead)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ workspace: updated }) });
+    vi.stubGlobal("fetch", fetcher);
+    const view = render(createElement(CourierView, { initial: workspace }));
+    fireEvent.click(view.getByRole("button", { name: "Sign and submit" }));
+    await view.findByText("Confirmed courier");
+    finishInitial({ ok: true, json: async () => workspace });
+    await waitFor(() => expect(view.queryByText("Yee Ling Krishnan")).toBeNull());
+    expect(view.getByText("Confirmed courier")).toBeTruthy();
   });
 
   it("shows repeat and full history only for actual recorded attempts", () => {

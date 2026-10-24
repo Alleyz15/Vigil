@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Search, ShieldAlert, Timer, UsersRound } from "lucide-react";
+import { ArrowRight, RefreshCw, Search, ShieldAlert, Timer, UsersRound } from "lucide-react";
 import type { HandoffSummary } from "@/lib/workbench";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ import {
 } from "./handoffs-workspace-model";
 import { HandoffStateBadge } from "./status-badge";
 import { SimulatedClockLabel } from "./simulated-clock-label";
+import { DispatchWorkspaceView } from "./dispatch-workspace";
 
 type Summary = {
   automaticallyAccepted: number;
@@ -42,9 +43,43 @@ export function HandoffsWorkspace({
   clockAnchorIso?: string;
 }) {
   const [query, setQuery] = useState("");
-  const source = mode === "inbox" ? queueItems : allItems;
+  const [snapshot, setSnapshot] = useState({ queueItems, allItems, summary });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const refresh = useCallback(() => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    void Promise.all([
+      fetch("/api/operator/handoffs", { cache: "no-store" }),
+      fetch("/api/operator/inbox", { cache: "no-store" }),
+    ]).then(async (responses) => {
+      const [handoffs, inbox] = await Promise.all(responses.map((response) => response.json().catch(() => null)));
+      const failure = responses.findIndex((response) => !response.ok);
+      if (failure !== -1) throw new Error([handoffs, inbox][failure]?.error ?? "Handoffs could not be loaded. Refresh to retry.");
+      if (!Array.isArray(handoffs?.items) || !handoffs.summary || !Array.isArray(inbox?.items)) {
+        throw new Error("Handoff snapshot unavailable. Refresh to retry.");
+      }
+      return { queueItems: inbox.items as HandoffSummary[], allItems: handoffs.items as HandoffSummary[], summary: handoffs.summary as Summary };
+    }).then(setSnapshot).catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : "Handoffs could not be loaded. Refresh to retry.");
+    }).finally(() => {
+      inFlight.current = false;
+      setLoading(false);
+    });
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const currentQueue = useMemo(() => scenario ? snapshot.queueItems.filter((item) => item.scenarioId === scenario) : snapshot.queueItems, [snapshot.queueItems, scenario]);
+  const currentAll = useMemo(() => scenario ? snapshot.allItems.filter((item) => item.scenarioId === scenario) : snapshot.allItems, [snapshot.allItems, scenario]);
+  const currentSummary = scenario ? {
+    ...snapshot.summary,
+    automaticallyAccepted: currentAll.filter((item) => item.decision === "accept" && item.sealed).length,
+    total: currentAll.length,
+  } : snapshot.summary;
+  const source = mode === "inbox" ? currentQueue : currentAll;
   const visible = useMemo(() => filterAndSortHandoffs(source, query), [query, source]);
-  const metrics = workspaceMetrics(queueItems, allItems);
+  const metrics = workspaceMetrics(currentQueue, currentAll);
   const selected = visible[0] ?? null;
   const scenarioQuery = scenario ? `?scenario=${encodeURIComponent(scenario)}` : "";
 
@@ -58,12 +93,14 @@ export function HandoffsWorkspace({
         <Metric label="Pattern couriers" value={String(metrics.patternCouriers)} tone="pattern" icon={UsersRound} />
       </section>
 
+      <DispatchWorkspaceView />
+
       <div className="mt-4 grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_20rem]">
         <section className="min-w-0 rounded-lg border bg-card">
           <div className="flex flex-wrap items-center gap-3 border-b p-4">
             <div className="flex rounded-md bg-muted p-1" aria-label="Handoff list mode">
-              <ModeLink active={mode === "inbox"} href={`/operator/inbox${scenarioQuery}`} label="Inbox queue" count={queueItems.length} />
-              <ModeLink active={mode === "all"} href={`/operator/handoffs${scenarioQuery}`} label="All handoffs" count={allItems.length} />
+              <ModeLink active={mode === "inbox"} href={`/operator/inbox${scenarioQuery}`} label="Inbox queue" count={currentQueue.length} />
+              <ModeLink active={mode === "all"} href={`/operator/handoffs${scenarioQuery}`} label="All handoffs" count={currentAll.length} />
             </div>
             <label className="relative min-w-52 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -75,15 +112,18 @@ export function HandoffsWorkspace({
                 className="h-10 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
+            <Button variant="outline" size="icon-sm" aria-label="Refresh handoffs" title="Refresh handoffs" disabled={loading} onClick={() => { setLoading(true); setError(null); void refresh(); }}><RefreshCw /></Button>
             <span className="rounded-full bg-foreground px-3 py-2 text-xs font-semibold text-background">Priority order</span>
             <SimulatedClockLabel anchorIso={clockAnchorIso} />
           </div>
 
-          <div className="max-h-[66rem] overflow-auto p-4">
+          {error && <p role="alert" className="px-4 pt-3 text-xs text-destructive">{error}</p>}
+          {loading && <p role="status" className="px-4 pt-3 text-xs text-muted-foreground">Refreshing handoffs...</p>}
+          <div className="max-h-[66rem] overflow-auto p-4" aria-busy={loading}>
             {mode === "inbox" ? (
               <InboxTable items={visible} detailMode="inbox" />
             ) : (
-              <HandoffTable items={visible} summary={summary} showSummary={false} />
+              <HandoffTable items={visible} summary={currentSummary} showSummary={false} />
             )}
           </div>
         </section>

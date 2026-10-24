@@ -8,8 +8,9 @@ import { confirmPoint, normaliseClaim } from "@/lib/shipment/picker";
 import { AddressSearch, type SearchCandidate } from "./address-search";
 import { ServiceAreaMap } from "./service-area-map";
 import { bodyPoint, type PickedPoint, type ServiceAreaView } from "./online-shipment-model";
+import type { SenderShipmentView } from "@/lib/workbench/service";
 
-export function OnlineCorrectionControl({ shipmentId, onCorrected }: { shipmentId: string; onCorrected: () => void }) {
+export function OnlineCorrectionControl({ shipmentId, onCorrected }: { shipmentId: string; onCorrected: (shipment: SenderShipmentView) => void }) {
   const [open, setOpen] = useState(false);
   const [area, setArea] = useState<ServiceAreaView | null>(null);
   const [pending, setPending] = useState<PickedPoint | null>(null);
@@ -57,7 +58,8 @@ export function OnlineCorrectionControl({ shipmentId, onCorrected }: { shipmentI
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.ok) return setError(result?.reason ?? "That correction was not recorded.");
-      onCorrected();
+      if (!result.shipment?.correction) return setError("The correction was recorded, but its updated shipment was not returned. Reload before retrying.");
+      onCorrected(result.shipment);
     } catch {
       setError("The correction could not be confirmed. Reload before retrying.");
     } finally {

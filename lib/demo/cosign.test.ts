@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildCosignModel, type CosignModel } from "./cosign";
+import {
+  buildCosignChoices,
+  buildCosignModel,
+  selectCosignChoice,
+  type CosignModel,
+} from "./cosign";
 import type { CourierDraft, RoleIdentity } from "@/lib/workbench/service";
-import type { HandoffDetail, RunView } from "@/lib/workbench/read-model";
+import type { CourierQueueItem } from "@/lib/workbench/service";
+import type { HandoffDetail, HandoffSummary, RunView } from "@/lib/workbench/read-model";
 
 /**
  * The split screen's derivation.
@@ -88,6 +94,58 @@ const build = (d: CourierDraft, detail?: HandoffDetail): CosignModel =>
   buildCosignModel({ draft: d, detail, identities });
 
 describe("the co-sign split screen follows one handoff through its phases", () => {
+  it("lists every delivery source and defaults to the newest point-to-point handoff", () => {
+    const online = {
+      handoffId: "online:shipment-1",
+      source: "online",
+      scenarioId: "B-O-run-1",
+      runId: "B-O-run-1",
+      title: "Delivery scan — point-to-point dispatch",
+      epc: "urn:epc:id:sgtin:0614141.100001.1",
+      waybillNo: "WB-ON-0001",
+      leg: "delivery",
+      eventTime: "2026-09-08T12:00:00+08:00",
+      eventId: "online-event",
+      attempts: [{ run: run(courierOnly), outcome: {} as never }],
+      operatorSeal: null,
+    } as unknown as CourierQueueItem;
+    const seededS1 = {
+      ...online,
+      handoffId: "seeded:DRAFT-S1-5",
+      source: "seeded",
+      scenarioId: "S1",
+      runId: "S1",
+      waybillNo: "WB-2026-100000",
+      eventTime: "2026-09-08T10:15:00+08:00",
+      eventId: "s1-event",
+    } as CourierQueueItem;
+    const seededS0 = {
+      ...draft([]),
+      draftId: "DRAFT-S0-5",
+      scenarioId: "S0",
+      waybillNo: "WB-2026-000000",
+      eventTime: "2026-09-08T09:00:00+08:00",
+      eventId: "s0-event",
+    } as CourierDraft;
+    const history = [
+      { scenarioId: "B-O-run-1", eventId: "online-event", bizStep: "delivering", eventTime: online.eventTime, state: "awaiting_cosignature", parcel: { waybillNo: online.waybillNo } },
+      { scenarioId: "S1", eventId: "s1-event", bizStep: "delivering", eventTime: seededS1.eventTime, parcel: { waybillNo: seededS1.waybillNo } },
+      { scenarioId: "S2", eventId: "s2-delivery", bizStep: "delivering", eventTime: "2026-09-07T14:43:00+08:00", parcel: { waybillNo: "WB-2026-200039" } },
+      { scenarioId: "S2", eventId: "s2-delivery-older", bizStep: "delivering", eventTime: "2026-09-07T14:42:00+08:00", parcel: { waybillNo: "WB-2026-200038" } },
+      { scenarioId: "S2", eventId: "s2-transport", bizStep: "transporting", eventTime: "2026-09-07T14:40:00+08:00", parcel: { waybillNo: "WB-2026-200038" } },
+    ] as HandoffSummary[];
+
+    const choices = buildCosignChoices([seededS1, online], history, [seededS0, draft([])]);
+
+    expect(choices.map((choice) => choice.scenarioId)).toEqual(["B-O-run-1", "S0", "S1", "S2"]);
+    expect(choices.filter((choice) => choice.eventId === "s1-event")).toHaveLength(1);
+    expect(choices.filter((choice) => choice.scenarioId === "S2")).toHaveLength(1);
+    expect(choices.find((choice) => choice.scenarioId === "S0")?.draft?.draftId).toBe("DRAFT-S0-5");
+    expect(choices.find((choice) => choice.source === "online")?.state).toBe("awaiting_cosignature");
+    expect(selectCosignChoice(choices)?.handoffId).toBe("online:shipment-1");
+    expect(selectCosignChoice(choices, "history:s2-delivery")?.scenarioId).toBe("S2");
+  });
+
   it("starts with nothing submitted, and says so rather than showing an empty operator panel", () => {
     const model = build(draft([]));
 
@@ -132,6 +190,23 @@ describe("the co-sign split screen follows one handoff through its phases", () =
     expect(model.arithmetic.headline).toBe(
       "Courier signature + operator signature = a credential that verifies",
     );
+  });
+
+  it("does not claim an operator signature was used when the mandate did not require one", () => {
+    const courierSufficient: RunView["credential"] = {
+      valid: true,
+      courierValid: true,
+      operatorValid: false,
+      cosignRequired: false,
+      problems: [],
+    };
+    const model = build(
+      draft([{ run: run(courierSufficient), outcome: {} as never }]),
+      detailWith(courierSufficient, 7, "accepted"),
+    );
+
+    expect(model.arithmetic.headline).toBe("Courier signature = a credential that verifies");
+    expect(model.arithmetic.detail).toContain("operator signature was not required");
   });
 
   /**

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Check, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CosignModel } from "@/lib/demo/cosign";
@@ -24,11 +23,12 @@ import type { CosignModel } from "@/lib/demo/cosign";
 export function CosignActions({
   model,
   side,
+  onModelChange,
 }: {
   model: CosignModel;
   side: "courier" | "operator";
+  onModelChange: (model: CosignModel) => void;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -45,16 +45,23 @@ export function CosignActions({
         setError(detail?.error ?? "That did not go through.");
         return;
       }
-      router.refresh();
+      const detail = await response.json().catch(() => null);
+      if (!detail?.cosignState?.model) {
+        setError("The action succeeded, but the updated credential state was not returned.");
+        return;
+      }
+      onModelChange(detail.cosignState.model as CosignModel);
     });
   };
 
   if (side === "courier") {
     if (model.phase !== "unsubmitted") {
+      const submittedCopy = model.credential?.valid && !model.credential.cosignRequired
+        ? "Submitted and sealed. The courier signature was sufficient under this handoff's mandate."
+        : "Submitted. The courier cannot do anything further — completing the credential is not theirs to do.";
       return (
         <p className="text-xs leading-5 text-muted-foreground">
-          Submitted. The courier cannot do anything further — completing the credential is not
-          theirs to do.
+          {submittedCopy}
         </p>
       );
     }
@@ -65,7 +72,7 @@ export function CosignActions({
           size="lg"
           disabled={pending}
           onClick={() =>
-            post(`/api/courier/drafts/${model.courier.draftId}/submit`, { signed: true })
+            post(`/api/courier/handoffs/${encodeURIComponent(model.courier.handoffId)}/submit`, { signed: true })
           }
         >
           <PenLine data-icon="inline-start" />
@@ -81,6 +88,14 @@ export function CosignActions({
   }
 
   if (model.phase === "sealed") {
+    if (model.credential && !model.credential.cosignRequired) {
+      return (
+        <p className="max-w-prose text-sm leading-6 text-muted-foreground">
+          No operator co-signature was required. The courier credential verified and this handoff
+          sealed in one run.
+        </p>
+      );
+    }
     return (
       <p className="max-w-prose text-sm leading-6 text-muted-foreground">
         Co-signed. The identical event ran through the identical pipeline a second time with the

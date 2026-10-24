@@ -4,6 +4,7 @@ import {
   acceptanceExplanation,
   attemptHistoryLabel,
   citationTarget,
+  cosignConditionPresentation,
   detailStatusMessage,
   ledgerReferencePresentation,
   operatorActionAvailability,
@@ -122,6 +123,33 @@ describe("correlated handoff detail presentation", () => {
     );
   });
 
+  it("presents co-signature conditions as status, actual value and trigger", () => {
+    expect(cosignConditionPresentation({
+      kind: "inconsistency_score_at_least",
+      actual: 0,
+      threshold: 30,
+    })).toEqual({
+      label: "Inconsistency condition",
+      status: "Not triggered",
+      actualLabel: "Actual score",
+      actual: "0",
+      trigger: "Co-signature triggers at \u2265 30",
+      triggered: false,
+    });
+
+    expect(cosignConditionPresentation({
+      kind: "parcel_value_over_sen",
+      actual: 100_000,
+      threshold: 40_000,
+    })).toMatchObject({
+      label: "Parcel value condition",
+      status: "Triggered",
+      actualLabel: "Declared value",
+      trigger: "Co-signature triggers above RM\u00a0400.00",
+      triggered: true,
+    });
+  });
+
   it("describes a duplicate no-op as attempt history, not a replacement verdict", () => {
     expect(attemptHistoryLabel({ ledgerStatus: "noop", decision: "accept" })).toEqual({
       title: "Identical resubmission",
@@ -134,9 +162,19 @@ describe("correlated handoff detail presentation", () => {
       source: "model",
       selectedTools: [],
       runtimeReason: null,
+      rejection: null,
     })).toBe(
       "The model selected no optional tools. Its free-text planning rationale is not used as evidence; the auditable deterministic comparison appears below.",
     );
+  });
+
+  it("shows why a model plan was rejected before naming the deterministic fallback", () => {
+    expect(planPresentation({
+      source: "heuristic",
+      selectedTools: ["check_traffic_weather"],
+      runtimeReason: null,
+      rejection: "model response did not match the closed tool schema",
+    })).toContain("model response did not match the closed tool schema");
   });
 
   it("routes explanation citations to the section that owns the cited fact", () => {

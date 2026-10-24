@@ -24,6 +24,7 @@ const Request = z.strictObject({
   codAmountSen: z.number().int().nonnegative().optional(),
   recipientChannel: z.string().min(3),
   recipientName: z.string().min(1).optional(),
+  demoCondition: z.enum(["normal", "mock_location"]).default("normal"),
 });
 
 const STATUS = { created: 201, replayed: 200, conflict: 409, rejected: 422 } as const;
@@ -65,6 +66,7 @@ export async function POST(request: globalThis.Request) {
   const result = await workbench.createOnlineShipment(
     { ...parsed.data, origin: origin.location, destination: destination.location },
     key,
+    { awaitAssignment: true },
   );
-  return NextResponse.json(result, { status: STATUS[result.status] });
+  return NextResponse.json({ ...result, items: workbench.listSenderShipments().filter((item) => !item.delivered) }, { status: STATUS[result.status] });
 }
