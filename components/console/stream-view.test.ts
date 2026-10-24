@@ -58,6 +58,17 @@ it("shows sub-millisecond work without rounding it to zero", async () => {
   expect(view.queryByText("0ms")).toBeNull();
 });
 
+it("keeps each node's actual model label after failover at a different node", async () => {
+  vi.stubGlobal("EventSource", FakeEventSource);
+  const view = render(createElement(StreamView, { scenarioId: "S1", legCount: 6, defaultLeg: 5 }));
+  fireEvent.click(view.getByRole("button", { name: "Run" }));
+  instances[0].emit("tool_end", { node: "plan", durationMs: 12, summary: { detail: { model: { selection: "anthropic", modelId: "claude-haiku-4-5-20251001", mode: "active", reason: "failover" }, failoverReason: "gemini:primary: provider_error: 429" } } });
+  instances[0].emit("tool_end", { node: "explain", durationMs: 12, summary: { detail: { model: { selection: "gemini", modelId: "gemini-3.5-flash-lite", mode: "active", reason: "enabled" } } } });
+  await waitFor(() => expect(view.getByText("Model claude-haiku-4-5-20251001 ran at this node.")).toBeTruthy());
+  expect(view.getByText("Model gemini-3.5-flash-lite ran at this node.")).toBeTruthy();
+  expect(view.getByText(/Provider failover: gemini:primary: provider_error: 429/)).toBeTruthy();
+});
+
 it("uses light-surface contrast for replay detail, fallback and error lines", async () => {
   vi.stubGlobal("EventSource", FakeEventSource);
   const view = render(createElement(StreamView, { scenarioId: "S6", legCount: 6, defaultLeg: 5 }));

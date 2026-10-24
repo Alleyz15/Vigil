@@ -9,6 +9,9 @@ export type RuntimeProvider = "none" | "gemini" | "anthropic" | "ollama";
 export type RuntimeLlm = {
   selection: RuntimeProvider;
   provider: LlmProvider | null;
+  fallbackProvider?: LlmProvider;
+  fallbackModelId?: string;
+  initialFailoverReason?: string;
   modelId: string | null;
   keyPresent: boolean;
   reason: string;
@@ -26,10 +29,20 @@ export function resolveRuntimeLlm(env: Record<string, string | undefined> = proc
 
   try {
     if (selection === "gemini") {
+      const fallbackSelection = env.VIGIL_LLM_FALLBACK_PROVIDER?.trim().toLowerCase() || "anthropic";
+      const fallbackModelId = env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
+      const fallbackProvider = fallbackSelection === "anthropic" && env.ANTHROPIC_API_KEY
+        ? createAnthropicProvider({ apiKey: env.ANTHROPIC_API_KEY, model: fallbackModelId, baseUrl: env.ANTHROPIC_BASE_URL })
+        : undefined;
       const keyPresent = Boolean(env.GEMINI_API_KEY);
-      if (!keyPresent) throw new Error("GEMINI_API_KEY is not configured.");
+      if (!keyPresent) {
+        if (fallbackProvider) return { selection, provider: fallbackProvider, modelId: fallbackModelId, keyPresent, initialFailoverReason: "Gemini unavailable: GEMINI_API_KEY is not configured.", reason: `GEMINI_API_KEY is not configured; using Anthropic ${fallbackModelId}.` };
+        throw new Error("GEMINI_API_KEY is not configured.");
+      }
       const modelId = env.GEMINI_MODEL ?? "gemini-3.5-flash-lite";
-      return { selection, provider: createGeminiProvider({ apiKey: env.GEMINI_API_KEY, model: modelId, baseUrl: env.GEMINI_BASE_URL }), modelId, keyPresent, reason: `Gemini ${modelId} is enabled for interactive runs.` };
+      return { selection, provider: createGeminiProvider({ apiKey: env.GEMINI_API_KEY, model: modelId, baseUrl: env.GEMINI_BASE_URL }), modelId, keyPresent,
+        ...(fallbackProvider ? { fallbackProvider, fallbackModelId } : {}),
+        reason: `Gemini ${modelId} is enabled for interactive runs. ${fallbackProvider ? `Haiku ${fallbackModelId} is available on failure.` : !["none", "anthropic"].includes(fallbackSelection) ? "VIGIL_LLM_FALLBACK_PROVIDER is invalid; expected anthropic or none. Haiku failover is disabled." : "Haiku failover is disabled or ANTHROPIC_API_KEY is not configured."}` };
     }
     if (selection === "anthropic") {
       const keyPresent = Boolean(env.ANTHROPIC_API_KEY);
@@ -49,6 +62,8 @@ export function resolveRuntimeLlm(env: Record<string, string | undefined> = proc
 export function activeAgentLlm(runtime: RuntimeLlm): AgentLlm {
   return {
     provider: runtime.provider ?? undefined,
+    fallbackProvider: runtime.fallbackProvider,
+    initialFailoverReason: runtime.initialFailoverReason,
     telemetry: createTelemetry(),
     runtime: {
       selection: runtime.selection,

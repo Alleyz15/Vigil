@@ -3,6 +3,7 @@ import type { Decision } from "@/lib/ledger/types";
 import { describeVerification } from "@/lib/credential";
 import { ExplainResponse, extractJson } from "./schemas";
 import { EXPLAIN_SYSTEM_PROMPT, explainUserPrompt } from "./prompts";
+import { withModelFailover } from "./failover";
 import {
   type LlmProvider,
   type LlmTelemetry,
@@ -140,6 +141,7 @@ export function structuredExplanation(ctx: AgentContext): string {
 
 export type ExplainArgs = {
   provider?: LlmProvider;
+  fallbackProvider?: LlmProvider;
   telemetry?: LlmTelemetry;
   timeoutMs?: number;
   /**
@@ -158,6 +160,8 @@ export type ExplainArgs = {
 };
 
 export type ExplainOutcome = {
+  modelName?: string;
+  failoverReason?: string;
   explanation: string;
   /** True when the structured fallback produced this. */
   fromFallback: boolean;
@@ -184,6 +188,11 @@ export async function explainVerdict(
   ctx: AgentContext,
   args: ExplainArgs = {},
 ): Promise<ExplainOutcome> {
+  return withModelFailover(args.provider, args.enforce === false ? undefined : args.fallbackProvider,
+    (provider) => explainOnce(ctx, { ...args, provider }));
+}
+
+async function explainOnce(ctx: AgentContext, args: ExplainArgs): Promise<ExplainOutcome> {
   const { provider, telemetry, timeoutMs = 12_000, enforce = true } = args;
 
   if (!provider || !ctx.verdict) {

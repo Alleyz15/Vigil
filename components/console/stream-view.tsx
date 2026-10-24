@@ -215,7 +215,9 @@ export function StreamView({
 }
 
 function NodeRow({ index, name, state, modelRuntime }: { index: number; name: NodeName; state: NodeState; modelRuntime: ModelRuntime | null }) {
+  modelRuntime = (state.detail?.model as ModelRuntime | undefined) ?? modelRuntime;
   const info = NODE_INFO[name];
+  const failoverReason = typeof state.detail?.failoverReason === "string" ? state.detail.failoverReason : null;
   const isModelNode = name === "plan" || name === "explain";
   const rejection = typeof state.detail?.rejection === "string" ? state.detail.rejection : null;
   const fallback = isModelNode && state.status === "done" && (modelRuntime?.mode !== "active" || rejection !== null);
@@ -279,6 +281,7 @@ function NodeRow({ index, name, state, modelRuntime }: { index: number; name: No
       {isModelNode && state.status === "done" && modelRuntime && (
         <div className="mt-2 pl-8 text-xs text-muted-foreground italic">
           {fallback ? rejection ?? modelRuntime.reason : `Model ${modelRuntime.modelId} ran at this node.`}
+          {failoverReason && <span className="mt-1 block">Provider failover: {failoverReason}</span>}
         </div>
       )}
 

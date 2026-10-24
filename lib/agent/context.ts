@@ -143,6 +143,10 @@ export type AgentContext = {
   planFromHeuristic?: boolean;
   /** Why a model's plan was refused, when one was asked and refused. */
   planRejection?: string;
+  planModelName?: string;
+  planFailoverReason?: string;
+  explanationModelName?: string;
+  explanationFailoverReason?: string;
 
   /** verify - axis 1 */
   inconsistency?: InconsistencyResult;

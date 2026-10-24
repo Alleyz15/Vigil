@@ -8,6 +8,7 @@ export function GET() {
   return NextResponse.json({
     selection: runtime.selection,
     modelId: runtime.modelId,
+    fallbackModelId: runtime.fallbackModelId ?? null,
     keyPresent: runtime.keyPresent,
     available: runtime.provider !== null,
     reason: runtime.reason,

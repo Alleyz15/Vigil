@@ -124,6 +124,20 @@ function pickCoverage(coverage?: { evaluated: number; total: number; line: strin
   return { evaluated: coverage.evaluated, total: coverage.total, line: coverage.line };
 }
 
+function modelAtNode(ctx: AgentContext, node: "plan" | "explain") {
+  const name = node === "plan" ? ctx.planModelName : ctx.explanationModelName;
+  const failoverReason = node === "plan" ? ctx.planFailoverReason : ctx.explanationFailoverReason;
+  if (!name) return ctx.modelRuntime ?? null;
+  const separator = name.indexOf(":");
+  return {
+    ...ctx.modelRuntime,
+    selection: name.startsWith("anthropic:") ? "anthropic" : name.startsWith("gemini:") ? "gemini" : ctx.modelRuntime?.selection ?? "none",
+    modelId: separator < 0 ? name : name.slice(separator + 1),
+    mode: "active",
+    reason: failoverReason ? `Provider failover: ${failoverReason}` : ctx.modelRuntime?.reason,
+  };
+}
+
 /** What each node contributed, for the SSE stream and the audit trail. */
 function summarize(node: Node, ctx: AgentContext) {
   switch (node) {
@@ -146,7 +160,7 @@ function summarize(node: Node, ctx: AgentContext) {
 
     case "plan":
       return {
-        detail: { tools: ctx.plan?.tools ?? [], fromHeuristic: ctx.planFromHeuristic ?? null, model: ctx.modelRuntime ?? null, rejection: ctx.planRejection ?? null },
+        detail: { tools: ctx.plan?.tools ?? [], fromHeuristic: ctx.planFromHeuristic ?? null, model: modelAtNode(ctx, "plan"), rejection: ctx.planRejection ?? null, failoverReason: ctx.planFailoverReason ?? null },
       };
 
     case "verify":
@@ -212,7 +226,7 @@ function summarize(node: Node, ctx: AgentContext) {
       };
 
     case "explain":
-      return { detail: { explained: Boolean(ctx.explanation), model: ctx.modelRuntime ?? null, rejection: ctx.explanationRejection ?? null } };
+      return { detail: { explained: Boolean(ctx.explanation), model: modelAtNode(ctx, "explain"), rejection: ctx.explanationRejection ?? null, failoverReason: ctx.explanationFailoverReason ?? null } };
   }
 }
 

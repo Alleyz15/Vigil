@@ -30,10 +30,29 @@ describe("the production explanation prompt boundary", () => {
     expect(Object.keys(JSON.parse(prompt))).toEqual([
       "decision",
       "requiresOperatorCosignature",
+      "operatorCosignatureStatus",
       "whatFired",
       "cosignReasons",
       "youMayCiteOnly",
     ]);
+  });
+
+  it("tells the explanation model when the required operator signature is already verified", () => {
+    const ctx = {
+      verdict: { decision: "accept", requiresCosign: true },
+      credential: {
+        valid: true,
+        cosignRequired: true,
+        validSignatures: ["courier", "operator"],
+        invalidSignatures: [],
+        problems: [],
+      },
+    } as unknown as AgentContext;
+
+    expect(JSON.parse(explainUserPrompt(ctx, ["decision", "credential"]))).toMatchObject({
+      requiresOperatorCosignature: true,
+      operatorCosignatureStatus: "supplied_and_verified",
+    });
   });
 
   it("passes only normalized weather fields, never provider prose", () => {

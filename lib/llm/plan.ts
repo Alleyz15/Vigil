@@ -2,6 +2,7 @@ import type { AgentContext, ToolName, ToolPlan } from "@/lib/agent/context";
 import { vigilSignalsOf } from "@/lib/epcis";
 import { PlanResponse, extractJson } from "./schemas";
 import { PLAN_SYSTEM_PROMPT, planUserPrompt } from "./prompts";
+import { withModelFailover } from "./failover";
 import {
   type LlmProvider,
   type LlmTelemetry,
@@ -171,11 +172,14 @@ export function heuristicPlan(ctx: AgentContext): ToolPlan {
 
 export type PlanArgs = {
   provider?: LlmProvider;
+  fallbackProvider?: LlmProvider;
   telemetry?: LlmTelemetry;
   timeoutMs?: number;
 };
 
 export type PlanOutcome = {
+  modelName?: string;
+  failoverReason?: string;
   plan: ToolPlan;
   /** True when the deterministic heuristic produced this, for any reason. */
   fromHeuristic: boolean;
@@ -192,6 +196,10 @@ export type PlanOutcome = {
  * shown the deterministic context set instead of a model-chosen one.
  */
 export async function planTools(ctx: AgentContext, args: PlanArgs = {}): Promise<PlanOutcome> {
+  return withModelFailover(args.provider, args.fallbackProvider, (provider) => planOnce(ctx, { ...args, provider }));
+}
+
+async function planOnce(ctx: AgentContext, args: PlanArgs): Promise<PlanOutcome> {
   const { provider, telemetry, timeoutMs = 8_000 } = args;
 
   if (!provider) return { plan: heuristicPlan(ctx), fromHeuristic: true };
