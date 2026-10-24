@@ -30,9 +30,9 @@ For the separate file-backed database configuration, see `.env.example` and
 
 | Page | What it shows |
 |---|---|
-| `/sender` | Create a shipment using registered Klang Valley locations; preserve the original reference when correcting an address |
-| `/courier` | Submit an unsubmitted courier draft through the real agent |
-| `/operator/inbox` | Handoffs needing operator attention |
+| `/sender` | Create a registered-address or confirmed-map-point shipment, awaiting operator assignment |
+| `/courier` | Select a demo courier, sign their assigned handoffs and respond to evidence requests |
+| `/operator/inbox` | Assign new shipments and review handoffs, including submitted supporting evidence |
 | `/operator/handoffs` | All handoffs, including accepted work; open a row for its actual evidence and available actions |
 | `/demo/gate` | Original two-axis chart, with observations separate from illustrative reference points |
 | `/verify` | Browser-side verification of raw ledger bytes and a browser-copy tamper demonstration |
@@ -44,6 +44,27 @@ Recipient confirmation is `/confirm/[token]`, reached through a capability link
 in an eligible handoff's detail page, not a global recipient account or token list.
 Sender's courier-delivery control is explicitly a demo proxy operation, not a
 claim that a sender performs a courier's product role.
+
+### Manual dispatch and supporting evidence
+
+New sender requests wait for the operator to select a courier before a simulated
+carrier run is built. The four-courier selector is a demo identity switch, not login
+or automatic fleet scheduling. The selected handoff displays its actual signing key.
+Sender-to-depot pickup is still outside the monitored custody chain.
+
+Request evidence requires an operator note. The assigned courier sees the request
+in-app and can submit an explanation with up to three JPEG/PNG/PDF files, 5 MiB each.
+The response returns to the operator queue. Each round is retained; the operator
+can ask for more, reject, escalate, or co-sign an eligible pending credential.
+Attachments are unverified supporting material: they never rewrite EPCIS events,
+rule scores or sealed verdicts, and cannot override a hard stop. SHA-256 checks
+file integrity, not authenticity. There is no external notification or AI file review.
+
+Pending dispatches and evidence bytes are stored in SQLite; live agent workflows
+and keys remain process-local. A restart does not resume an assigned workflow.
+Evidence is bound to its workflow instance; older seeded-run material is archived,
+not attached to a regenerated event with the same ID. Uploads are not in `public/`;
+download routes enforce demo actor scope, not production-grade authentication.
 
 ## Architecture
 
@@ -93,6 +114,19 @@ running Ollama instance with the configured model, then run `npm run test:llm:li
 Unconfigured live checks skip; hosted calls may incur costs. The preflight CSV
 records provider operations, not the number of tests that passed.
 
+For interactive model calls, set `VIGIL_LLM_PROVIDER=gemini`. With an
+`ANTHROPIC_API_KEY`, a failed or rejected Gemini Plan/Explain is retried once
+using `ANTHROPIC_MODEL` (default `claude-haiku-4-5-20251001`). Each attempt
+passes the same whole-response validation. The UI and replay show the actual
+model for each node and the primary failure reason. If both attempts fail, the
+deterministic explanation or planner remains available. Plan deadlines are 8
+seconds per attempt; Explain deadlines are 12 seconds per attempt.
+Set `VIGIL_LLM_FALLBACK_PROVIDER=none` to disable Haiku failover.
+`VIGIL_LLM_PROVIDER=none` disables both providers and is required by QA capture.
+The opt-in live outage regression is `VIGIL_TEST_FAILOVER=1` with
+`lib/llm/failover.integration.test.ts`; it makes real Haiku calls without changing
+the archived experiments.
+
 ## Limitations
 
 - Sender locations may be confirmed anywhere inside the four-unit service area;
@@ -115,7 +149,8 @@ records provider operations, not the number of tests that passed.
   secure key management. Weather is optional explanation context, never verdict input.
 
 See [CLAUDE.md](CLAUDE.md) for architectural constraints, known limitations and
-historical session records. Arbitrary sender coordinates remain deferred.
+historical session records. Arbitrary sender coordinates are supported inside the
+configured service boundary; missing reference-site evidence remains explicit.
 
 ## AI tools and media disclosure
 

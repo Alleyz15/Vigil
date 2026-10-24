@@ -1,5 +1,36 @@
 # Vigil
 
+## Manual Dispatch and Supporting Evidence (2026-10-24)
+
+Sender-created requests now await manual operator assignment; existing seeded
+scenarios retain their assignments. The courier selector is a demo actor switch,
+not login, authorization infrastructure, fleet availability or automatic dispatch.
+Each handoff's actual signing fingerprint is used: historical isolated scenario
+worlds can reuse a courier ID with different keys. New assignments build the event,
+EPC prefix, device binding and mandate together, before signing, through the existing
+builder and agent. Do not implement reassignment by replacing courierId on an event.
+
+Supporting evidence is a separate, append-only SQLite sidecar: operator note,
+per-round courier explanation, bounded JPEG/PNG/PDF attachment bytes and SHA-256.
+It is never sensor input, never edits EPCIS, never removes a flag and is not sent
+to an LLM for authenticity judgments. A submitted reply returns to the operator
+queue as evidence_submitted; only an eligible pending credential can be co-signed.
+Hard stops and original verdicts remain authoritative. Notifications are in-app
+only. Downloads are scoped to demo actors; production authentication is not present.
+
+**An event ID is not a workflow instance.** Review reproduced old seeded evidence
+being joined to a regenerated event with the same ID and payload but fresh keys.
+An unanswered historical request could also block all new rounds. Evidence now binds
+to an opaque workflow-instance ID; reads and uniqueness are instance-scoped, and old
+request IDs cannot submit into the new instance. Older material is explicitly archived.
+Live harness/key state is still not restartable; durable attachments do not imply it is.
+
+**Operator actions can race across tabs.** A red test showed reject succeeding while
+approve was awaiting the agent. The workbench now serializes review per handoff and
+refuses conflicting evidence submissions during sealing. Client disabled buttons alone
+cannot guard a server transition. Mutation responses remain the rendering authority;
+new queue/detail refresh reads cannot overwrite a newer action result.
+
 Agentic handoff trust verifier for last-mile logistics fraud.
 HackAI 2026, Track 02 (Secure Logistics & Digital Trust). Solo project. Deadline **15 Oct 2026**.
 
@@ -2000,6 +2031,26 @@ finding that it already has:
 These are correctness risks, not style debt. Sender creation and online correction also cross the
 boundary, but their responses do not contain a complete row model, while recipient confirmation
 already adopts the returned token state directly.
+
+**Follow-up, 2026-10-24:** the demo co-sign, courier submission and both sender correction
+clients now adopt authoritative mutation responses. The courier response includes the queue
+and acting identity; correction responses include the updated shipment. The online sender
+projection also now includes its persisted correction, a source it previously omitted. Initial
+reads carry a version check so a delayed response cannot overwrite a newer mutation. This
+closes the three narrower discard-and-re-read items above; it does not prove every surface in
+the broader cross-bundle inventory is resolved.
+
+Gemini Plan/Explain now retry once with configured Haiku. Each attempt passes the same full
+schema and evidence checks; rejected responses are discarded whole. Actual model identities
+and the primary failure are captured per node, including replay, because Plan can fail over
+while Explain succeeds on Gemini. Mutable last-provider state would misattribute concurrent
+runs and the earlier node. If both providers fail, the deterministic fallback remains explicit.
+`VIGIL_LLM_PROVIDER=none` disables both. An opt-in live regression injects a Gemini outage,
+calls real Haiku and compares the sealed verdict and ledger payload with the no-model run.
+
+A stored recipient `no_response` is expiry evidence, not a recipient-authored answer. The
+confirmation message now names the closed window without claiming delivery was confirmed;
+the regression exercises `expireConfirmations()` through storage to the displayed message.
 
 The same browser pass exposed a different failure that initially looked adjacent but was **not** a
 cross-bundle read: a high-value shipment dispatched from the sender queue reached
