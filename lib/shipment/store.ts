@@ -4,6 +4,7 @@ import type { VigilDb } from "@/lib/db/client";
 import { locationCorrections, locationSnapshots, shipments } from "@/lib/db/schema";
 import { canonicalHash } from "@/lib/ledger/canonical";
 import type { ResolvedLabel } from "@/lib/geocode/attach";
+import { RandomSimulationConfig } from "@/lib/simulation/config";
 import { checkPoint, type ServiceBoundary } from "./boundary";
 import { COORDINATE_DECIMALS } from "./picker";
 import { routeBetween, type Point } from "./depot";
@@ -96,6 +97,8 @@ export type ShipmentRequest = {
   recipientName?: string;
   /** Demo-only input that changes a reported device fact, never a verdict directly. */
   demoCondition?: "normal" | "mock_location";
+  /** Versioned generator inputs, independent of the advanced device demo condition. */
+  simulation?: RandomSimulationConfig;
 };
 
 export type LocationSnapshot = typeof locationSnapshots.$inferSelect;
@@ -137,6 +140,8 @@ function normalised(request: ShipmentRequest) {
     // behaviour, so omitted and explicit-normal are the same historical body;
     // only a condition that changes the simulated scan enters the hash.
     ...(request.demoCondition === "mock_location" ? { demoCondition: request.demoCondition } : {}),
+    // Omission must retain every historical normal/mock request hash.
+    ...(request.simulation !== undefined ? { simulation: RandomSimulationConfig.parse(request.simulation) } : {}),
   };
 }
 
@@ -175,6 +180,7 @@ export function createShipment(
   }
 
   const requestHash = requestHashOf(request);
+  const simulation = request.simulation === undefined ? undefined : RandomSimulationConfig.parse(request.simulation);
   const shipmentId = randomUUID();
   const route = routeBetween(request.origin, request.destination);
 
@@ -227,6 +233,7 @@ export function createShipment(
             recipientChannel: request.recipientChannel,
             recipientName: request.recipientName ?? null,
             demoCondition: request.demoCondition ?? "normal",
+            simulationJson: simulation === undefined ? null : JSON.stringify(simulation),
             createdAt: nowIso,
           })
           .onConflictDoNothing({ target: shipments.idempotencyKey })
