@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:simulation:batch": "node --import tsx scripts/experiments/randomized-validation.ts",
     "test:llm:live": "node --env-file-if-exists=.env ./node_modules/vitest/vitest.mjs run lib/llm/integration.test.ts lib/llm/multi-provider.integration.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
