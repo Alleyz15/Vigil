@@ -9,6 +9,17 @@ import { CourierView } from "./courier-view";
 vi.mock("next/navigation", () => ({ usePathname: () => "/courier" }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+it("shows the saved simulation seed and continuous-history provenance on a courier handoff", async () => {
+  const initial = { ...workspace, items: workspace.items.map((item) => ({ ...item,
+    simulation: { mode: "randomized" as const, seed: "courier-seed", version: "signals-v1" as const,
+      conditions: [], history: { runId: "run-1", priorHandoffs: 24, source: "simulated" as const, snapshotAt: "2026-10-24T02:00:00Z" } },
+  })) };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => initial }));
+  const view = render(createElement(CourierView, { initial }));
+  await waitFor(() => expect(view.getByText("courier-seed")).toBeTruthy());
+  expect(view.getByText("24 prior handoffs")).toBeTruthy();
+});
 const items: CourierQueueItem[] = ["registered", "online", "seeded"].map((source, i) => ({
   handoffId: `${source}:item-${i}`,
   source: source as CourierQueueItem["source"],

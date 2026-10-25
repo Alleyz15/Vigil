@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { booleanPointInPolygon } from "@turf/turf";
 import { Crosshair, MapPinned, PackagePlus, ShieldAlert } from "lucide-react";
@@ -62,12 +62,52 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
   const [channel, setChannel] = useState("+60119990007");
   const [recipientName, setRecipientName] = useState("");
   const [demoCondition, setDemoCondition] = useState<"normal" | "mock_location">("normal");
+  const [simulationMode, setSimulationMode] = useState<"normal" | "randomized">("normal");
+  const [seed, setSeed] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState("");
+  const seedHelpId = useId();
 
   const [reverseNote, setReverseNote] = useState<ReverseNote | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const idempotencyKey = useRef<string | null>(null);
+  const pendingCreation = useRef<{ key: string; body: string } | null>(null);
+  const submitting = useRef(false);
+  const copyAttempt = useRef(0);
+
+  // Only a deliberate edit ends an uncertain request. Renders, lookups and
+  // retries must keep both its key AND its exact serialized body.
+  const editRequest = () => {
+    pendingCreation.current = null;
+    setOutcome(null);
+  };
+
+  const selectMode = (mode: "normal" | "randomized") => {
+    if (mode === simulationMode) return;
+    editRequest();
+    if (mode === "randomized" && seed === null) setSeed(globalThis.crypto.randomUUID());
+    setSimulationMode(mode);
+    copyAttempt.current++;
+    setCopyFeedback("");
+  };
+
+  const changeSeed = (next: string) => {
+    if (next === seed) return;
+    editRequest();
+    setSeed(next);
+    copyAttempt.current++;
+    setCopyFeedback("");
+  };
+
+  const copySeed = async () => {
+    const attempt = ++copyAttempt.current;
+    try {
+      await navigator.clipboard.writeText(seed ?? "");
+      if (copyAttempt.current === attempt) setCopyFeedback("Seed copied.");
+    } catch {
+      if (copyAttempt.current === attempt) setCopyFeedback("Could not copy. Select the seed and copy it manually.");
+    }
+  };
 
   useEffect(() => {
     let live = true;
@@ -150,42 +190,57 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
 
   const confirmInto = (slot: SlotName) => {
     if (!pending) return;
-    setSlots((current) => ({ ...current, [slot]: { ...pending, claim: normaliseClaim(claimDraft) } }));
+    const next = { ...pending, claim: normaliseClaim(claimDraft) };
+    if (JSON.stringify(bodyPoint(next)) !== JSON.stringify(slots[slot] && bodyPoint(slots[slot]))) editRequest();
+    setSlots((current) => ({ ...current, [slot]: next }));
     setPending(null);
     setClaimDraft("");
   };
 
   const declaredValueSen = Math.round((Number.parseFloat(valueRinggit) || 0) * 100);
   const refusal = submitRefusal(slots.origin, slots.destination, declaredValueSen, channel);
+  const invalidSeed = simulationMode === "randomized" && !/^[A-Za-z0-9_-]{1,80}$/.test(seed ?? "");
 
   const submit = async () => {
-    if (refusal || !slots.origin || !slots.destination) return;
+    if (submitting.current || refusal || invalidSeed || !slots.origin || !slots.destination) return;
+    submitting.current = true;
     setBusy(true);
     setOutcome(null);
-    // Minted once and kept across retries of THIS shipment: a dropped
-    // connection must return the same parcel, and two parcels to one door are
-    // still two parcels.
-    idempotencyKey.current ??= newIdempotencyKey(() => globalThis.crypto.randomUUID());
+    // Freeze the body before sending. A lost or unreadable response says
+    // nothing about whether creation succeeded, so retry this exact request.
+    pendingCreation.current ??= {
+      key: newIdempotencyKey(() => globalThis.crypto.randomUUID()),
+      body: JSON.stringify({
+        origin: bodyPoint(slots.origin),
+        destination: bodyPoint(slots.destination),
+        declaredValueSen,
+        recipientChannel: channel.trim(),
+        recipientName: recipientName.trim() || undefined,
+        demoCondition,
+        ...(simulationMode === "randomized" ? { simulation: { mode: "randomized", seed, version: "signals-v1" } } : {}),
+      }),
+    };
+    const request = pendingCreation.current;
     try {
       const response = await fetch("/api/sender/online-shipments", {
         method: "POST",
-        headers: { "content-type": "application/json", "idempotency-key": idempotencyKey.current },
-        body: JSON.stringify({
-          origin: bodyPoint(slots.origin),
-          destination: bodyPoint(slots.destination),
-          declaredValueSen,
-          recipientChannel: channel.trim(),
-          recipientName: recipientName.trim() || undefined,
-          demoCondition,
-        }),
+        headers: { "content-type": "application/json", "idempotency-key": request.key },
+        body: request.body,
       });
       const body = await response.json().catch(() => null);
+      const created = response.ok && (body?.status === "created" || (body?.status === "replayed" && (body.awaitingAssignment || body.running)));
+      // Creation is authoritative for the list even if the sender has edited
+      // the draft meanwhile. Its receipt must never describe that newer draft.
+      if (created) {
+        window.dispatchEvent(new CustomEvent("vigil:sender-shipments-changed", { detail: { items: body.items } }));
+      }
+      if (pendingCreation.current !== request) return;
       if (!body) {
-        setOutcome({ kind: "error", message: "The server's answer could not be read. Reload before retrying." });
+        setOutcome({ kind: "error", message: "The server's answer could not be read. Retry without editing to resend the same key and body. Editing starts a new request." });
         return;
       }
-      if (response.ok && (body.status === "created" || (body.status === "replayed" && (body.awaitingAssignment || body.running)))) {
-        idempotencyKey.current = null;
+      if (created) {
+        pendingCreation.current = null;
         const receipt: Extract<Outcome, { kind: "created" }> = {
           kind: "created",
           shipmentId: body.shipmentId,
@@ -195,7 +250,6 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
           stored: null,
         };
         setOutcome(receipt);
-        window.dispatchEvent(new CustomEvent("vigil:sender-shipments-changed", { detail: { items: body.items } }));
         const stored = await storedReference(body.shipmentId);
         setOutcome((current) => current === receipt ? { ...current, stored } : current);
         return;
@@ -209,11 +263,13 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
         field: body.field ?? null,
       });
     } catch {
+      if (pendingCreation.current !== request) return;
       setOutcome({
         kind: "error",
-        message: "The request could not be confirmed. Retrying with the same key returns the same parcel.",
+        message: "The request could not be confirmed. Retry without editing to resend the same key and body. Editing starts a new request.",
       });
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };
@@ -272,7 +328,10 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
                 key={slot}
                 name={slot}
                 point={slots[slot]}
-                onClear={() => setSlots((current) => ({ ...current, [slot]: null }))}
+                onClear={() => {
+                  editRequest();
+                  setSlots((current) => ({ ...current, [slot]: null }));
+                }}
               />
             ))}
           </div>
@@ -285,7 +344,10 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
                   aria-label="Declared value for the confirmed-point shipment"
                   inputMode="decimal"
                   value={valueRinggit}
-                  onChange={(event) => setValueRinggit(event.target.value)}
+                  onChange={(event) => {
+                    if (event.target.value !== valueRinggit) editRequest();
+                    setValueRinggit(event.target.value);
+                  }}
                   className="h-10 w-full rounded-md bg-muted/60 px-3 text-sm tabular-nums outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
@@ -294,7 +356,10 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
               <input
                 aria-label="Recipient's registered number for the confirmed-point shipment"
                 value={channel}
-                onChange={(event) => setChannel(event.target.value)}
+                onChange={(event) => {
+                  if (event.target.value !== channel) editRequest();
+                  setChannel(event.target.value);
+                }}
                 className="h-10 w-full rounded-md bg-muted/60 px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
               />
             </Labelled>
@@ -303,49 +368,105 @@ export function OnlineShipmentPanel({ policy }: { policy: SenderPolicy }) {
             <input
               aria-label="Recipient name for the confirmed-point shipment"
               value={recipientName}
-              onChange={(event) => setRecipientName(event.target.value)}
+              onChange={(event) => {
+                if (event.target.value !== recipientName) editRequest();
+                setRecipientName(event.target.value);
+              }}
               placeholder="Left blank, a name is generated"
               className="h-10 w-full rounded-md bg-muted/60 px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
           </Labelled>
 
-          <fieldset className="mt-5 rounded-md border border-amber-200 bg-amber-50/70 p-3">
-            <legend className="px-1 text-xs font-semibold text-amber-950">Demo delivery condition</legend>
-            <div className="mt-1 inline-flex rounded-md border border-amber-300 bg-white p-1">
+          <fieldset className="mt-5 rounded-md border bg-muted/30 p-3">
+            <legend className="px-1 text-xs font-semibold">Simulation controls</legend>
+            <div className="mt-1 flex w-fit flex-wrap gap-1 rounded-md border bg-card p-1">
               <button
                 type="button"
-                aria-pressed={demoCondition === "normal"}
-                onClick={() => setDemoCondition("normal")}
+                aria-pressed={simulationMode === "normal"}
+                onClick={() => selectMode("normal")}
                 className={cn(
-                  "h-8 rounded px-3 text-xs font-medium",
-                  demoCondition === "normal" ? "bg-foreground text-background" : "text-muted-foreground",
+                  "min-h-9 rounded px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-ring",
+                  simulationMode === "normal" ? "bg-foreground text-background" : "text-muted-foreground",
                 )}
               >
                 Normal scan
               </button>
               <button
                 type="button"
-                aria-pressed={demoCondition === "mock_location"}
-                onClick={() => setDemoCondition("mock_location")}
+                aria-pressed={simulationMode === "randomized"}
+                onClick={() => selectMode("randomized")}
                 className={cn(
-                  "flex h-8 items-center gap-1.5 rounded px-3 text-xs font-medium",
-                  demoCondition === "mock_location" ? "bg-amber-600 text-white" : "text-amber-900",
+                  "min-h-9 rounded px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-ring",
+                  simulationMode === "randomized" ? "bg-foreground text-background" : "text-muted-foreground",
                 )}
               >
-                <ShieldAlert className="size-3.5" aria-hidden="true" />
-                Mock location app
+                Randomized scenario
               </button>
             </div>
-            <p className="mt-2 text-xs leading-5 text-amber-950">
-              Demo control · not product behaviour. This reports the handset&apos;s mock-location flag so I7 can
-              detect it. It does not invent cell or WiFi reference IDs, and it never sets the verdict directly.
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              Normal scan is the isolated baseline control. Normal does not guarantee a sealed handoff:
+              evidence, authorization and any required operator co-sign still apply.
             </p>
+            {simulationMode === "randomized" && (
+              <div className="mt-4 space-y-3">
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Randomized scenarios sample simulated conditions and continuous simulated courier history
+                  within the same courier run. Checks may accept, flag, or report insufficient evidence;
+                  a random scenario does not guarantee an alert.
+                </p>
+                <Labelled label="Simulation seed">
+                  <input
+                    aria-label="Simulation seed"
+                    aria-describedby={seedHelpId}
+                    aria-invalid={invalidSeed}
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    value={seed ?? ""}
+                    onChange={(event) => changeSeed(event.target.value)}
+                    className="h-10 w-full rounded-md bg-muted/60 px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </Labelled>
+                <p id={seedHelpId} className={cn("text-xs leading-5", invalidSeed ? "text-red-700 dark:text-red-400" : "text-muted-foreground")}>
+                  Use 1–80 letters, numbers, underscores (_) or hyphens (-). Profile: signals-v1.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="secondary" onClick={() => changeSeed(globalThis.crypto.randomUUID())}>Generate new seed</Button>
+                  <Button type="button" variant="outline" disabled={invalidSeed} onClick={copySeed}>Copy seed</Button>
+                </div>
+                <p role="status" className="text-xs leading-5 text-muted-foreground">{copyFeedback}</p>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Choose the seed before creation. Replaying evidence requires the same seed, confirmed inputs,
+                  profile version and courier context. A seed alone does not reproduce new shipment IDs or keys.
+                </p>
+              </div>
+            )}
+            <details className="mt-4 border-t pt-3">
+              <summary className="cursor-pointer text-xs font-medium focus-visible:outline-2 focus-visible:outline-ring">Advanced demo controls</summary>
+              <label className="mt-3 flex min-h-9 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={demoCondition === "mock_location"}
+                  onChange={(event) => {
+                    editRequest();
+                    setDemoCondition(event.target.checked ? "mock_location" : "normal");
+                  }}
+                  className="size-4 accent-amber-700"
+                />
+                <ShieldAlert className="size-4" aria-hidden="true" />
+                Mock location app
+              </label>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                Independent of the selected mode. This reports the handset&apos;s mock-location flag so I7 can
+                detect it. It does not invent cell or WiFi reference IDs, and it never sets the verdict directly.
+              </p>
+            </details>
           </fieldset>
 
           <ValueConsequence policy={policy} declaredValueSen={declaredValueSen} />
 
           <div className="mt-7">
-            <Button size="lg" disabled={busy || refusal !== null} onClick={submit}>
+            <Button size="lg" disabled={busy || refusal !== null || invalidSeed} onClick={submit}>
               <PackagePlus data-icon="inline-start" />
               {busy ? "Creating…" : "Create shipment at these points"}
             </Button>

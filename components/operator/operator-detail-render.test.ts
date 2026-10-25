@@ -50,6 +50,15 @@ function rendered(value: HandoffDetail) {
   return within(root);
 }
 
+it("shows sampled simulation conditions separately from the detector's findings", () => {
+  const view = rendered(detail({ simulation: { mode: "randomized", seed: "operator-seed", version: "signals-v1",
+    conditions: [{ source: "environment", code: "network", label: "Queued upload" }],
+    history: { runId: "simulation-run-1", priorHandoffs: 24, source: "simulated", snapshotAt: "2026-10-24T02:00:00Z" } } }));
+  expect(view.getByText("operator-seed")).toBeTruthy();
+  expect(view.getByText("24 prior handoffs")).toBeTruthy();
+  expect(view.getByText(/sampled conditions are not detected findings/i)).toBeTruthy();
+});
+
 it("contains a long delivery address in its timeline slot while retaining the complete label", () => {
   const address = "Ampang, Sungai Besi-Ulu Klang Elevated Expressway, Taman Dagang, Kampung Indah Permai, Kampung Tasik Permai, Ampang Jaya Municipal Council, Hulu Langat, Selangor, 68000, Malaysia";
   const view = rendered(detail({ timeline: [{ ...summary, locationLabel: address }] }));

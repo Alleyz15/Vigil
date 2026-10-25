@@ -31,6 +31,7 @@ import { SimulatedClockLabel } from "./simulated-clock-label";
 import { SupportingEvidence } from "./supporting-evidence";
 import { StreamView } from "@/components/console/stream-view";
 import { OperatorJourneySummary } from "@/components/shipment/route-summary";
+import { SimulationProvenance } from "@/components/shipment/simulation-provenance";
 
 function sentence(value: string | null): string {
   return value?.replaceAll("_", " ") ?? "Unavailable";
@@ -143,6 +144,7 @@ export function HandoffDetailView({
           <OperatorJourneySummary route={detail.route} />
         </section>
       )}
+      {detail.simulation && <SimulationProvenance {...detail.simulation} />}
 
       <div className="grid grid-cols-[minmax(0,1fr)_23rem] items-start gap-5">
         <div className="min-w-0 space-y-3">
