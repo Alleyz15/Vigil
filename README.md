@@ -45,6 +45,23 @@ in an eligible handoff's detail page, not a global recipient account or token li
 Sender's courier-delivery control is explicitly a demo proxy operation, not a
 claim that a sender performs a courier's product role.
 
+### Reproducible randomized scenarios
+
+On `/sender`, point-to-point dispatch offers **Normal scan** and **Randomized
+scenario**. Enter or generate a seed to sample simulated delivery signals and
+courier history. The same seed, confirmed inputs, profile version (`signals-v1`)
+and courier-history context reproduce the same sampled facts. Refresh, retry and
+co-sign reuse the shipment's saved snapshot rather than drawing new data.
+
+The fixed-seed experiment completed **20/20 development cases and 10/10 validation
+cases, with zero execution errors**. Every outcome is retained; see the
+[randomized scenario verification](docs/audits/2026-10-25-randomized-scenarios.md).
+Run the full batch with `npm run test:simulation:batch`.
+
+Randomized scenarios deliberately sample attack and environmental-noise conditions.
+Their frequency does **not** represent real-world fraud prevalence, and these
+synthetic results are not a measurement of field accuracy.
+
 ### Manual dispatch and supporting evidence
 
 New sender requests wait for the operator to select a courier before a simulated
