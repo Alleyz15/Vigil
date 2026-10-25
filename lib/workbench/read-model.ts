@@ -182,7 +182,14 @@ export function checksFrom(ctx: AgentContext): HandoffDetail["checks"] {
     singleEvent: axisChecks(
       inconsistencyIds,
       [...(engine?.hardFailures ?? []), ...(engine?.flags ?? [])],
-      engine?.coverage.notEvaluated ?? inconsistencyIds.map((id) => ({ id, reason: "single-event engine did not run" })),
+      engine?.aborted
+        ? inconsistencyIds.map((id) => ({
+            id,
+            // Hard failures suppress the entire scoring pass. Its grouped
+            // coverage entry applies to every individual scoring row.
+            reason: engine.coverage.notEvaluated[0]?.reason ?? "hard check failed; scoring was not performed",
+          }))
+        : engine?.coverage.notEvaluated ?? inconsistencyIds.map((id) => ({ id, reason: "single-event engine did not run" })),
     ),
     pattern: axisChecks(
       patternIds,
@@ -205,6 +212,8 @@ export type HandoffDetail = {
   supportingEvidence?: import("./operations-types").EvidenceRequestView[];
   archivedEvidenceCount?: number;
   canApprove?: boolean;
+  /** The seal exists; only its operator case/audit projection needs retry. */
+  approvalAuditPending?: boolean;
   summary: HandoffSummary;
   /** The shipment endpoints when this workbench owns their source records. */
   route: ShipmentRouteView | null;

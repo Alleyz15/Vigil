@@ -5,6 +5,7 @@ import {
   attemptHistoryLabel,
   citationTarget,
   cosignConditionPresentation,
+  credentialSealLabel,
   detailStatusMessage,
   ledgerReferencePresentation,
   operatorActionAvailability,
@@ -16,6 +17,15 @@ import {
 } from "./handoff-detail-model";
 
 describe("correlated handoff detail presentation", () => {
+  it("labels credential completeness separately from case closure and ledger sealing", () => {
+    const incomplete = { valid: false, courierValid: true, operatorValid: false, cosignRequired: true, problems: [] };
+    expect(credentialSealLabel({ state: "resolved_rejected", sealed: false, credential: incomplete })).toMatch(/incomplete.*not sealed/);
+    expect(credentialSealLabel({ state: "resolved_escalated", sealed: false, credential: null })).toMatch(/incomplete.*not sealed/);
+    expect(credentialSealLabel({ state: "resolved_rejected", sealed: true, credential: incomplete })).toBe("sealed");
+    expect(credentialSealLabel({ state: "resolved_rejected", sealed: false, credential: { ...incomplete, valid: true, operatorValid: true } })).toBe("not sealed");
+    expect(credentialSealLabel({ state: "awaiting_cosignature", sealed: false, credential: incomplete })).toBe("pending");
+  });
+
   it("states that a co-signature halt sealed nothing", () => {
     expect(detailStatusMessage({ state: "awaiting_cosignature", sealed: false })).toEqual({
       title: "Waiting for operator co-signature",
@@ -76,6 +86,33 @@ describe("correlated handoff detail presentation", () => {
       copyable: true,
     });
   });
+
+  it("allows only approval audit retry when a sealed approval still needs its audit write", () => {
+    const input = {
+      state: "awaiting_cosignature" as const,
+      sealed: true,
+      canApprove: true,
+      approvalAuditPending: true,
+      rerouteAvailable: true,
+    };
+    expect(operatorActionAvailability(input)).toEqual({
+      approve: true,
+      reject: false,
+      request_evidence: false,
+      propose_reroute: false,
+      escalate: false,
+    });
+    expect(operatorActionAvailability({ ...input, canApprove: false }).approve).toBe(false);
+    expect(operatorActionAvailability({ ...input, approvalAuditPending: false }).approve).toBe(false);
+  });
+
+  it.each(["accepted", "resolved_approved", "resolved_rejected", "resolved_escalated"] as const)(
+    "keeps %s closed even if an approval audit flag is present",
+    (state) => {
+      const input = { state, sealed: true, canApprove: true, approvalAuditPending: true, rerouteAvailable: true };
+      expect(Object.values(operatorActionAvailability(input))).toEqual([false, false, false, false, false]);
+    },
+  );
 
   it("does not reserve an empty evidence column for a hard rejection", () => {
     expect(shouldShowEvidenceDetails({ flagCount: 0, hasAddressCorrection: false })).toBe(false);

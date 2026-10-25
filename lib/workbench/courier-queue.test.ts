@@ -138,7 +138,7 @@ describe("unified courier queue", () => {
       "Bangsar pickup · Sender",
       expect.stringMatching(/· Origin depot$/),
       expect.stringMatching(/· Destination depot$/),
-      "Ampang delivery · Delivery",
+      "Ampang delivery · Delivery reference",
     ]);
     expect(sealed.timeline.map((leg) => leg.locationLabel)).toEqual([
       sealed.route?.custody?.originDepot.label,

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw, RefreshCw, MapPin, Package, PenLine, Shield } from "lucide-react";
-import type { CourierOutcome, CourierOutcomeKind } from "@/lib/workbench/courier";
+import { courierOutcome, type CourierOutcome, type CourierOutcomeKind } from "@/lib/workbench/courier";
 import type { CourierQueueItem, CourierWorkspaceView } from "@/lib/workbench/service";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -252,7 +252,9 @@ function HandoffCard({
   onSubmit: (signed: boolean) => void;
 }) {
   const latest = item.attempts.at(-1);
-  const sealed = item.attempts.some((attempt: Attempt) => attempt.outcome.sealed);
+  const outcome = item.currentRun ? courierOutcome(item.currentRun) : latest?.outcome;
+  const sealed = item.currentRun?.sealed ?? item.attempts.some((attempt: Attempt) => attempt.outcome.sealed);
+  const hasSeparateCurrentRun = item.currentRun && item.currentRun.run !== latest?.run.run;
 
   return (
     <section aria-label="Selected handoff" className="min-w-0 overflow-hidden rounded-lg border bg-card">
@@ -290,8 +292,8 @@ function HandoffCard({
       </div>
       </div>
 
-      {latest && <OutcomePanel outcome={latest.outcome} />}
-      {(item.attempts.length > 1 || item.operatorSeal) && (
+      {outcome && <OutcomePanel outcome={outcome} />}
+      {(item.attempts.length > 1 || item.operatorSeal || (latest && hasSeparateCurrentRun)) && (
         <AttemptHistory attempts={item.attempts} operatorSeal={item.operatorSeal} />
       )}
     </section>

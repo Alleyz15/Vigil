@@ -60,7 +60,7 @@ import { considerTools } from "@/lib/llm/plan";
 import { activeAgentLlm, bootstrapAgentLlm, resolveRuntimeLlm, type RuntimeLlm } from "@/lib/llm/runtime";
 import { recipientChannelFingerprint } from "@/lib/identity/channel";
 import { EvidenceStore, type EvidenceReply } from "./evidence-store";
-import type { DispatchWorkspace, DispatchItem, CourierEvidenceItem } from "./operations-types";
+import type { DispatchWorkspace, DispatchItem, CourierEvidenceItem, EvidenceRequestView } from "./operations-types";
 import {
   answerConfirmation,
   expireConfirmations,
@@ -77,6 +77,7 @@ import {
   type ActionView,
   type HandoffDetail,
   type HandoffSummary,
+  type HandoffState,
   type RouteLocationView,
   type ShipmentRouteView,
   type RunView,
@@ -111,7 +112,12 @@ const DRAFT_TITLES: Partial<Record<ScenarioId, string>> = {
 const START_MS = Date.parse("2026-09-07T14:30:00+08:00");
 const OPERATOR_ID = "OP-01";
 
-type StoredEntry = WorkbenchEntry & { harness: IngestHarness; actions: ActionView[] };
+type StoredEntry = WorkbenchEntry & {
+  harness: IngestHarness;
+  actions: ActionView[];
+  /** The append-only seal survived, but the case/audit transaction needs retry. */
+  pendingApprovalAudit?: ActionRequest;
+};
 
 /**
  * A correction the sender made after the parcel was already moving.
@@ -511,6 +517,8 @@ export type CourierDraft = {
 
 export type CourierQueueItem = {
   identity?: RoleIdentity;
+  currentRun?: RunView;
+  state?: HandoffState;
   handoffId: string;
   source: "seeded" | "registered" | "online";
   courierId: string;
@@ -664,28 +672,29 @@ export class OperatorWorkbench {
    * a recipient to adjudicate a pending co-signature.
    */
   private issueConfirmations(): void {
-    for (const entry of this.entries.values()) {
-      const ctx = entry.current;
-      const sealed = ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop";
-      if (!sealed) continue;
-      if (entry.built.leg !== "delivery") continue;
+    for (const entry of this.entries.values()) this.issueConfirmationFor(entry);
+  }
 
-      const event = ctx.event ?? entry.built.event;
-      const epc = epcsOf(event)[0] ?? "";
-      const parcel = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
-      if (!parcel?.recipientPhone) continue;
+  private issueConfirmationFor(entry: StoredEntry): void {
+    const ctx = entry.current;
+    const sealed = ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop";
+    if (!sealed || entry.built.leg !== "delivery") return;
 
-      const tokenId = issueConfirmation(entry.harness.deps.db, {
-        eventId: event.eventID,
-        epc,
-        // The SAME channel record I15 checks a delivery against, so "we have an
-        // independent line to the recipient" is a fact rather than a claim.
-        channelFingerprint: recipientChannelFingerprint(parcel.recipientPhone),
-        issuedAt: entry.createdAt,
-        windowHours: CONFIRMATION_WINDOW_HOURS,
-      });
-      this.confirmations.set(tokenId, entry);
-    }
+    const event = ctx.event ?? entry.built.event;
+    const epc = epcsOf(event)[0] ?? "";
+    const parcel = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
+    if (!parcel?.recipientPhone) return;
+
+    const tokenId = issueConfirmation(entry.harness.deps.db, {
+      eventId: event.eventID,
+      epc,
+      // The SAME channel record I15 checks a delivery against, so "we have an
+      // independent line to the recipient" is a fact rather than a claim.
+      channelFingerprint: recipientChannelFingerprint(parcel.recipientPhone),
+      issuedAt: entry.createdAt,
+      windowHours: CONFIRMATION_WINDOW_HOURS,
+    });
+    this.confirmations.set(tokenId, entry);
   }
 
   /** The recipient link for one handoff, for the operator viewing that handoff. */
@@ -790,12 +799,35 @@ export class OperatorWorkbench {
     return { role: "courier", label: courier.displayName, subject: courier.courierId, keyFingerprint: fingerprint(courier.keys.publicKey) };
   }
 
+  private courierCurrentView(eventId: string): Pick<CourierQueueItem, "currentRun" | "state"> {
+    const entry = this.entries.get(eventId);
+    if (!entry) return {};
+    const number = Math.max(1, entry.runs.findIndex((run) => run === entry.current) + 1);
+    return { currentRun: runView(entry.current, number, entry.built.event), state: entry.state ?? "accepted" };
+  }
+
   private evidenceStore(): EvidenceStore { return new EvidenceStore(this.store()); }
 
   private workflowId(harness: IngestHarness): string {
     let id = this.workflowIds.get(harness);
     if (!id) { id = randomUUID(); this.workflowIds.set(harness, id); }
     return id;
+  }
+
+  private committedEvidenceRequests(entry: StoredEntry): number {
+    if (!entry.caseId) return 0;
+    return entry.harness.deps.db.select({ id: operatorActions.actionId }).from(operatorActions)
+      .where(and(eq(operatorActions.caseId, entry.caseId), eq(operatorActions.action, "request_evidence"))).all().length;
+  }
+
+  private publishedEvidence(entry: StoredEntry): EvidenceRequestView[] {
+    const rounds = this.evidenceStore().list(entry.built.event.eventID, this.workflowId(entry.harness));
+    return rounds.slice(0, this.committedEvidenceRequests(entry));
+  }
+
+  private unpublishedEvidenceIntent(entry: StoredEntry): EvidenceRequestView | undefined {
+    const rounds = this.evidenceStore().list(entry.built.event.eventID, this.workflowId(entry.harness));
+    return rounds[this.committedEvidenceRequests(entry)];
   }
 
   dispatchWorkspace(): DispatchWorkspace {
@@ -863,8 +895,11 @@ export class OperatorWorkbench {
   }
 
   private courierEvidence(courierId: string): CourierEvidenceItem[] {
+    for (const entry of this.entries.values()) {
+      if (entry.scenario.courier.courierId === courierId) this.reconcileEvidenceReceipt(entry);
+    }
     return [...this.entries.values()].filter((entry) => entry.scenario.courier.courierId === courierId)
-      .flatMap((entry) => this.evidenceStore().list(entry.built.event.eventID, this.workflowId(entry.harness)).map((request) => {
+      .flatMap((entry) => this.publishedEvidence(entry).map((request) => {
         const epc = epcsOf(entry.built.event)[0];
         const parcel = entry.scenario.parcels.find((p) => p.epc === epc);
         return { request, waybillNo: summaryFrom(entry, this.nowIso).parcel.waybillNo,
@@ -911,6 +946,7 @@ export class OperatorWorkbench {
         fault: null,
         attempts: draft.attempts,
         operatorSeal: this.operatorSealFor(draft.eventId),
+        ...this.courierCurrentView(draft.eventId),
       }));
 
     const registered: CourierQueueItem[] = [...this.shipments.values()]
@@ -935,6 +971,7 @@ export class OperatorWorkbench {
         fault: shipment.request.fault,
         attempts: shipment.attempts,
         operatorSeal: this.operatorSealFor(shipment.deliveryEventId),
+        ...this.courierCurrentView(shipment.held.event.eventID),
       }));
 
     const online: CourierQueueItem[] = [...this.online.values()]
@@ -963,6 +1000,7 @@ export class OperatorWorkbench {
           fault: null,
           attempts: run.attempts,
           operatorSeal: this.operatorSealFor(run.deliveryEventId),
+          ...this.courierCurrentView(held.event.eventID),
         };
       });
 
@@ -1178,6 +1216,7 @@ export class OperatorWorkbench {
       // A duplicate is an attempt against the already sealed handoff, not a
       // new authoritative result. Its sparse context belongs in history only.
       if (ctx.ledger?.status !== "noop") existing.current = ctx;
+      this.issueConfirmationFor(existing);
       return;
     }
     const entry = storedEntryFor(shipment, built, ctx);
@@ -1185,6 +1224,7 @@ export class OperatorWorkbench {
     this.entries.set(built.event.eventID, entry);
     shipment.deliveryEventId = built.event.eventID;
     shipment.submittedBuilt = built;
+    this.issueConfirmationFor(entry);
   }
 
   private promoteOnlineDelivery(run: OnlineRun, built: BuiltEvent, point: Point, ctx: AgentContext): void {
@@ -1192,6 +1232,7 @@ export class OperatorWorkbench {
     if (existing) {
       existing.runs.push(ctx);
       if (ctx.ledger?.status !== "noop") existing.current = ctx;
+      this.issueConfirmationFor(existing);
       return;
     }
     const entry = storedEntryFor(run, built, ctx);
@@ -1200,6 +1241,7 @@ export class OperatorWorkbench {
     run.deliveryEventId = built.event.eventID;
     run.submittedBuilt = built;
     run.submittedPoint = point;
+    this.issueConfirmationFor(entry);
   }
 
   /**
@@ -1259,6 +1301,7 @@ export class OperatorWorkbench {
     for (const entry of entries) {
       this.entries.set(entry.built.event.eventID, entry);
       this.harnesses.add(entry.harness);
+      this.issueConfirmationFor(entry);
     }
 
     if (options.holdDelivery) {
@@ -1699,14 +1742,10 @@ export class OperatorWorkbench {
         : null;
     const originDepot = online?.route.originDepot ?? registered?.route.originHub;
     const destinationDepot = online?.route.destinationDepot ?? registered?.route.destinationHub;
-    const deliveryPoint = online
-      ? (() => {
-          const history = getShipment(this.store(), online.shipmentId);
-          return history
-            ? { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude }
-            : null;
-        })()
-      : registered?.correction?.toPoint ?? registered?.parcel.recipientPoint ?? null;
+    const history = online ? getShipment(this.store(), online.shipmentId) : null;
+    const reference = history?.originalReference ?? registered?.parcel.recipientPoint;
+    const deliveryPoint = reference ? { latitude: reference.latitude, longitude: reference.longitude } : null;
+    const deliveryLabel = history ? storedLocation(history.originalReference).label : registered?.parcel.recipientAddress;
 
     if (!senderPoint || !originDepot || !destinationDepot || !deliveryPoint) return undefined;
     return [
@@ -1740,9 +1779,9 @@ export class OperatorWorkbench {
       {
         id: "delivery",
         kind: "delivery",
-        label: route.destination.label,
-        mapLabel: this.compactMapLabel(route.destination.label, "Delivery"),
-        detail: "Delivery reference + reported delivery scan.",
+        label: deliveryLabel ?? route.destination.label,
+        mapLabel: this.compactMapLabel(deliveryLabel ?? route.destination.label, "Delivery reference"),
+        detail: "Recorded delivery reference; the reported scan is separate evidence.",
         point: deliveryPoint,
         monitored: true,
       },
@@ -1777,6 +1816,7 @@ export class OperatorWorkbench {
     if (existing) {
       existing.runs.push(ctx);
       if (ctx.ledger?.status !== "noop") existing.current = ctx;
+      this.issueConfirmationFor(existing);
       return;
     }
 
@@ -1824,9 +1864,11 @@ export class OperatorWorkbench {
         .onConflictDoNothing()
         .run();
     }
+    this.issueConfirmationFor(entry);
   }
 
   listQueue(): HandoffSummary[] {
+    for (const entry of this.entries.values()) this.reconcileEvidenceReceipt(entry);
     return [...this.entries.values()]
       .filter((entry) => entry.state !== null && isQueueState(entry.state))
       .map((entry) => summaryFrom(entry, this.nowIso))
@@ -1837,6 +1879,7 @@ export class OperatorWorkbench {
     summary: { automaticallyAccepted: number; total: number; timeframe: string; from: string; to: string };
     items: HandoffSummary[];
   } {
+    for (const entry of this.entries.values()) this.reconcileEvidenceReceipt(entry);
     const items = [...this.entries.values()]
       .map((entry) => summaryFrom(entry, this.nowIso))
       .sort((a, b) => Date.parse(b.eventTime) - Date.parse(a.eventTime));
@@ -1904,6 +1947,7 @@ export class OperatorWorkbench {
   getHandoff(eventId: string): HandoffDetail | undefined {
     const entry = this.entries.get(eventId);
     if (!entry) return undefined;
+    this.reconcileEvidenceReceipt(entry);
     const summary = summaryFrom(entry, this.nowIso);
     const records = entry.harness.deps.ledger.readRecords();
     const abortRecord = [...records]
@@ -1919,9 +1963,10 @@ export class OperatorWorkbench {
     const authoritativeRunNumber = Math.max(1, entry.runs.findIndex((run) => run === entry.current) + 1);
     const authoritativeRun = runView(entry.current, authoritativeRunNumber, entry.built.event);
     return {
-      supportingEvidence: this.evidenceStore().list(eventId, this.workflowId(entry.harness)),
+      supportingEvidence: this.publishedEvidence(entry),
       archivedEvidenceCount: this.evidenceStore().list(eventId).length - this.evidenceStore().list(eventId, this.workflowId(entry.harness)).length,
       canApprove: this.canApproveEntry(entry),
+      approvalAuditPending: Boolean(entry.pendingApprovalAudit),
       summary,
       route: this.routeFor(eventId),
       event: entry.built.event,
@@ -2036,6 +2081,10 @@ export class OperatorWorkbench {
       timeline,
       map: buildShipmentMapModel(entry.scenario, entry.world, {
         locations: this.mapLocationsFor(eventId),
+        ...(entry.built.leg === "delivery" ? {
+          deliveryEvent: entry.built.event,
+          deliveryFlags: flagsFrom(entry.current).map((flag) => flag.id),
+        } : {}),
       }),
       planConsidered: considerTools(entry.current),
       plan: {
@@ -2072,11 +2121,26 @@ export class OperatorWorkbench {
   }
 
   private canApproveEntry(entry: StoredEntry): boolean {
+    if (entry.pendingApprovalAudit) return true;
     return (entry.state === "awaiting_cosignature" || entry.state === "evidence_submitted")
       && entry.current.halted?.reason === "PENDING_COSIGNATURE"
       && entry.current.gateResult?.decision !== "freeze"
       && !entry.current.engineResult?.aborted
       && Boolean(entry.current.credential?.validSignatures.includes("courier"));
+  }
+
+  /** A durable receipt is enough to repair its case projection after a failed write. */
+  private reconcileEvidenceReceipt(entry: StoredEntry): void {
+    if (entry.state !== "awaiting_evidence" || this.reviewing.has(entry.built.event.eventID)) return;
+    const receipt = this.publishedEvidence(entry).at(-1)?.submission;
+    if (!receipt) return;
+    const priority = priorityFor("evidence_submitted", entry.current.decision);
+    const updated = entry.harness.deps.db.update(handoffCases)
+      .set({ state: "evidence_submitted", priority, updatedAt: receipt.submittedAt })
+      .where(eq(handoffCases.caseId, entry.caseId!)).run();
+    if (!updated.changes) throw new Error("The saved evidence receipt cannot yet be projected into its case. Refresh to retry.");
+    entry.state = "evidence_submitted";
+    entry.priority = priority;
   }
 
   async submitEvidence(requestId: string, reply: EvidenceReply): Promise<CourierWorkspaceView> {
@@ -2089,16 +2153,16 @@ export class OperatorWorkbench {
     if (request.workflowId !== this.workflowId(entry.harness)) throw new Error("This evidence request belongs to an earlier workflow instance; it cannot be applied to this run.");
     if (!entry.state || entry.state.startsWith("resolved_")) throw new Error("This case is closed or resolved; no evidence can be submitted.");
     if (canonicalHash(entry.built.event) !== request.payloadHash) throw new Error("The original event no longer matches this evidence request.");
-    const rounds = store.list(request.eventId, this.workflowId(entry.harness));
+    const rounds = this.publishedEvidence(entry);
     if (rounds.at(-1)?.requestId !== requestId) throw new Error("A newer evidence request exists; respond to the current request.");
     if (entry.state !== "awaiting_evidence" && entry.state !== "evidence_submitted") throw new Error("This case is not awaiting evidence.");
-    const result = store.submit(requestId, reply, this.nowIso);
-    if (!result.replayed) {
-      entry.harness.deps.db.update(handoffCases).set({ state: "evidence_submitted", priority: priorityFor("evidence_submitted", entry.current.decision), updatedAt: this.nowIso })
-        .where(eq(handoffCases.caseId, entry.caseId!)).run();
-      entry.state = "evidence_submitted";
-      entry.priority = priorityFor(entry.state, entry.current.decision);
-    }
+    store.submit(requestId, reply, this.nowIso);
+    // The receipt can outlive a failed case write; identical retries repair it.
+    const updated = entry.harness.deps.db.update(handoffCases).set({ state: "evidence_submitted", priority: priorityFor("evidence_submitted", entry.current.decision), updatedAt: this.nowIso })
+      .where(eq(handoffCases.caseId, entry.caseId!)).run();
+    if (!updated.changes) throw new Error("The evidence receipt was saved, but its case projection is unavailable. Retry the same submission.");
+    entry.state = "evidence_submitted";
+    entry.priority = priorityFor(entry.state, entry.current.decision);
     return this.courierWorkspace(reply.courierId);
   }
 
@@ -2117,20 +2181,32 @@ export class OperatorWorkbench {
   }
 
   private async performOperatorAction(eventId: string, rawRequest: ActionRequest): Promise<HandoffDetail> {
-    const request = OperatorActionRequest.parse(rawRequest);
+    let request = OperatorActionRequest.parse(rawRequest);
     const entry = this.entries.get(eventId);
     if (!entry || !entry.state || !entry.caseId) throw new Error("handoff is not actionable");
+
+    if (entry.pendingApprovalAudit && request.action === "approve" && request.note === undefined) {
+      request = entry.pendingApprovalAudit;
+    }
     const fromState = entry.state;
     const toState = transitionCase(fromState, request.action);
+    if (entry.pendingApprovalAudit && (request.action !== "approve" || request.note !== entry.pendingApprovalAudit.note)) {
+      throw new Error("The approval was sealed but its audit write is incomplete. Retry the same approval before another action.");
+    }
+    const intent = this.unpublishedEvidenceIntent(entry);
+    if (intent && (request.action !== "request_evidence" || request.note?.trim() !== intent.note)) {
+      throw new Error("An earlier evidence request still needs its audit write. Retry the same request note before another action.");
+    }
 
+    let evidenceRequest: EvidenceRequestView | undefined;
     if (request.action === "request_evidence") {
       if (!request.note?.trim()) throw new Error("Describe the evidence being requested in an operator note.");
-      this.evidenceStore().request({ eventId, courierId: entry.scenario.courier.courierId, operatorId: OPERATOR_ID,
+      evidenceRequest = intent ?? this.evidenceStore().request({ eventId, courierId: entry.scenario.courier.courierId, operatorId: OPERATOR_ID,
         workflowId: this.workflowId(entry.harness),
         note: request.note, requestedAt: this.nowIso, payloadHash: canonicalHash(entry.built.event) });
     }
 
-    if (request.action === "approve") {
+    if (request.action === "approve" && !entry.pendingApprovalAudit) {
       if (!this.canApproveEntry(entry)) throw new Error("Cannot approve this case: a complete eligible pending credential is required; evidence cannot override a hard stop.");
       const approved = await ingestEvent(entry.harness, entry.built, {
         courierPrivateKey: entry.scenario.courier.keys.privateKey,
@@ -2141,13 +2217,15 @@ export class OperatorWorkbench {
       entry.current = approved;
       entry.runs.push(approved);
       entry.reason = approved.gateResult?.rationale ?? "Approved with an operator co-signature.";
+      entry.pendingApprovalAudit = request;
     }
 
     if (request.action === "propose_reroute" && entry.current.reroute?.status !== "proposed") {
       throw new Error("no authorised reroute exists for this handoff");
     }
 
-    const createdAt = new Date(Date.parse(this.nowIso) + ++this.actionSequence * 1_000).toISOString();
+    const sequence = this.actionSequence + 1;
+    const createdAt = new Date(Date.parse(this.nowIso) + sequence * 1_000).toISOString();
     const action: ActionView = {
       action: request.action,
       note: request.note ?? null,
@@ -2156,14 +2234,12 @@ export class OperatorWorkbench {
       toState,
       createdAt,
     };
-    entry.actions.push(action);
-    entry.state = toState;
-    entry.priority = priorityFor(toState, entry.current.decision);
+    const priority = priorityFor(toState, entry.current.decision);
 
     entry.harness.deps.db.transaction((tx) => {
       tx.insert(operatorActions)
         .values({
-          actionId: `${entry.caseId}-${String(this.actionSequence).padStart(3, "0")}`,
+          actionId: evidenceRequest ? `${entry.caseId}-evidence-${evidenceRequest.requestId}` : `${entry.caseId}-${String(sequence).padStart(3, "0")}`,
           caseId: entry.caseId!,
           ...action,
         })
@@ -2171,7 +2247,7 @@ export class OperatorWorkbench {
       tx.update(handoffCases)
         .set({
           state: toState,
-          priority: entry.priority,
+          priority,
           reason: entry.reason,
           contextJson: JSON.stringify(entry.current),
           traceJson: JSON.stringify(entry.current.trace),
@@ -2183,6 +2259,12 @@ export class OperatorWorkbench {
         .run();
     });
 
+    this.actionSequence = sequence;
+    entry.actions.push(action);
+    entry.state = toState;
+    entry.priority = priority;
+    entry.pendingApprovalAudit = undefined;
+    this.issueConfirmationFor(entry);
     return this.getHandoff(eventId)!;
   }
 

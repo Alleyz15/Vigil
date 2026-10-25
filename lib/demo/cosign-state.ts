@@ -16,7 +16,7 @@ export type CosignPageState = {
   model: CosignModel;
 };
 
-/** Build the co-sign read model inside the same API bundle that performed the mutation. */
+/** Shared fleet-wide co-sign projection for the initial page and mutation responses. */
 export function buildCosignPageState(
   workbench: OperatorWorkbench,
   requestedHandoffOrEventId?: string,

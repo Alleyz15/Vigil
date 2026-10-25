@@ -6,6 +6,19 @@ import type { Evidence } from "@/lib/engine";
 
 export type DetailTone = "accepted" | "pending" | "alert" | "resolved";
 
+/** Case closure cannot complete a credential or create a ledger seal. */
+export function credentialSealLabel(input: {
+  state: HandoffState;
+  sealed: boolean;
+  credential: RunView["credential"];
+}): string {
+  if (input.sealed) return "sealed";
+  if (input.state.startsWith("resolved_")) {
+    return input.credential?.valid ? "not sealed" : "incomplete · not sealed";
+  }
+  return "pending";
+}
+
 export function primaryFlagCard(flags: Array<{
   id: string;
   label: string;
@@ -29,14 +42,15 @@ export function operatorActionAvailability(input: {
   rerouteAvailable: boolean;
   canApprove?: boolean;
   sealed?: boolean;
+  approvalAuditPending?: boolean;
 }): Record<OperatorActionName, boolean> {
   const resolved = input.state.startsWith("resolved_") || input.state === "accepted";
   return {
-    approve: !resolved && !input.sealed && (input.canApprove ?? input.state === "awaiting_cosignature"),
-    reject: !resolved,
-    request_evidence: !resolved && input.state !== "awaiting_evidence",
-    propose_reroute: !resolved && input.rerouteAvailable,
-    escalate: !resolved,
+    approve: !resolved && (!input.sealed || Boolean(input.approvalAuditPending)) && (input.canApprove ?? input.state === "awaiting_cosignature"),
+    reject: !resolved && !input.approvalAuditPending,
+    request_evidence: !resolved && !input.approvalAuditPending && input.state !== "awaiting_evidence",
+    propose_reroute: !resolved && !input.approvalAuditPending && input.rerouteAvailable,
+    escalate: !resolved && !input.approvalAuditPending,
   };
 }
 

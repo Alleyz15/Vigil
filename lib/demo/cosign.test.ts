@@ -156,6 +156,18 @@ describe("the co-sign split screen follows one handoff through its phases", () =
     expect(model.arithmetic.headline).toBe("No credential exists yet");
   });
 
+  it("uses the queue's authoritative case state when no summary accompanies it", () => {
+    const item: CourierQueueItem = {
+      handoffId: "online:closed", source: "online", courierId: "CR-1001",
+      scenarioId: "B-O-closed", runId: "B-O-closed", title: "Delivery scan",
+      epc: "urn:epc:id:sgtin:0614141.100001.1", waybillNo: "WB-CLOSED",
+      route: { origin: null, destination: { label: "Lobby", source: "coordinate", coordinate: "3.16, 101.73", senderClaim: null } },
+      leg: "delivery", eventTime: "2026-10-25T02:00:00Z", eventId: "closed-event",
+      attempts: [], operatorSeal: null, fault: null, state: "resolved_rejected",
+    };
+    expect(buildCosignChoices([item], [])[0].state).toBe("resolved_rejected");
+  });
+
   it("reports a valid courier signature that is still not a credential", () => {
     const model = build(
       draft([{ run: run(courierOnly), outcome: {} as never }]),
@@ -257,5 +269,29 @@ describe("the co-sign split screen follows one handoff through its phases", () =
     expect(model.operator.pattern?.score).toBe(0);
     expect(Object.keys(model.operator)).not.toContain("totalScore");
     expect(Object.keys(model.operator)).not.toContain("riskScore");
+  });
+
+  it("allows co-signing after evidence submission when the backend says it is eligible", () => {
+    const detail = { ...detailWith(courierOnly, null, "evidence_submitted"), canApprove: true };
+    expect(build(draft([]), detail).operator.canCosign).toBe(true);
+  });
+
+  it("honours an explicit backend refusal even in the legacy co-sign state", () => {
+    const detail = { ...detailWith(courierOnly, null), canApprove: false };
+    expect(build(draft([]), detail).operator.canCosign).toBe(false);
+  });
+
+  it("falls back to the legacy state only when canApprove is absent", () => {
+    expect(build(draft([]), detailWith(courierOnly, null)).operator.canCosign).toBe(true);
+    expect(build(draft([]), detailWith(courierOnly, null, "evidence_submitted")).operator.canCosign).toBe(false);
+  });
+
+  it("reads the authoritative run rather than a later failed retry", () => {
+    const authoritativeRun = run(complete, { run: 2, halted: null, sealed: true, ledgerStatus: "recorded", decision: "flag" });
+    const detail = { ...detailWith(complete, 7, "resolved_approved"), authoritativeRun,
+      runs: [authoritativeRun, run(courierOnly, { run: 3 })] };
+    const model = build(draft([]), detail);
+    expect(model.courier.headline).toBe("Recorded");
+    expect(model.courier.detail).not.toContain("Nothing was recorded");
   });
 });

@@ -89,6 +89,23 @@ it("keeps terminal supporting evidence readable and marks a round without submis
   expect(view.queryByRole("button", { name: "Request evidence" })).toBeNull();
 });
 
+it.each(["resolved_rejected", "resolved_escalated"] as const)("shows an incomplete, unsealed credential separately from the closed case %s", (state) => {
+  const view = rendered(detail({ summary: { ...summary, state, sealed: false }, canApprove: false }));
+  const panel = view.getByRole("heading", { name: "Decision and credential" }).parentElement!.parentElement!;
+  expect(within(panel).getByText(/incomplete.*not sealed/i)).toBeTruthy();
+  expect(within(panel).queryByText("pending")).toBeNull();
+  expect(view.getByText(state === "resolved_rejected" ? "Rejected by operator" : "Escalated")).toBeTruthy();
+  expect(view.getByText(/No verdict was sealed; the operator disposition closed/)).toBeTruthy();
+});
+
+it("keeps a rejected case's existing seal distinct from its operator disposition", () => {
+  const view = rendered(detail({ summary: { ...summary, state: "resolved_rejected", sealed: true }, canApprove: false }));
+  const panel = view.getByRole("heading", { name: "Decision and credential" }).parentElement!.parentElement!;
+  expect(within(panel).getByText("sealed")).toBeTruthy();
+  expect(within(panel).queryByText(/incomplete.*not sealed/i)).toBeNull();
+  expect(view.getByText("Rejected by operator")).toBeTruthy();
+});
+
 it.each([{ supportingEvidence: [] }, { supportingEvidence: undefined }])("shows archived evidence without inventing a current round when current evidence is $supportingEvidence", ({ supportingEvidence }) => {
   const view = rendered(detail({ supportingEvidence, archivedEvidenceCount: 3 }));
   const evidence = within(view.getByRole("region", { name: "Supporting evidence" }));
@@ -143,6 +160,40 @@ it("shows submitted evidence ahead of ordinary inbox items even if the backend g
   const evidenceRow = view.getByText("Evidence submitted").closest("section");
   expect(evidenceRow?.getAttribute("data-inbox-group")).toBe("waiting");
   expect(view.queryByText("Ordinary review")).toBeNull();
+});
+
+it("retries a sealed approval audit from the detail panel while disabling other dispositions", async () => {
+  const pending = detail({
+    summary: { ...summary, state: "awaiting_cosignature", sealed: true },
+    canApprove: true,
+    approvalAuditPending: true,
+  });
+  const repaired = detail({
+    summary: { ...summary, state: "resolved_approved", sealed: true },
+    canApprove: false,
+    approvalAuditPending: false,
+  });
+  const fetchMock = vi.fn((url: string) => Promise.resolve({
+    ok: true,
+    json: async () => url.endsWith("/actions") ? repaired : pending,
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  const view = render(createElement(HandoffDetailView, { detail: pending }));
+
+  const retry = view.getByRole("button", { name: "Retry approval audit" }) as HTMLButtonElement;
+  expect(retry.disabled).toBe(false);
+  expect(view.queryByRole("button", { name: "Approve and co-sign" })).toBeNull();
+  for (const name of ["Request evidence", "Propose reroute", "Escalate", "Reject"]) {
+    expect((view.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+  }
+  await waitFor(() => expect((view.getByRole("button", { name: "Refresh handoff" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(retry);
+  expect(await view.findByText("Approved and sealed")).toBeTruthy();
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/operator/handoffs/event-1/actions", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "approve" }),
+  });
+  expect(view.queryByRole("button", { name: "Retry approval audit" })).toBeNull();
 });
 
 it("loads uploaded evidence over stale detail and supports refresh retry while keeping current evidence", async () => {

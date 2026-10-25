@@ -14,6 +14,7 @@ import {
   attemptHistoryLabel,
   citationTarget,
   cosignConditionPresentation,
+  credentialSealLabel,
   detailStatusMessage,
   ledgerReferencePresentation,
   primaryFlagCard,
@@ -231,7 +232,7 @@ export function HandoffDetailView({
           <section id="decision-and-credential" className="rounded-lg border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Decision and credential</h2>
-              <ProvenanceLabel>{detail.summary.sealed ? "sealed" : "pending"}</ProvenanceLabel>
+              <ProvenanceLabel>{credentialSealLabel({ ...detail.summary, credential: detail.credential })}</ProvenanceLabel>
             </div>
 
             <div className={cn(
@@ -280,6 +281,7 @@ export function HandoffDetailView({
                 rerouteReason={rerouteReason}
                 sealed={detail.summary.sealed}
                 canApprove={detail.summary.abort ? false : detail.canApprove}
+                approvalAuditPending={detail.approvalAuditPending}
                 onDetailChange={adoptActionDetail}
               />
             </div>

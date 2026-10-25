@@ -1,4 +1,4 @@
-import { epcsOf, vigilSignalsOf, type GeoPoint } from "@/lib/epcis";
+import { epcsOf, vigilSignalsOf, type EpcisEvent, type GeoPoint } from "@/lib/epcis";
 import type { GeneratedScenario, GeneratedWorld } from "@/lib/generate";
 
 export type MapPoint = { latitude: number; longitude: number };
@@ -267,6 +267,73 @@ function s3Projection(scenario: GeneratedScenario): Pick<ShipmentMapModel, "over
   };
 }
 
+function deliveryProjection(
+  event: EpcisEvent,
+  flags: string[],
+  reference: MapPoint | undefined,
+): Pick<ShipmentMapModel, "overlays" | "notices"> {
+  const overlays: MapOverlay[] = [];
+  const notices: MapNotice[] = [];
+  const point = gpsPoint(event);
+  // Geometry reports the existing result. Coordinate separation never creates risk.
+  const spatialFlags = ["I10", "I11"].filter((id) => flags.includes(id));
+  const evidenceId = spatialFlags[0] ?? null;
+
+  if (!point) {
+    notices.push({
+      id: "delivery-gps-unavailable",
+      evidenceId,
+      title: "Delivery GPS unavailable",
+      detail: "The submitted event has no GPS fix. No delivery scan position or evidence connector can be drawn.",
+    });
+    return { overlays, notices };
+  }
+
+  if (reference && point.latitude === reference.latitude && point.longitude === reference.longitude) {
+    return { overlays, notices };
+  }
+
+  overlays.push({
+    id: "delivery-reported-scan",
+    kind: "marker",
+    label: "Reported delivery scan",
+    detail: "GPS position reported in the submitted event; separate from the recorded recipient reference.",
+    point,
+    evidenceId,
+    eventId: event.eventID,
+    group: "delivery-reference",
+    provenance: "submitted EPCIS GPS signal",
+    precision: "reported",
+  });
+
+  if (!reference) {
+    notices.push({
+      id: "delivery-reference-unavailable",
+      evidenceId,
+      title: "Delivery reference unavailable",
+      detail: "No recorded recipient reference coordinate is available. The submitted scan is shown without an evidence connector.",
+    });
+    return { overlays, notices };
+  }
+
+  for (const id of spatialFlags) {
+    overlays.push({
+      id: `delivery-reference-${id}`,
+      kind: "line",
+      label: "GPS and recorded recipient reference disagree",
+      detail: `${id} was emitted for this submission. This connector compares evidence positions; it is not a travelled route.`,
+      point,
+      points: [point, reference],
+      evidenceId: id,
+      eventId: event.eventID,
+      group: "delivery-reference",
+      provenance: "submitted EPCIS GPS signal and recorded recipient reference",
+      precision: "derived",
+    });
+  }
+  return { overlays, notices };
+}
+
 /**
  * Project generated evidence into display geometry. This module never fills a
  * missing coordinate: unsupported evidence becomes a notice instead.
@@ -274,12 +341,33 @@ function s3Projection(scenario: GeneratedScenario): Pick<ShipmentMapModel, "over
 export function buildShipmentMapModel(
   scenario: GeneratedScenario,
   world: GeneratedWorld,
-  options: { locations?: MapLocation[] } = {},
+  options: { locations?: MapLocation[]; deliveryEvent?: EpcisEvent; deliveryFlags?: string[] } = {},
 ): ShipmentMapModel {
   const route = baseRoute(scenario);
+  let locations = options.locations ?? defaultLocations(route);
+  if (options.deliveryEvent) {
+    const event = options.deliveryEvent;
+    const matching = route.findIndex((leg) => leg.eventId === event.eventID);
+    const index = matching >= 0 ? matching : route.findLastIndex((leg) => leg.leg === "delivery");
+    if (index >= 0) {
+      route[index] = { ...route[index], eventId: event.eventID, bizStep: suffix(event.bizStep), point: gpsPoint(event) };
+      // Scenario-specific context must use the same submitted evidence as the endpoint.
+      scenario = { ...scenario, timeline: scenario.timeline.map((built, i) => i === index ? { ...built, event } : built) };
+    }
+    if (!options.locations) {
+      const epc = epcsOf(event)[0];
+      const recipient = scenario.parcels.find((parcel) => parcel.epc === epc)?.recipientPoint;
+      locations = locations.filter((location) => location.kind !== "delivery");
+      if (recipient) locations.push({
+        id: "delivery", kind: "delivery", label: "Recorded recipient reference", mapLabel: "Recorded reference",
+        detail: "Recipient point in the parcel record, independent of the submitted GPS fix.",
+        point: recipient, monitored: true,
+      });
+    }
+  }
   const model: ShipmentMapModel = {
     route,
-    locations: options.locations ?? defaultLocations(route),
+    locations,
     overlays: [],
     notices: [],
   };
@@ -301,6 +389,16 @@ export function buildShipmentMapModel(
     });
   }
   if (scenario.id === "S6") model.overlays.push(...s6Overlays(scenario));
+
+  if (options.deliveryEvent) {
+    const delivery = deliveryProjection(
+      options.deliveryEvent,
+      options.deliveryFlags ?? [],
+      locations.find((location) => location.kind === "delivery")?.point,
+    );
+    model.overlays.push(...delivery.overlays);
+    model.notices.push(...delivery.notices);
+  }
 
   return model;
 }
