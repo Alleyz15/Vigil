@@ -49,7 +49,7 @@ import {
   type ServiceBoundary,
   type ShipmentRequest,
 } from "@/lib/shipment";
-import { epcsOf } from "@/lib/epcis";
+import { epcsOf, vigilSignalsOf } from "@/lib/epcis";
 import { rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { OperatorActionRequest, type CaseState, type OperatorActionRequest as ActionRequest } from "./types";
@@ -61,6 +61,9 @@ import { activeAgentLlm, bootstrapAgentLlm, resolveRuntimeLlm, type RuntimeLlm }
 import { recipientChannelFingerprint } from "@/lib/identity/channel";
 import { EvidenceStore, type EvidenceReply } from "./evidence-store";
 import type { DispatchWorkspace, DispatchItem, CourierEvidenceItem, EvidenceRequestView } from "./operations-types";
+import { simulationOf } from "@/lib/simulation/config";
+import { SimulationRunJournal } from "./simulation-run";
+import { loadSimulationSnapshot, persistSimulationSnapshot } from "./simulation-snapshot";
 import {
   answerConfirmation,
   expireConfirmations,
@@ -186,6 +189,7 @@ type OnlineRun = {
   world: GeneratedWorld;
   harness: IngestHarness;
   route: DepotRoute;
+  startMs: number;
   deliveryEventId?: string;
   submittedBuilt?: BuiltEvent;
   submittedPoint?: Point;
@@ -379,7 +383,12 @@ async function buildScenarioEntries(
     courierPrivateKey: scenario.courier.keys.privateKey,
     mandateId: scenario.courier.mandate.mandateId,
   };
-  for (const built of scenario.warmup) await ingestWithApproval(harness, built, credentialArgs);
+  for (const built of scenario.warmup) {
+    await ingestWithApproval(harness, built, credentialArgs);
+    if (scenario.disputedEventIds.includes(built.event.eventID)) {
+      recordDispute(harness, built.event.eventID, epcsOf(built.event)[0] ?? "");
+    }
+  }
 
   const timeline = options.holdBackFinalLeg ? scenario.timeline.slice(0, -1) : scenario.timeline;
   const held = options.holdBackFinalLeg ? scenario.timeline[scenario.timeline.length - 1] : undefined;
@@ -516,6 +525,7 @@ export type CourierDraft = {
 };
 
 export type CourierQueueItem = {
+  simulation?: GeneratedScenario["simulation"];
   identity?: RoleIdentity;
   currentRun?: RunView;
   state?: HandoffState;
@@ -636,6 +646,8 @@ export class OperatorWorkbench {
   private readonly harnesses = new Set<IngestHarness>();
   /** Online shipments with a run in THIS process, by shipment id. */
   private readonly online = new Map<string, OnlineRun>();
+  private readonly simulationRuns = new SimulationRunJournal({ initialStartMs: START_MS, createRunId: randomUUID });
+  private readonly simulationBootstraps = new Map<string, GeneratedScenario["simulation"]>();
   private onlineStore?: VigilDb;
   private onlineBoundary: ServiceBoundary | null | undefined;
   private actionSequence = 0;
@@ -734,7 +746,13 @@ export class OperatorWorkbench {
   answerConfirmation(tokenId: string, answer: RecipientAnswer) {
     const entry = this.confirmations.get(tokenId);
     if (!entry) return { ok: false as const, state: { status: "unknown" as const } };
-    return answerConfirmation(entry.harness.deps.db, tokenId, answer, this.nowIso);
+    const result = answerConfirmation(entry.harness.deps.db, tokenId, answer, this.nowIso);
+    if (result.ok && answer === "not_received" && entry.scenario.simulation) {
+      // Future evaluations see the outcome; the original evaluation snapshot
+      // remains untouched, including its replay/explanation evidence.
+      this.simulationRuns.markDisputed(entry.scenario.courier.courierId, entry.built.event.eventID);
+    }
+    return result;
   }
 
   /** Close out unanswered links whose window has passed. Records silence; scores nothing. */
@@ -988,6 +1006,7 @@ export class OperatorWorkbench {
           scenarioId: run.scenario.id,
           runId: run.runId,
           title: "Delivery scan — point-to-point dispatch",
+          simulation: run.scenario.simulation,
           epc: parcel.epc,
           waybillNo: parcel.waybillNo,
           route: {
@@ -1203,10 +1222,13 @@ export class OperatorWorkbench {
     if (run.submittedBuilt && run.submittedPoint) return { built: run.submittedBuilt, point: run.submittedPoint };
 
     const history = getShipment(this.store(), run.shipmentId)!;
-    const point = scan ?? { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude };
-    const rebuilt = buildOnlineScenario(history, { world: run.world, startMs: START_MS, scan: point,
+    const point = scan ?? (run.scenario.simulation ? undefined : { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude });
+    const rebuilt = buildOnlineScenario(history, { world: run.world, startMs: run.startMs, scan: point,
       courierIndex: run.world.couriers.findIndex((c) => c.courierId === run.scenario.courier.courierId) });
-    return { built: rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1], point };
+    const built = rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1];
+    const gps = vigilSignalsOf(built.event)?.gps?.point;
+    if (!gps) throw new Error("The prepared delivery has no simulated scan coordinate.");
+    return { built, point: { latitude: gps.latitude, longitude: gps.longitude } };
   }
 
   private promoteSenderDelivery(shipment: BuiltShipment, built: BuiltEvent, ctx: AgentContext): void {
@@ -1217,6 +1239,7 @@ export class OperatorWorkbench {
       // new authoritative result. Its sparse context belongs in history only.
       if (ctx.ledger?.status !== "noop") existing.current = ctx;
       this.issueConfirmationFor(existing);
+      this.captureSimulationEntry(existing);
       return;
     }
     const entry = storedEntryFor(shipment, built, ctx);
@@ -1233,6 +1256,7 @@ export class OperatorWorkbench {
       existing.runs.push(ctx);
       if (ctx.ledger?.status !== "noop") existing.current = ctx;
       this.issueConfirmationFor(existing);
+      this.captureSimulationEntry(existing);
       return;
     }
     const entry = storedEntryFor(run, built, ctx);
@@ -1242,6 +1266,7 @@ export class OperatorWorkbench {
     run.submittedBuilt = built;
     run.submittedPoint = point;
     this.issueConfirmationFor(entry);
+    this.captureSimulationEntry(entry);
   }
 
   /**
@@ -1565,9 +1590,60 @@ export class OperatorWorkbench {
   }
 
   private async startOnlineRun(history: NonNullable<ReturnType<typeof getShipment>>, world: GeneratedWorld, courierIndex?: number): Promise<void> {
+    const config = simulationOf(history.shipment);
+    if (config) {
+      const courier = world.couriers[courierIndex ?? 1];
+      if (!courier) throw new Error("The simulation courier is unavailable.");
+      return this.simulationRuns.exclusive(courier.courierId, () => this.prepareOnlineRun(history, world, courierIndex));
+    }
+    return this.prepareOnlineRun(history, world, courierIndex);
+  }
+
+  private async prepareOnlineRun(history: NonNullable<ReturnType<typeof getShipment>>, world: GeneratedWorld, courierIndex?: number): Promise<void> {
     const shipmentId = history.shipment.shipmentId;
-    const built = buildOnlineScenario(history, { world, startMs: START_MS, courierIndex });
-    const { scenario } = built;
+    const config = simulationOf(history.shipment);
+    const courier = world.couriers[courierIndex ?? 1];
+    const session = config ? this.simulationRuns.begin(courier.courierId) : undefined;
+    let startMs = session?.startMs ?? START_MS;
+    const built = buildOnlineScenario(history, { world, startMs, courierIndex });
+    let scenario = built.scenario;
+    if (config && session) {
+      if (history.shipment.simulationSnapshotJson) {
+        const saved = loadSimulationSnapshot(history.shipment.simulationSnapshotJson, { courierId: courier.courierId, simulationRunId: session.runId });
+        if (saved.simulation.seed !== config.seed || saved.simulation.version !== config.version) throw new Error("The simulation configuration no longer matches its saved facts.");
+        startMs = saved.startMs;
+        scenario = { ...scenario, timeline: saved.timeline, warmup: saved.warmup, parcels: saved.parcels,
+          disputedEventIds: saved.disputedEventIds, simulation: saved.simulation as GeneratedScenario["simulation"] };
+      } else {
+        if (session.prior) {
+          const currentEpc = epcsOf(scenario.timeline.at(-1)!.event)[0];
+          const currentParcel = scenario.parcels.find((parcel) => parcel.epc === currentEpc)!;
+          const ownIds = new Set<string>(scenario.timeline.map((event) => event.event.eventID));
+          scenario = { ...scenario, warmup: session.prior.events,
+            parcels: [currentParcel, ...session.prior.parcels.filter((parcel) => parcel.epc !== currentEpc)],
+            disputedEventIds: [...session.prior.disputedEventIds, ...scenario.disputedEventIds.filter((id) => ownIds.has(id))] };
+          const original = this.simulationBootstraps.get(courier.courierId);
+          if (scenario.simulation && original) scenario = { ...scenario, simulation: {
+            ...scenario.simulation, bootstrap: original.bootstrap,
+            conditions: [...scenario.simulation.conditions.filter((condition) => !condition.code.startsWith("history-")),
+              ...original.conditions.filter((condition) => condition.code.startsWith("history-"))],
+          } };
+        }
+        if (!scenario.simulation) throw new Error("The random generator did not produce simulation provenance.");
+        scenario = { ...scenario, simulation: { ...scenario.simulation, history: {
+          runId: session.runId, priorHandoffs: scenario.warmup.length, source: "simulated", snapshotAt: new Date(startMs).toISOString(),
+        } } };
+        persistSimulationSnapshot(this.store(), shipmentId, { courierId: courier.courierId, simulationRunId: session.runId, startMs, scenario });
+      }
+    }
+    if (session) {
+      // Freeze the first modeled past before any fallible harness I/O. A later
+      // assignment must not install a different bootstrap while this one retries.
+      if (!this.simulationBootstraps.has(courier.courierId)) this.simulationBootstraps.set(courier.courierId, scenario.simulation);
+      this.simulationRuns.bootstrap(courier.courierId, scenario.warmup, scenario.parcels, scenario.disputedEventIds);
+      this.simulationRuns.registerParcels(courier.courierId, scenario.parcels);
+      this.simulationRuns.reserve(courier.courierId, scenario.timeline);
+    }
     const { entries } = await buildScenarioEntries(
       { scenario, world },
       {
@@ -1576,6 +1652,7 @@ export class OperatorWorkbench {
         llm: bootstrapAgentLlm(this.runtimeLlm),
       },
     );
+    if (session) for (const entry of entries) this.captureSimulationEntry(entry);
     for (const entry of entries) {
       this.entries.set(entry.built.event.eventID, entry);
       this.harnesses.add(entry.harness);
@@ -1587,12 +1664,19 @@ export class OperatorWorkbench {
       world,
       harness: entries[0].harness,
       route: built.route,
+      startMs,
       submittedBuilt: undefined,
       submittedPoint: undefined,
       attempts: [],
     };
     run.harness.deps.llm = activeAgentLlm(this.runtimeLlm);
     this.online.set(shipmentId, run);
+  }
+
+  private captureSimulationEntry(entry: StoredEntry): void {
+    if (!entry.scenario.simulation || !["recorded", "noop"].includes(entry.current.ledger?.status ?? "")) return;
+    this.simulationRuns.append(entry.scenario.courier.courierId, entry.built, entry.scenario.parcels,
+      entry.scenario.disputedEventIds.includes(entry.built.event.eventID));
   }
 
   private eventIdsOf(run: OnlineRun): string[] {
@@ -1907,7 +1991,8 @@ export class OperatorWorkbench {
     const source = [...this.entries.values()].find((entry) => entry.scenario.id === scenarioId);
     if (!source) throw new Error(`No stored shipment has scenario ${scenarioId}.`);
     const { scenario, world } = source;
-    const target = scenario.timeline[legIndex];
+    const actual = [...this.entries.values()].find((entry) => entry.scenario.id === scenarioId && entry.built.legIndex === legIndex);
+    const target = actual?.built ?? scenario.timeline[legIndex];
     if (!target) throw new Error(`Scenario ${scenarioId} has no leg ${legIndex + 1}.`);
 
     const harness = createHarness(world);
@@ -1924,7 +2009,12 @@ export class OperatorWorkbench {
         mandateId: scenario.courier.mandate.mandateId,
       };
       options.onProgress?.(`Replaying ${scenario.warmup.length} prior handoffs to build this courier's history`);
-      for (const built of scenario.warmup) await ingestWithApproval(harness, built, args);
+      for (const built of scenario.warmup) {
+        await ingestWithApproval(harness, built, args);
+        if (scenario.disputedEventIds.includes(built.event.eventID)) {
+          recordDispute(harness, built.event.eventID, epcsOf(built.event)[0] ?? "");
+        }
+      }
 
       if (legIndex > 0) options.onProgress?.(`Replaying legs 1-${legIndex} of this shipment`);
       const disputed = new Set(scenario.disputedEventIds);
@@ -1967,6 +2057,7 @@ export class OperatorWorkbench {
       archivedEvidenceCount: this.evidenceStore().list(eventId).length - this.evidenceStore().list(eventId, this.workflowId(entry.harness)).length,
       canApprove: this.canApproveEntry(entry),
       approvalAuditPending: Boolean(entry.pendingApprovalAudit),
+      simulation: entry.scenario.simulation,
       summary,
       route: this.routeFor(eventId),
       event: entry.built.event,
@@ -2218,6 +2309,7 @@ export class OperatorWorkbench {
       entry.runs.push(approved);
       entry.reason = approved.gateResult?.rationale ?? "Approved with an operator co-signature.";
       entry.pendingApprovalAudit = request;
+      this.captureSimulationEntry(entry);
     }
 
     if (request.action === "propose_reroute" && entry.current.reroute?.status !== "proposed") {

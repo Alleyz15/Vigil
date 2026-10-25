@@ -209,6 +209,7 @@ export type ShipmentRouteView = {
 };
 
 export type HandoffDetail = {
+  simulation?: import("@/lib/generate/scenarios/types").GeneratedScenario["simulation"];
   supportingEvidence?: import("./operations-types").EvidenceRequestView[];
   archivedEvidenceCount?: number;
   canApprove?: boolean;
