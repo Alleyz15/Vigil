@@ -3,6 +3,7 @@ import type { BuiltEvent, LegName } from "../timeline";
 import type { GeneratedCourier, GeneratedParcel, GeneratedWorld } from "../world";
 import type { Episodes, NoiseLevel } from "../noise";
 import type { Rng } from "../rng";
+import type { SimulationProvenance } from "../simulation/types";
 
 /**
  * A scenario is a whole timeline with, at most, one thing wrong at one leg.
@@ -69,6 +70,8 @@ export type ScenarioContext = {
  * accept — the pattern axis has no history to be clean ABOUT.
  */
 export type GeneratedScenario = {
+  /** Sampled inputs/provenance; never interpreted as a detector finding. */
+  simulation?: SimulationProvenance;
   id: ScenarioId;
   title: string;
   /** One paragraph, for DATASET.md and the demo script. */

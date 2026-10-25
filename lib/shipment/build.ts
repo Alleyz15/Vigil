@@ -8,6 +8,9 @@ import { epcFor, prefixFor, type GeneratedParcel, type GeneratedWorld } from "@/
 import { distanceMeters } from "@/lib/engine/geo";
 import { routeBetween, type DepotRoute, type Point } from "./depot";
 import { addressLabelOf, type ShipmentHistory } from "./store";
+import { simulationOf } from "@/lib/simulation/config";
+import { buildSimulationTimeline } from "@/lib/generate/simulation/signals";
+import { buildSimulationHistory } from "@/lib/generate/simulation/history";
 
 /**
  * An online shipment, turned into the same `GeneratedScenario` every other
@@ -136,7 +139,7 @@ export function buildOnlineScenario(
   // The van drives to where the courier actually goes, which after a
   // correction is not the point on record.
   const lastMileMetres = distanceMeters(route.destinationDepot, scan);
-  const legs = retime(route.lineHaulMetres, lastMileMetres);
+  let legs = retime(route.lineHaulMetres, lastMileMetres);
 
   const parcel: GeneratedParcel = {
     epc: epcFor(courierIndex, serialFor(shipment.shipmentId)),
@@ -151,7 +154,11 @@ export function buildOnlineScenario(
     codAmountSen: shipment.codAmountSen,
   };
 
-  const warmup = buildWarmup({
+  const simulation = simulationOf(shipment);
+  const bootstrap = simulation ? buildSimulationHistory({
+    world, courier, parcels: courierParcels, config: simulation, startMs, idPrefix: id,
+  }) : undefined;
+  const warmup = bootstrap?.warmup ?? buildWarmup({
     world,
     courier,
     parcels: courierParcels.slice(WARMUP_PARCEL_OFFSET),
@@ -178,7 +185,18 @@ export function buildOnlineScenario(
     };
   }
 
-  const timeline: BuiltEvent[] = buildTimeline({
+  const randomized = simulation ? buildSimulationTimeline({
+    config: simulation, world, courier, parcel, startMs, idPrefix: id, legs,
+    scan, hubs: { origin: route.originDepot, destination: route.destinationDepot },
+    // The confirmed/current point is the physical stop, not an override that
+    // erases sampled scan error. Explicit caller overrides still win.
+    overrides: Object.fromEntries(legs.map((leg) => [leg.name, {
+      eventID: eventIdFor(shipment.shipmentId, leg.name),
+      ...(leg.where === "recipient" ? { ...storedDeliveryCondition, ...context.deliveryOverrides } : {}),
+    }])),
+  }) : undefined;
+  if (randomized) legs = randomized.legs;
+  const timeline: BuiltEvent[] = randomized?.timeline ?? buildTimeline({
     world,
     courier,
     parcel,
@@ -199,10 +217,24 @@ export function buildOnlineScenario(
       title: `Online shipment — ${addressLabelOf(history.origin)} to ${addressLabelOf(reference)}`,
       description: describe(route),
       courier,
-      parcels: [parcel],
+      parcels: [parcel, ...(bootstrap?.parcels ?? [])],
       warmup,
       timeline,
-      disputedEventIds: [],
+      disputedEventIds: bootstrap?.disputedEventIds ?? [],
+      ...(simulation && randomized && bootstrap ? {
+        simulation: {
+          ...simulation,
+          conditions: [
+            ...randomized.conditions, ...bootstrap.conditions,
+            ...(shipment.demoCondition === "mock_location" ? [{ source: "behavior" as const, code: "advanced_mock_provider", label: "Advanced demo control reports a mock-location provider" }] : []),
+          ],
+          bootstrap: bootstrap.bootstrap,
+          unavailable: [
+            { code: "reference_sites_unregistered", reason: "Arbitrary online coordinates have no registered cell/WiFi observations; I1 cannot compare them." },
+            ...(!courier.mandate.validity.timeWindows.length ? [{ code: "mandate_hours_unrestricted", reason: "The existing mandate restricts no working hours; I13 is not evaluated." }] : []),
+          ],
+        },
+      } : {}),
       expectation: { exceptionAtLeg: null, decision: "accept", axis: "none" },
     },
   };

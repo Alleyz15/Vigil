@@ -171,19 +171,21 @@ export function seedIdentityReferences(harness: IngestHarness, built: BuiltEvent
   if (!identity) return;
 
   const enrollment = identity.deviceEnrollment;
-  harness.deps.db
-    .insert(deviceEnrollments)
-    .values({ ...enrollment, status: "active" })
-    .onConflictDoUpdate({
-      target: deviceEnrollments.deviceId,
-      set: {
-        courierId: enrollment.courierId,
-        requiredRecognitionVerdict: enrollment.requiredRecognitionVerdict,
-        status: "active",
-        enrolledAt: enrollment.enrolledAt,
-      },
-    })
-    .run();
+  if (enrollment) {
+    harness.deps.db
+      .insert(deviceEnrollments)
+      .values({ ...enrollment, status: "active" })
+      .onConflictDoUpdate({
+        target: deviceEnrollments.deviceId,
+        set: {
+          courierId: enrollment.courierId,
+          requiredRecognitionVerdict: enrollment.requiredRecognitionVerdict,
+          status: "active",
+          enrolledAt: enrollment.enrolledAt,
+        },
+      })
+      .run();
+  }
 
   if (identity.otpChallenge) {
     const challenge = identity.otpChallenge;
