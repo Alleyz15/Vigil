@@ -45,10 +45,11 @@ describe("Sender registered declaration", () => {
       createElement(SenderShipments, { shipments: [], addresses }),
     ));
     await waitFor(() => expect(fetcher).toHaveBeenCalledWith("/api/sender/shipments", expect.anything()));
-    fireEvent.click(view.getByRole("button", { name: "Choose Correction" }));
+    fireEvent.change(view.getByLabelText("Search registered addresses"), { target: { value: "Correction" } });
+    fireEvent.click(view.getByRole("button", { name: "Correction" }));
     fireEvent.click(view.getByRole("button", { name: "Create shipment" }));
     await view.findByText("WB-PENDING");
-    expect(view.getByRole("status").textContent).toMatch(/awaiting operator assignment/i);
+    expect(view.getAllByRole("status").some(node => /awaiting operator assignment/i.test(node.textContent ?? ""))).toBe(true);
     expect(view.queryByText(/out-for-delivery/i)).toBeNull();
     expect(view.queryByRole("button", { name: "Courier delivers" })).toBeNull();
     expect(router.refresh).not.toHaveBeenCalled();
