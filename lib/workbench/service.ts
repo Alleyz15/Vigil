@@ -49,7 +49,7 @@ import {
   type ServiceBoundary,
   type ShipmentRequest,
 } from "@/lib/shipment";
-import { epcsOf } from "@/lib/epcis";
+import { epcsOf, vigilSignalsOf } from "@/lib/epcis";
 import { rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { OperatorActionRequest, type CaseState, type OperatorActionRequest as ActionRequest } from "./types";
@@ -60,7 +60,10 @@ import { considerTools } from "@/lib/llm/plan";
 import { activeAgentLlm, bootstrapAgentLlm, resolveRuntimeLlm, type RuntimeLlm } from "@/lib/llm/runtime";
 import { recipientChannelFingerprint } from "@/lib/identity/channel";
 import { EvidenceStore, type EvidenceReply } from "./evidence-store";
-import type { DispatchWorkspace, DispatchItem, CourierEvidenceItem } from "./operations-types";
+import type { DispatchWorkspace, DispatchItem, CourierEvidenceItem, EvidenceRequestView } from "./operations-types";
+import { simulationOf } from "@/lib/simulation/config";
+import { SimulationRunJournal } from "./simulation-run";
+import { loadSimulationSnapshot, persistSimulationSnapshot } from "./simulation-snapshot";
 import {
   answerConfirmation,
   expireConfirmations,
@@ -77,6 +80,7 @@ import {
   type ActionView,
   type HandoffDetail,
   type HandoffSummary,
+  type HandoffState,
   type RouteLocationView,
   type ShipmentRouteView,
   type RunView,
@@ -111,7 +115,12 @@ const DRAFT_TITLES: Partial<Record<ScenarioId, string>> = {
 const START_MS = Date.parse("2026-09-07T14:30:00+08:00");
 const OPERATOR_ID = "OP-01";
 
-type StoredEntry = WorkbenchEntry & { harness: IngestHarness; actions: ActionView[] };
+type StoredEntry = WorkbenchEntry & {
+  harness: IngestHarness;
+  actions: ActionView[];
+  /** The append-only seal survived, but the case/audit transaction needs retry. */
+  pendingApprovalAudit?: ActionRequest;
+};
 
 /**
  * A correction the sender made after the parcel was already moving.
@@ -180,6 +189,7 @@ type OnlineRun = {
   world: GeneratedWorld;
   harness: IngestHarness;
   route: DepotRoute;
+  startMs: number;
   deliveryEventId?: string;
   submittedBuilt?: BuiltEvent;
   submittedPoint?: Point;
@@ -373,7 +383,12 @@ async function buildScenarioEntries(
     courierPrivateKey: scenario.courier.keys.privateKey,
     mandateId: scenario.courier.mandate.mandateId,
   };
-  for (const built of scenario.warmup) await ingestWithApproval(harness, built, credentialArgs);
+  for (const built of scenario.warmup) {
+    await ingestWithApproval(harness, built, credentialArgs);
+    if (scenario.disputedEventIds.includes(built.event.eventID)) {
+      recordDispute(harness, built.event.eventID, epcsOf(built.event)[0] ?? "");
+    }
+  }
 
   const timeline = options.holdBackFinalLeg ? scenario.timeline.slice(0, -1) : scenario.timeline;
   const held = options.holdBackFinalLeg ? scenario.timeline[scenario.timeline.length - 1] : undefined;
@@ -510,7 +525,10 @@ export type CourierDraft = {
 };
 
 export type CourierQueueItem = {
+  simulation?: GeneratedScenario["simulation"];
   identity?: RoleIdentity;
+  currentRun?: RunView;
+  state?: HandoffState;
   handoffId: string;
   source: "seeded" | "registered" | "online";
   courierId: string;
@@ -628,6 +646,8 @@ export class OperatorWorkbench {
   private readonly harnesses = new Set<IngestHarness>();
   /** Online shipments with a run in THIS process, by shipment id. */
   private readonly online = new Map<string, OnlineRun>();
+  private readonly simulationRuns = new SimulationRunJournal({ initialStartMs: START_MS, createRunId: randomUUID });
+  private readonly simulationBootstraps = new Map<string, GeneratedScenario["simulation"]>();
   private onlineStore?: VigilDb;
   private onlineBoundary: ServiceBoundary | null | undefined;
   private actionSequence = 0;
@@ -664,28 +684,29 @@ export class OperatorWorkbench {
    * a recipient to adjudicate a pending co-signature.
    */
   private issueConfirmations(): void {
-    for (const entry of this.entries.values()) {
-      const ctx = entry.current;
-      const sealed = ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop";
-      if (!sealed) continue;
-      if (entry.built.leg !== "delivery") continue;
+    for (const entry of this.entries.values()) this.issueConfirmationFor(entry);
+  }
 
-      const event = ctx.event ?? entry.built.event;
-      const epc = epcsOf(event)[0] ?? "";
-      const parcel = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
-      if (!parcel?.recipientPhone) continue;
+  private issueConfirmationFor(entry: StoredEntry): void {
+    const ctx = entry.current;
+    const sealed = ctx.ledger?.status === "recorded" || ctx.ledger?.status === "noop";
+    if (!sealed || entry.built.leg !== "delivery") return;
 
-      const tokenId = issueConfirmation(entry.harness.deps.db, {
-        eventId: event.eventID,
-        epc,
-        // The SAME channel record I15 checks a delivery against, so "we have an
-        // independent line to the recipient" is a fact rather than a claim.
-        channelFingerprint: recipientChannelFingerprint(parcel.recipientPhone),
-        issuedAt: entry.createdAt,
-        windowHours: CONFIRMATION_WINDOW_HOURS,
-      });
-      this.confirmations.set(tokenId, entry);
-    }
+    const event = ctx.event ?? entry.built.event;
+    const epc = epcsOf(event)[0] ?? "";
+    const parcel = entry.scenario.parcels.find((candidate) => candidate.epc === epc);
+    if (!parcel?.recipientPhone) return;
+
+    const tokenId = issueConfirmation(entry.harness.deps.db, {
+      eventId: event.eventID,
+      epc,
+      // The SAME channel record I15 checks a delivery against, so "we have an
+      // independent line to the recipient" is a fact rather than a claim.
+      channelFingerprint: recipientChannelFingerprint(parcel.recipientPhone),
+      issuedAt: entry.createdAt,
+      windowHours: CONFIRMATION_WINDOW_HOURS,
+    });
+    this.confirmations.set(tokenId, entry);
   }
 
   /** The recipient link for one handoff, for the operator viewing that handoff. */
@@ -725,7 +746,13 @@ export class OperatorWorkbench {
   answerConfirmation(tokenId: string, answer: RecipientAnswer) {
     const entry = this.confirmations.get(tokenId);
     if (!entry) return { ok: false as const, state: { status: "unknown" as const } };
-    return answerConfirmation(entry.harness.deps.db, tokenId, answer, this.nowIso);
+    const result = answerConfirmation(entry.harness.deps.db, tokenId, answer, this.nowIso);
+    if (result.ok && answer === "not_received" && entry.scenario.simulation) {
+      // Future evaluations see the outcome; the original evaluation snapshot
+      // remains untouched, including its replay/explanation evidence.
+      this.simulationRuns.markDisputed(entry.scenario.courier.courierId, entry.built.event.eventID);
+    }
+    return result;
   }
 
   /** Close out unanswered links whose window has passed. Records silence; scores nothing. */
@@ -790,12 +817,35 @@ export class OperatorWorkbench {
     return { role: "courier", label: courier.displayName, subject: courier.courierId, keyFingerprint: fingerprint(courier.keys.publicKey) };
   }
 
+  private courierCurrentView(eventId: string): Pick<CourierQueueItem, "currentRun" | "state"> {
+    const entry = this.entries.get(eventId);
+    if (!entry) return {};
+    const number = Math.max(1, entry.runs.findIndex((run) => run === entry.current) + 1);
+    return { currentRun: runView(entry.current, number, entry.built.event), state: entry.state ?? "accepted" };
+  }
+
   private evidenceStore(): EvidenceStore { return new EvidenceStore(this.store()); }
 
   private workflowId(harness: IngestHarness): string {
     let id = this.workflowIds.get(harness);
     if (!id) { id = randomUUID(); this.workflowIds.set(harness, id); }
     return id;
+  }
+
+  private committedEvidenceRequests(entry: StoredEntry): number {
+    if (!entry.caseId) return 0;
+    return entry.harness.deps.db.select({ id: operatorActions.actionId }).from(operatorActions)
+      .where(and(eq(operatorActions.caseId, entry.caseId), eq(operatorActions.action, "request_evidence"))).all().length;
+  }
+
+  private publishedEvidence(entry: StoredEntry): EvidenceRequestView[] {
+    const rounds = this.evidenceStore().list(entry.built.event.eventID, this.workflowId(entry.harness));
+    return rounds.slice(0, this.committedEvidenceRequests(entry));
+  }
+
+  private unpublishedEvidenceIntent(entry: StoredEntry): EvidenceRequestView | undefined {
+    const rounds = this.evidenceStore().list(entry.built.event.eventID, this.workflowId(entry.harness));
+    return rounds[this.committedEvidenceRequests(entry)];
   }
 
   dispatchWorkspace(): DispatchWorkspace {
@@ -863,8 +913,11 @@ export class OperatorWorkbench {
   }
 
   private courierEvidence(courierId: string): CourierEvidenceItem[] {
+    for (const entry of this.entries.values()) {
+      if (entry.scenario.courier.courierId === courierId) this.reconcileEvidenceReceipt(entry);
+    }
     return [...this.entries.values()].filter((entry) => entry.scenario.courier.courierId === courierId)
-      .flatMap((entry) => this.evidenceStore().list(entry.built.event.eventID, this.workflowId(entry.harness)).map((request) => {
+      .flatMap((entry) => this.publishedEvidence(entry).map((request) => {
         const epc = epcsOf(entry.built.event)[0];
         const parcel = entry.scenario.parcels.find((p) => p.epc === epc);
         return { request, waybillNo: summaryFrom(entry, this.nowIso).parcel.waybillNo,
@@ -911,6 +964,7 @@ export class OperatorWorkbench {
         fault: null,
         attempts: draft.attempts,
         operatorSeal: this.operatorSealFor(draft.eventId),
+        ...this.courierCurrentView(draft.eventId),
       }));
 
     const registered: CourierQueueItem[] = [...this.shipments.values()]
@@ -935,6 +989,7 @@ export class OperatorWorkbench {
         fault: shipment.request.fault,
         attempts: shipment.attempts,
         operatorSeal: this.operatorSealFor(shipment.deliveryEventId),
+        ...this.courierCurrentView(shipment.held.event.eventID),
       }));
 
     const online: CourierQueueItem[] = [...this.online.values()]
@@ -951,6 +1006,7 @@ export class OperatorWorkbench {
           scenarioId: run.scenario.id,
           runId: run.runId,
           title: "Delivery scan — point-to-point dispatch",
+          simulation: run.scenario.simulation,
           epc: parcel.epc,
           waybillNo: parcel.waybillNo,
           route: {
@@ -963,6 +1019,7 @@ export class OperatorWorkbench {
           fault: null,
           attempts: run.attempts,
           operatorSeal: this.operatorSealFor(run.deliveryEventId),
+          ...this.courierCurrentView(held.event.eventID),
         };
       });
 
@@ -1165,10 +1222,13 @@ export class OperatorWorkbench {
     if (run.submittedBuilt && run.submittedPoint) return { built: run.submittedBuilt, point: run.submittedPoint };
 
     const history = getShipment(this.store(), run.shipmentId)!;
-    const point = scan ?? { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude };
-    const rebuilt = buildOnlineScenario(history, { world: run.world, startMs: START_MS, scan: point,
+    const point = scan ?? (run.scenario.simulation ? undefined : { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude });
+    const rebuilt = buildOnlineScenario(history, { world: run.world, startMs: run.startMs, scan: point,
       courierIndex: run.world.couriers.findIndex((c) => c.courierId === run.scenario.courier.courierId) });
-    return { built: rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1], point };
+    const built = rebuilt.scenario.timeline[rebuilt.scenario.timeline.length - 1];
+    const gps = vigilSignalsOf(built.event)?.gps?.point;
+    if (!gps) throw new Error("The prepared delivery has no simulated scan coordinate.");
+    return { built, point: { latitude: gps.latitude, longitude: gps.longitude } };
   }
 
   private promoteSenderDelivery(shipment: BuiltShipment, built: BuiltEvent, ctx: AgentContext): void {
@@ -1178,6 +1238,8 @@ export class OperatorWorkbench {
       // A duplicate is an attempt against the already sealed handoff, not a
       // new authoritative result. Its sparse context belongs in history only.
       if (ctx.ledger?.status !== "noop") existing.current = ctx;
+      this.issueConfirmationFor(existing);
+      this.captureSimulationEntry(existing);
       return;
     }
     const entry = storedEntryFor(shipment, built, ctx);
@@ -1185,6 +1247,7 @@ export class OperatorWorkbench {
     this.entries.set(built.event.eventID, entry);
     shipment.deliveryEventId = built.event.eventID;
     shipment.submittedBuilt = built;
+    this.issueConfirmationFor(entry);
   }
 
   private promoteOnlineDelivery(run: OnlineRun, built: BuiltEvent, point: Point, ctx: AgentContext): void {
@@ -1192,6 +1255,8 @@ export class OperatorWorkbench {
     if (existing) {
       existing.runs.push(ctx);
       if (ctx.ledger?.status !== "noop") existing.current = ctx;
+      this.issueConfirmationFor(existing);
+      this.captureSimulationEntry(existing);
       return;
     }
     const entry = storedEntryFor(run, built, ctx);
@@ -1200,6 +1265,8 @@ export class OperatorWorkbench {
     run.deliveryEventId = built.event.eventID;
     run.submittedBuilt = built;
     run.submittedPoint = point;
+    this.issueConfirmationFor(entry);
+    this.captureSimulationEntry(entry);
   }
 
   /**
@@ -1259,6 +1326,7 @@ export class OperatorWorkbench {
     for (const entry of entries) {
       this.entries.set(entry.built.event.eventID, entry);
       this.harnesses.add(entry.harness);
+      this.issueConfirmationFor(entry);
     }
 
     if (options.holdDelivery) {
@@ -1522,9 +1590,60 @@ export class OperatorWorkbench {
   }
 
   private async startOnlineRun(history: NonNullable<ReturnType<typeof getShipment>>, world: GeneratedWorld, courierIndex?: number): Promise<void> {
+    const config = simulationOf(history.shipment);
+    if (config) {
+      const courier = world.couriers[courierIndex ?? 1];
+      if (!courier) throw new Error("The simulation courier is unavailable.");
+      return this.simulationRuns.exclusive(courier.courierId, () => this.prepareOnlineRun(history, world, courierIndex));
+    }
+    return this.prepareOnlineRun(history, world, courierIndex);
+  }
+
+  private async prepareOnlineRun(history: NonNullable<ReturnType<typeof getShipment>>, world: GeneratedWorld, courierIndex?: number): Promise<void> {
     const shipmentId = history.shipment.shipmentId;
-    const built = buildOnlineScenario(history, { world, startMs: START_MS, courierIndex });
-    const { scenario } = built;
+    const config = simulationOf(history.shipment);
+    const courier = world.couriers[courierIndex ?? 1];
+    const session = config ? this.simulationRuns.begin(courier.courierId) : undefined;
+    let startMs = session?.startMs ?? START_MS;
+    const built = buildOnlineScenario(history, { world, startMs, courierIndex });
+    let scenario = built.scenario;
+    if (config && session) {
+      if (history.shipment.simulationSnapshotJson) {
+        const saved = loadSimulationSnapshot(history.shipment.simulationSnapshotJson, { courierId: courier.courierId, simulationRunId: session.runId });
+        if (saved.simulation.seed !== config.seed || saved.simulation.version !== config.version) throw new Error("The simulation configuration no longer matches its saved facts.");
+        startMs = saved.startMs;
+        scenario = { ...scenario, timeline: saved.timeline, warmup: saved.warmup, parcels: saved.parcels,
+          disputedEventIds: saved.disputedEventIds, simulation: saved.simulation as GeneratedScenario["simulation"] };
+      } else {
+        if (session.prior) {
+          const currentEpc = epcsOf(scenario.timeline.at(-1)!.event)[0];
+          const currentParcel = scenario.parcels.find((parcel) => parcel.epc === currentEpc)!;
+          const ownIds = new Set<string>(scenario.timeline.map((event) => event.event.eventID));
+          scenario = { ...scenario, warmup: session.prior.events,
+            parcels: [currentParcel, ...session.prior.parcels.filter((parcel) => parcel.epc !== currentEpc)],
+            disputedEventIds: [...session.prior.disputedEventIds, ...scenario.disputedEventIds.filter((id) => ownIds.has(id))] };
+          const original = this.simulationBootstraps.get(courier.courierId);
+          if (scenario.simulation && original) scenario = { ...scenario, simulation: {
+            ...scenario.simulation, bootstrap: original.bootstrap,
+            conditions: [...scenario.simulation.conditions.filter((condition) => !condition.code.startsWith("history-")),
+              ...original.conditions.filter((condition) => condition.code.startsWith("history-"))],
+          } };
+        }
+        if (!scenario.simulation) throw new Error("The random generator did not produce simulation provenance.");
+        scenario = { ...scenario, simulation: { ...scenario.simulation, history: {
+          runId: session.runId, priorHandoffs: scenario.warmup.length, source: "simulated", snapshotAt: new Date(startMs).toISOString(),
+        } } };
+        persistSimulationSnapshot(this.store(), shipmentId, { courierId: courier.courierId, simulationRunId: session.runId, startMs, scenario });
+      }
+    }
+    if (session) {
+      // Freeze the first modeled past before any fallible harness I/O. A later
+      // assignment must not install a different bootstrap while this one retries.
+      if (!this.simulationBootstraps.has(courier.courierId)) this.simulationBootstraps.set(courier.courierId, scenario.simulation);
+      this.simulationRuns.bootstrap(courier.courierId, scenario.warmup, scenario.parcels, scenario.disputedEventIds);
+      this.simulationRuns.registerParcels(courier.courierId, scenario.parcels);
+      this.simulationRuns.reserve(courier.courierId, scenario.timeline);
+    }
     const { entries } = await buildScenarioEntries(
       { scenario, world },
       {
@@ -1533,6 +1652,7 @@ export class OperatorWorkbench {
         llm: bootstrapAgentLlm(this.runtimeLlm),
       },
     );
+    if (session) for (const entry of entries) this.captureSimulationEntry(entry);
     for (const entry of entries) {
       this.entries.set(entry.built.event.eventID, entry);
       this.harnesses.add(entry.harness);
@@ -1544,12 +1664,19 @@ export class OperatorWorkbench {
       world,
       harness: entries[0].harness,
       route: built.route,
+      startMs,
       submittedBuilt: undefined,
       submittedPoint: undefined,
       attempts: [],
     };
     run.harness.deps.llm = activeAgentLlm(this.runtimeLlm);
     this.online.set(shipmentId, run);
+  }
+
+  private captureSimulationEntry(entry: StoredEntry): void {
+    if (!entry.scenario.simulation || !["recorded", "noop"].includes(entry.current.ledger?.status ?? "")) return;
+    this.simulationRuns.append(entry.scenario.courier.courierId, entry.built, entry.scenario.parcels,
+      entry.scenario.disputedEventIds.includes(entry.built.event.eventID));
   }
 
   private eventIdsOf(run: OnlineRun): string[] {
@@ -1699,14 +1826,10 @@ export class OperatorWorkbench {
         : null;
     const originDepot = online?.route.originDepot ?? registered?.route.originHub;
     const destinationDepot = online?.route.destinationDepot ?? registered?.route.destinationHub;
-    const deliveryPoint = online
-      ? (() => {
-          const history = getShipment(this.store(), online.shipmentId);
-          return history
-            ? { latitude: history.currentReference.latitude, longitude: history.currentReference.longitude }
-            : null;
-        })()
-      : registered?.correction?.toPoint ?? registered?.parcel.recipientPoint ?? null;
+    const history = online ? getShipment(this.store(), online.shipmentId) : null;
+    const reference = history?.originalReference ?? registered?.parcel.recipientPoint;
+    const deliveryPoint = reference ? { latitude: reference.latitude, longitude: reference.longitude } : null;
+    const deliveryLabel = history ? storedLocation(history.originalReference).label : registered?.parcel.recipientAddress;
 
     if (!senderPoint || !originDepot || !destinationDepot || !deliveryPoint) return undefined;
     return [
@@ -1740,9 +1863,9 @@ export class OperatorWorkbench {
       {
         id: "delivery",
         kind: "delivery",
-        label: route.destination.label,
-        mapLabel: this.compactMapLabel(route.destination.label, "Delivery"),
-        detail: "Delivery reference + reported delivery scan.",
+        label: deliveryLabel ?? route.destination.label,
+        mapLabel: this.compactMapLabel(deliveryLabel ?? route.destination.label, "Delivery reference"),
+        detail: "Recorded delivery reference; the reported scan is separate evidence.",
         point: deliveryPoint,
         monitored: true,
       },
@@ -1777,6 +1900,7 @@ export class OperatorWorkbench {
     if (existing) {
       existing.runs.push(ctx);
       if (ctx.ledger?.status !== "noop") existing.current = ctx;
+      this.issueConfirmationFor(existing);
       return;
     }
 
@@ -1824,9 +1948,11 @@ export class OperatorWorkbench {
         .onConflictDoNothing()
         .run();
     }
+    this.issueConfirmationFor(entry);
   }
 
   listQueue(): HandoffSummary[] {
+    for (const entry of this.entries.values()) this.reconcileEvidenceReceipt(entry);
     return [...this.entries.values()]
       .filter((entry) => entry.state !== null && isQueueState(entry.state))
       .map((entry) => summaryFrom(entry, this.nowIso))
@@ -1837,6 +1963,7 @@ export class OperatorWorkbench {
     summary: { automaticallyAccepted: number; total: number; timeframe: string; from: string; to: string };
     items: HandoffSummary[];
   } {
+    for (const entry of this.entries.values()) this.reconcileEvidenceReceipt(entry);
     const items = [...this.entries.values()]
       .map((entry) => summaryFrom(entry, this.nowIso))
       .sort((a, b) => Date.parse(b.eventTime) - Date.parse(a.eventTime));
@@ -1864,7 +1991,8 @@ export class OperatorWorkbench {
     const source = [...this.entries.values()].find((entry) => entry.scenario.id === scenarioId);
     if (!source) throw new Error(`No stored shipment has scenario ${scenarioId}.`);
     const { scenario, world } = source;
-    const target = scenario.timeline[legIndex];
+    const actual = [...this.entries.values()].find((entry) => entry.scenario.id === scenarioId && entry.built.legIndex === legIndex);
+    const target = actual?.built ?? scenario.timeline[legIndex];
     if (!target) throw new Error(`Scenario ${scenarioId} has no leg ${legIndex + 1}.`);
 
     const harness = createHarness(world);
@@ -1881,7 +2009,12 @@ export class OperatorWorkbench {
         mandateId: scenario.courier.mandate.mandateId,
       };
       options.onProgress?.(`Replaying ${scenario.warmup.length} prior handoffs to build this courier's history`);
-      for (const built of scenario.warmup) await ingestWithApproval(harness, built, args);
+      for (const built of scenario.warmup) {
+        await ingestWithApproval(harness, built, args);
+        if (scenario.disputedEventIds.includes(built.event.eventID)) {
+          recordDispute(harness, built.event.eventID, epcsOf(built.event)[0] ?? "");
+        }
+      }
 
       if (legIndex > 0) options.onProgress?.(`Replaying legs 1-${legIndex} of this shipment`);
       const disputed = new Set(scenario.disputedEventIds);
@@ -1904,6 +2037,7 @@ export class OperatorWorkbench {
   getHandoff(eventId: string): HandoffDetail | undefined {
     const entry = this.entries.get(eventId);
     if (!entry) return undefined;
+    this.reconcileEvidenceReceipt(entry);
     const summary = summaryFrom(entry, this.nowIso);
     const records = entry.harness.deps.ledger.readRecords();
     const abortRecord = [...records]
@@ -1919,9 +2053,11 @@ export class OperatorWorkbench {
     const authoritativeRunNumber = Math.max(1, entry.runs.findIndex((run) => run === entry.current) + 1);
     const authoritativeRun = runView(entry.current, authoritativeRunNumber, entry.built.event);
     return {
-      supportingEvidence: this.evidenceStore().list(eventId, this.workflowId(entry.harness)),
+      supportingEvidence: this.publishedEvidence(entry),
       archivedEvidenceCount: this.evidenceStore().list(eventId).length - this.evidenceStore().list(eventId, this.workflowId(entry.harness)).length,
       canApprove: this.canApproveEntry(entry),
+      approvalAuditPending: Boolean(entry.pendingApprovalAudit),
+      simulation: entry.scenario.simulation,
       summary,
       route: this.routeFor(eventId),
       event: entry.built.event,
@@ -2036,6 +2172,10 @@ export class OperatorWorkbench {
       timeline,
       map: buildShipmentMapModel(entry.scenario, entry.world, {
         locations: this.mapLocationsFor(eventId),
+        ...(entry.built.leg === "delivery" ? {
+          deliveryEvent: entry.built.event,
+          deliveryFlags: flagsFrom(entry.current).map((flag) => flag.id),
+        } : {}),
       }),
       planConsidered: considerTools(entry.current),
       plan: {
@@ -2072,11 +2212,26 @@ export class OperatorWorkbench {
   }
 
   private canApproveEntry(entry: StoredEntry): boolean {
+    if (entry.pendingApprovalAudit) return true;
     return (entry.state === "awaiting_cosignature" || entry.state === "evidence_submitted")
       && entry.current.halted?.reason === "PENDING_COSIGNATURE"
       && entry.current.gateResult?.decision !== "freeze"
       && !entry.current.engineResult?.aborted
       && Boolean(entry.current.credential?.validSignatures.includes("courier"));
+  }
+
+  /** A durable receipt is enough to repair its case projection after a failed write. */
+  private reconcileEvidenceReceipt(entry: StoredEntry): void {
+    if (entry.state !== "awaiting_evidence" || this.reviewing.has(entry.built.event.eventID)) return;
+    const receipt = this.publishedEvidence(entry).at(-1)?.submission;
+    if (!receipt) return;
+    const priority = priorityFor("evidence_submitted", entry.current.decision);
+    const updated = entry.harness.deps.db.update(handoffCases)
+      .set({ state: "evidence_submitted", priority, updatedAt: receipt.submittedAt })
+      .where(eq(handoffCases.caseId, entry.caseId!)).run();
+    if (!updated.changes) throw new Error("The saved evidence receipt cannot yet be projected into its case. Refresh to retry.");
+    entry.state = "evidence_submitted";
+    entry.priority = priority;
   }
 
   async submitEvidence(requestId: string, reply: EvidenceReply): Promise<CourierWorkspaceView> {
@@ -2089,16 +2244,16 @@ export class OperatorWorkbench {
     if (request.workflowId !== this.workflowId(entry.harness)) throw new Error("This evidence request belongs to an earlier workflow instance; it cannot be applied to this run.");
     if (!entry.state || entry.state.startsWith("resolved_")) throw new Error("This case is closed or resolved; no evidence can be submitted.");
     if (canonicalHash(entry.built.event) !== request.payloadHash) throw new Error("The original event no longer matches this evidence request.");
-    const rounds = store.list(request.eventId, this.workflowId(entry.harness));
+    const rounds = this.publishedEvidence(entry);
     if (rounds.at(-1)?.requestId !== requestId) throw new Error("A newer evidence request exists; respond to the current request.");
     if (entry.state !== "awaiting_evidence" && entry.state !== "evidence_submitted") throw new Error("This case is not awaiting evidence.");
-    const result = store.submit(requestId, reply, this.nowIso);
-    if (!result.replayed) {
-      entry.harness.deps.db.update(handoffCases).set({ state: "evidence_submitted", priority: priorityFor("evidence_submitted", entry.current.decision), updatedAt: this.nowIso })
-        .where(eq(handoffCases.caseId, entry.caseId!)).run();
-      entry.state = "evidence_submitted";
-      entry.priority = priorityFor(entry.state, entry.current.decision);
-    }
+    store.submit(requestId, reply, this.nowIso);
+    // The receipt can outlive a failed case write; identical retries repair it.
+    const updated = entry.harness.deps.db.update(handoffCases).set({ state: "evidence_submitted", priority: priorityFor("evidence_submitted", entry.current.decision), updatedAt: this.nowIso })
+      .where(eq(handoffCases.caseId, entry.caseId!)).run();
+    if (!updated.changes) throw new Error("The evidence receipt was saved, but its case projection is unavailable. Retry the same submission.");
+    entry.state = "evidence_submitted";
+    entry.priority = priorityFor(entry.state, entry.current.decision);
     return this.courierWorkspace(reply.courierId);
   }
 
@@ -2117,20 +2272,32 @@ export class OperatorWorkbench {
   }
 
   private async performOperatorAction(eventId: string, rawRequest: ActionRequest): Promise<HandoffDetail> {
-    const request = OperatorActionRequest.parse(rawRequest);
+    let request = OperatorActionRequest.parse(rawRequest);
     const entry = this.entries.get(eventId);
     if (!entry || !entry.state || !entry.caseId) throw new Error("handoff is not actionable");
+
+    if (entry.pendingApprovalAudit && request.action === "approve" && request.note === undefined) {
+      request = entry.pendingApprovalAudit;
+    }
     const fromState = entry.state;
     const toState = transitionCase(fromState, request.action);
+    if (entry.pendingApprovalAudit && (request.action !== "approve" || request.note !== entry.pendingApprovalAudit.note)) {
+      throw new Error("The approval was sealed but its audit write is incomplete. Retry the same approval before another action.");
+    }
+    const intent = this.unpublishedEvidenceIntent(entry);
+    if (intent && (request.action !== "request_evidence" || request.note?.trim() !== intent.note)) {
+      throw new Error("An earlier evidence request still needs its audit write. Retry the same request note before another action.");
+    }
 
+    let evidenceRequest: EvidenceRequestView | undefined;
     if (request.action === "request_evidence") {
       if (!request.note?.trim()) throw new Error("Describe the evidence being requested in an operator note.");
-      this.evidenceStore().request({ eventId, courierId: entry.scenario.courier.courierId, operatorId: OPERATOR_ID,
+      evidenceRequest = intent ?? this.evidenceStore().request({ eventId, courierId: entry.scenario.courier.courierId, operatorId: OPERATOR_ID,
         workflowId: this.workflowId(entry.harness),
         note: request.note, requestedAt: this.nowIso, payloadHash: canonicalHash(entry.built.event) });
     }
 
-    if (request.action === "approve") {
+    if (request.action === "approve" && !entry.pendingApprovalAudit) {
       if (!this.canApproveEntry(entry)) throw new Error("Cannot approve this case: a complete eligible pending credential is required; evidence cannot override a hard stop.");
       const approved = await ingestEvent(entry.harness, entry.built, {
         courierPrivateKey: entry.scenario.courier.keys.privateKey,
@@ -2141,13 +2308,16 @@ export class OperatorWorkbench {
       entry.current = approved;
       entry.runs.push(approved);
       entry.reason = approved.gateResult?.rationale ?? "Approved with an operator co-signature.";
+      entry.pendingApprovalAudit = request;
+      this.captureSimulationEntry(entry);
     }
 
     if (request.action === "propose_reroute" && entry.current.reroute?.status !== "proposed") {
       throw new Error("no authorised reroute exists for this handoff");
     }
 
-    const createdAt = new Date(Date.parse(this.nowIso) + ++this.actionSequence * 1_000).toISOString();
+    const sequence = this.actionSequence + 1;
+    const createdAt = new Date(Date.parse(this.nowIso) + sequence * 1_000).toISOString();
     const action: ActionView = {
       action: request.action,
       note: request.note ?? null,
@@ -2156,14 +2326,12 @@ export class OperatorWorkbench {
       toState,
       createdAt,
     };
-    entry.actions.push(action);
-    entry.state = toState;
-    entry.priority = priorityFor(toState, entry.current.decision);
+    const priority = priorityFor(toState, entry.current.decision);
 
     entry.harness.deps.db.transaction((tx) => {
       tx.insert(operatorActions)
         .values({
-          actionId: `${entry.caseId}-${String(this.actionSequence).padStart(3, "0")}`,
+          actionId: evidenceRequest ? `${entry.caseId}-evidence-${evidenceRequest.requestId}` : `${entry.caseId}-${String(sequence).padStart(3, "0")}`,
           caseId: entry.caseId!,
           ...action,
         })
@@ -2171,7 +2339,7 @@ export class OperatorWorkbench {
       tx.update(handoffCases)
         .set({
           state: toState,
-          priority: entry.priority,
+          priority,
           reason: entry.reason,
           contextJson: JSON.stringify(entry.current),
           traceJson: JSON.stringify(entry.current.trace),
@@ -2183,6 +2351,12 @@ export class OperatorWorkbench {
         .run();
     });
 
+    this.actionSequence = sequence;
+    entry.actions.push(action);
+    entry.state = toState;
+    entry.priority = priority;
+    entry.pendingApprovalAudit = undefined;
+    this.issueConfirmationFor(entry);
     return this.getHandoff(eventId)!;
   }
 

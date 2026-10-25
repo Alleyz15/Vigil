@@ -1,5 +1,56 @@
 # Vigil
 
+## Reproducible Randomized Scenarios (2026-10-25)
+
+Point-to-point requests may save `{ mode: "randomized", seed, version: "signals-v1" }`.
+`lib/generate/simulation/` samples shared physical facts and named causes, never
+scores or decisions. All distributions are uncalibrated assumptions; never tune
+them to improve downstream alert rates. Advanced mock-location remains independent.
+Unknown arbitrary locations have no invented radio references; unrestricted
+mandates do not acquire invented working hours. Replacement handset claims never
+create device enrollments. Explicit false overrides remain meaningful.
+
+The first randomized assignment bootstraps one courier's simulated history; later
+assignments extend that named run. Each shipment persists immutable event, reference
+and history snapshots before preparation. Retry, replay and late co-sign reuse the
+old snapshot, even after newer shipments or recipient disputes. Future snapshots
+receive later complaints. Preparation failures must not publish partial entries or
+reserve the chronological cursor twice. Parcel references and event IDs cannot be
+rebound, including conflicts within one incoming batch.
+
+This journal and its signing harness remain process-local. Saved facts/configuration
+do not restore keys or make a workflow restartable. Normal scan is an isolated
+baseline control. Same seed reproduces physical sampling only with the same inputs,
+version and courier context; UUIDs/keys are not seed-derived. Simulated conditions
+are not detected findings or proof of fraud. The full fixed development/validation
+manifest is retained under `docs/experiments/`; it is not a field-accuracy study.
+
+## Audit Recovery Lessons (2026-10-25)
+
+A grouped `I1-I16` not-evaluated result must cover every individual display row.
+Absence of an individual flag is not proof that its rule ran. Displays must check
+axis evaluability as well as the numeric score, including hard-abort zero values.
+
+The main Courier result follows the authoritative handoff run; a courier's own
+last attempt can predate an operator seal. Recipient capabilities are a sealed
+delivery lifecycle hook, not merely startup fixture initialization.
+
+A map reference and a reported scan are independent facts. Address correction
+does not move the original reference, and a generated template must not replace
+the actual submitted GPS in the read model.
+
+Evidence storage and case storage are separate databases, not one transaction.
+An unpublished request is a retryable intent until its audit write commits.
+Persisted replies reconcile their case projection on retry or refresh. A seal
+can survive an approval audit failure; retry only repairs the audit and cannot
+rewrite or duplicate the seal. UI recovery must survive refresh, not just an API
+retry in the same form. These workflow instances still cannot survive restart.
+
+Validate structured model roots whole; never mine an inner object out of an
+invalid array. Keep flag/escalate/freeze distinct in prose validation. This is a
+lexical guard, not a semantic truth checker. Error formatting must itself tolerate
+arbitrary thrown values so that diagnostics cannot bypass provider failover.
+
 ## Manual Dispatch and Supporting Evidence (2026-10-24)
 
 Sender-created requests now await manual operator assignment; existing seeded

@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, CircleAlert, CircleDashed, RotateCcw, RefreshCw, MapPin, Package, PenLine, Shield } from "lucide-react";
-import type { CourierOutcome, CourierOutcomeKind } from "@/lib/workbench/courier";
+import { courierOutcome, type CourierOutcome, type CourierOutcomeKind } from "@/lib/workbench/courier";
 import type { CourierQueueItem, CourierWorkspaceView } from "@/lib/workbench/service";
 import { Badge } from "@/components/ui/badge";
+import { SimulationProvenance } from "@/components/shipment/simulation-provenance";
 import { Button } from "@/components/ui/button";
 import { ProvenanceLabel } from "@/components/operator/provenance-label";
 import { CourierShell, type CourierMode } from "@/components/shells/courier-shell";
@@ -252,7 +253,9 @@ function HandoffCard({
   onSubmit: (signed: boolean) => void;
 }) {
   const latest = item.attempts.at(-1);
-  const sealed = item.attempts.some((attempt: Attempt) => attempt.outcome.sealed);
+  const outcome = item.currentRun ? courierOutcome(item.currentRun) : latest?.outcome;
+  const sealed = item.currentRun?.sealed ?? item.attempts.some((attempt: Attempt) => attempt.outcome.sealed);
+  const hasSeparateCurrentRun = item.currentRun && item.currentRun.run !== latest?.run.run;
 
   return (
     <section aria-label="Selected handoff" className="min-w-0 overflow-hidden rounded-lg border bg-card">
@@ -270,6 +273,7 @@ function HandoffCard({
         <div className="min-w-0"><dt className="sr-only">Route</dt><dd><RouteSummary route={item.route} /></dd></div>
         <div className="min-w-0"><dt className="text-xs text-muted-foreground">EPCIS leg</dt><dd className="mt-2 text-sm">{item.leg} · {item.runId}</dd></div>
       </dl>
+      {item.simulation && <div className="border-b p-5"><SimulationProvenance {...item.simulation} /></div>}
       <div className="p-5"><h3 className="flex items-center gap-2 text-sm font-semibold"><PenLine aria-hidden="true" className="size-4 text-primary" />Courier device signature</h3>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">The credential travels alongside the unchanged EPCIS event, never inside it.</p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -290,8 +294,8 @@ function HandoffCard({
       </div>
       </div>
 
-      {latest && <OutcomePanel outcome={latest.outcome} />}
-      {(item.attempts.length > 1 || item.operatorSeal) && (
+      {outcome && <OutcomePanel outcome={outcome} />}
+      {(item.attempts.length > 1 || item.operatorSeal || (latest && hasSeparateCurrentRun)) && (
         <AttemptHistory attempts={item.attempts} operatorSeal={item.operatorSeal} />
       )}
     </section>

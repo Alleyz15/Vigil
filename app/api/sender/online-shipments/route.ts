@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getWorkbench } from "@/lib/workbench";
+import { RandomSimulationConfig } from "@/lib/simulation/config";
 import { ConfirmedPoint, toLocationInput } from "./schema";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,10 @@ const Request = z.strictObject({
   recipientChannel: z.string().min(3),
   recipientName: z.string().min(1).optional(),
   demoCondition: z.enum(["normal", "mock_location"]).default("normal"),
+  // Only incoming requests may omit the version. Stored configs always name it.
+  simulation: RandomSimulationConfig.extend({
+    version: RandomSimulationConfig.shape.version.default("signals-v1"),
+  }).optional(),
 });
 
 const STATUS = { created: 201, replayed: 200, conflict: 409, rejected: 422 } as const;

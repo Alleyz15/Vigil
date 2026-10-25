@@ -14,6 +14,7 @@ import {
   attemptHistoryLabel,
   citationTarget,
   cosignConditionPresentation,
+  credentialSealLabel,
   detailStatusMessage,
   ledgerReferencePresentation,
   primaryFlagCard,
@@ -30,6 +31,7 @@ import { SimulatedClockLabel } from "./simulated-clock-label";
 import { SupportingEvidence } from "./supporting-evidence";
 import { StreamView } from "@/components/console/stream-view";
 import { OperatorJourneySummary } from "@/components/shipment/route-summary";
+import { SimulationProvenance } from "@/components/shipment/simulation-provenance";
 
 function sentence(value: string | null): string {
   return value?.replaceAll("_", " ") ?? "Unavailable";
@@ -142,6 +144,7 @@ export function HandoffDetailView({
           <OperatorJourneySummary route={detail.route} />
         </section>
       )}
+      {detail.simulation && <SimulationProvenance {...detail.simulation} />}
 
       <div className="grid grid-cols-[minmax(0,1fr)_23rem] items-start gap-5">
         <div className="min-w-0 space-y-3">
@@ -231,7 +234,7 @@ export function HandoffDetailView({
           <section id="decision-and-credential" className="rounded-lg border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Decision and credential</h2>
-              <ProvenanceLabel>{detail.summary.sealed ? "sealed" : "pending"}</ProvenanceLabel>
+              <ProvenanceLabel>{credentialSealLabel({ ...detail.summary, credential: detail.credential })}</ProvenanceLabel>
             </div>
 
             <div className={cn(
@@ -280,6 +283,7 @@ export function HandoffDetailView({
                 rerouteReason={rerouteReason}
                 sealed={detail.summary.sealed}
                 canApprove={detail.summary.abort ? false : detail.canApprove}
+                approvalAuditPending={detail.approvalAuditPending}
                 onDetailChange={adoptActionDetail}
               />
             </div>

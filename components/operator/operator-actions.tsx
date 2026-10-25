@@ -14,6 +14,7 @@ export function OperatorActions({
   rerouteReason,
   sealed,
   canApprove,
+  approvalAuditPending,
   onDetailChange,
 }: {
   eventId: string;
@@ -22,6 +23,7 @@ export function OperatorActions({
   rerouteReason: string;
   sealed: boolean;
   canApprove?: boolean;
+  approvalAuditPending?: boolean;
   onDetailChange: (detail: HandoffDetail) => void;
 }) {
   const [pending, setPending] = useState(false);
@@ -30,7 +32,7 @@ export function OperatorActions({
   const [requestOpen, setRequestOpen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const availability = operatorActionAvailability({ state, rerouteAvailable, canApprove, sealed });
+  const availability = operatorActionAvailability({ state, rerouteAvailable, canApprove, sealed, approvalAuditPending });
   const resolved = state.startsWith("resolved_") || state === "accepted";
 
   const act = async (action: OperatorActionName) => {
@@ -75,7 +77,7 @@ export function OperatorActions({
       {availability.approve && (
         <Button className="w-full" size="lg" disabled={pending} onClick={() => act("approve")}>
           <Check data-icon="inline-start" />
-          Approve and co-sign
+          {approvalAuditPending ? "Retry approval audit" : "Approve and co-sign"}
         </Button>
       )}
 
@@ -93,7 +95,7 @@ export function OperatorActions({
           <Route data-icon="inline-start" />
           Propose reroute
         </Button>
-        <Button variant="outline" disabled={pending} onClick={() => act("escalate")}>
+        <Button variant="outline" disabled={pending || !availability.escalate} onClick={() => act("escalate")}>
           <ShieldAlert data-icon="inline-start" />
           Escalate
         </Button>
@@ -112,7 +114,7 @@ export function OperatorActions({
         */}
         <Button
           variant="ghost"
-          disabled={pending}
+          disabled={pending || !availability.reject}
           onClick={() => act("reject")}
           className="text-destructive hover:bg-destructive/10 hover:text-destructive"
         >

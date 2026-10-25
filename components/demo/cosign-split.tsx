@@ -510,19 +510,19 @@ function Half({ ok, label }: { ok: boolean; label: string }) {
 /**
  * One axis, or an honest statement that it could not be evaluated.
  *
- * A null score is never drawn as a zero. Rule 3e: an unmeasured axis rendered
+ * A non-evaluable or null score is never drawn as a zero. Rule 3e: an unmeasured axis rendered
  * at the origin claims a measurement nobody made.
  */
 function Axis({ label, axis }: { label: string; axis: CosignModel["operator"]["inconsistency"] }) {
   return (
     <div className="rounded-md bg-muted/60 px-3 py-2.5">
       <div className="text-xs text-muted-foreground">{label}</div>
-      {axis && axis.score !== null ? (
+      {axis?.evaluable && axis.score !== null ? (
         <div className="mt-0.5 text-2xl font-semibold tabular-nums">{axis.score}</div>
       ) : (
         <div className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
           <CircleDashed aria-hidden="true" className="size-3.5" />
-          not evaluated
+          <span title="not evaluated">n/e</span>
         </div>
       )}
       {axis?.reason && <p className="mt-1 text-xs leading-4 text-muted-foreground">{axis.reason}</p>}

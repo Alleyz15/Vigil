@@ -85,6 +85,13 @@
       "when": 1792850626998,
       "tag": "0011_sturdy_midnight",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792922267635,
+      "tag": "0012_simulation_config",
+      "breakpoints": true
     }
   ]
 }

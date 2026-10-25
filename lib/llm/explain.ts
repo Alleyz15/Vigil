@@ -4,6 +4,7 @@ import { describeVerification } from "@/lib/credential";
 import { ExplainResponse, extractJson } from "./schemas";
 import { EXPLAIN_SYSTEM_PROMPT, explainUserPrompt } from "./prompts";
 import { withModelFailover } from "./failover";
+import { safeErrorMessage } from "./safe-error";
 import {
   type LlmProvider,
   type LlmTelemetry,
@@ -62,19 +63,21 @@ export function collectEvidenceIds(ctx: AgentContext): Set<string> {
  * acceptance ships prose telling an operator the handoff was approved when it
  * was frozen. When the two trade off, reject.
  *
- * So this is kept blunt rather than clever: an approving word on a refusing
- * verdict, or a refusing word on an accept.
+ * Keep all four actions distinct: flag, escalate and freeze require different
+ * operator responses even though none is an approval. This remains a lexical
+ * guard, not a claim to understand arbitrary natural-language assertions.
  */
-const APPROVING = ["approved", "accepted", "cleared", "verified as genuine", "no action needed"];
-const REFUSING = ["rejected", "refused", "frozen", "denied", "blocked", "escalated"];
+const APPROVING = ["accept", "approved", "accepted", "cleared", "verified as genuine", "no action needed"];
+const FLAGGING = ["flag", "flagged"];
+const ESCALATING = ["escalate", "escalated"];
+const FREEZING = ["freeze", "frozen"];
+const REFUSING = ["rejected", "refused", "denied", "blocked"];
 
 const FORBIDDEN_BY_DECISION: Record<Decision, string[]> = {
-  // An accepted handoff must not be described as refused.
-  accept: REFUSING,
-  // A flagged, escalated or frozen handoff must not be described as approved.
-  flag: APPROVING,
-  escalate: APPROVING,
-  freeze: APPROVING,
+  accept: [...REFUSING, ...FLAGGING, ...ESCALATING, ...FREEZING],
+  flag: [...APPROVING, ...ESCALATING, ...FREEZING],
+  escalate: [...APPROVING, ...FLAGGING, ...FREEZING],
+  freeze: [...APPROVING, ...FLAGGING, ...ESCALATING],
 };
 
 /**
@@ -95,8 +98,11 @@ export function findDecisionContradiction(
   text: string,
   decision: Decision,
 ): string | undefined {
-  const cleaned = stripNegations(text);
-  return FORBIDDEN_BY_DECISION[decision].find((word) => cleaned.includes(word));
+  // These signal descriptions use "flag" as a noun, not a competing action.
+  // Keep the exemption narrow: a separate "Decision: flag" or "Flag the handoff"
+  // must still be rejected, even in prose that also describes a signal flag.
+  const cleaned = stripNegations(text).replace(/\b(?:mock[- ]location|pattern)\s+flag\b/g, " ");
+  return FORBIDDEN_BY_DECISION[decision].find((word) => new RegExp(`\\b${word}\\b`).test(cleaned));
 }
 
 /**
@@ -215,7 +221,7 @@ async function explainOnce(ctx: AgentContext, args: ExplainArgs): Promise<Explai
     return {
       explanation: structuredExplanation(ctx),
       fromFallback: true,
-      rejection: `provider_error: ${(err as Error).message}`,
+      rejection: `provider_error: ${safeErrorMessage(err)}`,
     };
   }
 

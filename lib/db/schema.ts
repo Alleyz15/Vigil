@@ -587,6 +587,10 @@ export const shipments = sqliteTable(
     demoCondition: text("demo_condition", { enum: ["normal", "mock_location"] })
       .notNull()
       .default("normal"),
+    /** Immutable approved generator inputs; absent for legacy normal/mock shipments. */
+    simulationJson: text("simulation_json"),
+    /** Realized simulated evidence/context, filled once at assignment by the workbench. */
+    simulationSnapshotJson: text("simulation_snapshot_json"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [

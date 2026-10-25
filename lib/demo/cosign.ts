@@ -70,6 +70,7 @@ export function buildCosignChoices(
     title: item.title,
     eventTime: item.eventTime,
     state:
+      item.state ??
       summariesByEvent.get(item.eventId)?.state ??
       (item.attempts.length === 0 ? "prepared" : "accepted"),
     queueItem: item,
@@ -269,7 +270,7 @@ export function buildCosignModel(input: {
   const attempt = draft.attempts.at(-1);
 
   /**
-   * The LATEST run on this handoff, which is not always the courier's own.
+   * The authoritative run on this handoff, which is not always the courier's own.
    *
    * The co-signed resubmission is a run on the promoted entry, not a draft
    * attempt, so reading `draft.attempts` alone leaves the courier's card saying
@@ -278,9 +279,10 @@ export function buildCosignModel(input: {
    * when written and the pair is a contradiction on a paused frame.
    *
    * The courier's card answers "where is my handoff now", so it follows the
-   * newest run. How many times THEY submitted still comes from the draft.
+   * authoritative run. A later failed retry stays historical. How many times
+   * THEY submitted still comes from the draft.
    */
-  const latest = detail?.runs.at(-1) ?? attempt?.run;
+  const latest = detail?.authoritativeRun ?? detail?.runs.at(-1) ?? attempt?.run;
   const outcome = latest ? courierOutcome(latest) : null;
   const credential = detail?.credential ?? latest?.credential ?? null;
   const sealed = detail?.ledger.sequence !== null && detail?.ledger.sequence !== undefined;
@@ -324,7 +326,9 @@ export function buildCosignModel(input: {
       coverageLine: detail?.summary.coverageLine ?? null,
       flags: detail?.flags ?? [],
       gate: detail?.gate ?? null,
-      canCosign: detail?.summary.state === "awaiting_cosignature",
+      canCosign: detail?.canApprove !== undefined
+        ? detail.canApprove
+        : detail?.summary.state === "awaiting_cosignature",
     },
     credential,
     ledger: detail

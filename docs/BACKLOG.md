@@ -60,9 +60,39 @@ accepts a coordinate a sender explicitly confirms inside the service boundary.
   on a Server Component refresh. A delayed initial read cannot erase the new row.
 - New requests await operator assignment before courier scans are available.
 
-## Open: closed-case credential wording
+## Closed-case credential wording: implemented
 
-- A rejected handoff correctly closes review and leaves its incomplete credential
-  unsealed, but the decision panel still labels that credential `pending`. Distinguish
-  the closed operator disposition from credential completeness; do not imply the
-  rejected case is still awaiting approval.
+- Rejected handoffs show `incomplete · not sealed` rather than `pending`. Case
+  closure and credential completeness remain separate facts.
+
+## 25 October audit: implemented
+
+- Hard-abort scoring rows are `not_evaluated`; Both also respects axis evaluability
+  even when an internal aborted result carries a numeric zero.
+- Courier and Both read the authoritative result, retaining earlier attempts as
+  history. Both loads prepared work across the fleet, and uses backend eligibility
+  after evidence submission.
+- Newly sealed deliveries issue an idempotent recipient capability during their
+  lifecycle, including online and registered-address deliveries.
+- Maps project submitted GPS separately from the original recorded reference.
+  Evidence connectors require emitted I10/I11 findings; no road routing is implied.
+- Model-response roots are validated whole. Action-word contradictions and arbitrary
+  thrown provider values go through failover/fallback rather than escaping it.
+- Saved evidence receipts repair their case projection on retry or refresh. Failed
+  request audit writes remain unpublished retryable intents. Approval audit retry
+  preserves an existing seal and exposes a dedicated UI action.
+- Details and limitations: [audit closure](audits/2026-10-25-fixes.md).
+
+## Randomized point-to-point simulation: implemented
+
+- Normal/random controls, editable seed and independent advanced mock flag.
+- Shared signal sampling for I1-I16 input families and simulated delivery rounds,
+  disputes, clustering and repeated signal behavior for P1-P5.
+- Continuous per-courier randomized history with immutable per-shipment snapshots;
+  retry/co-sign cannot acquire a newer history or redraw the scan.
+- Courier/Operator expose saved seed, assumptions version, sampled causes and
+  history provenance. Missing reference/authorization evidence stays unavailable.
+- Fixed 20-seed development and disjoint 10-seed validation manifests retain every
+  result. These validate synthetic mechanisms, not real-world accuracy.
+- Remaining limits: field calibration and process-restart restoration of live
+  signing/harness state are not implemented. See the randomized audit closure.

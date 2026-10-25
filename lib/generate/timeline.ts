@@ -172,7 +172,8 @@ export type BuiltEvent = {
   /** Independent server records the assembler resolves; never part of EPCIS. */
   identity?: {
     otpChallenge?: OtpChallengeEvidence;
-    deviceEnrollment: DeviceEnrollmentEvidence & { courierId: string; enrolledAt: string };
+    /** Absent when the claimed handset has no independent enrollment. OTP remains independent. */
+    deviceEnrollment?: DeviceEnrollmentEvidence & { courierId: string; enrolledAt: string };
   };
 };
 

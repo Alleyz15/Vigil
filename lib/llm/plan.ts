@@ -3,6 +3,7 @@ import { vigilSignalsOf } from "@/lib/epcis";
 import { PlanResponse, extractJson } from "./schemas";
 import { PLAN_SYSTEM_PROMPT, planUserPrompt } from "./prompts";
 import { withModelFailover } from "./failover";
+import { safeErrorMessage } from "./safe-error";
 import {
   type LlmProvider,
   type LlmTelemetry,
@@ -220,7 +221,7 @@ async function planOnce(ctx: AgentContext, args: PlanArgs): Promise<PlanOutcome>
     return {
       plan: heuristicPlan(ctx),
       fromHeuristic: true,
-      rejection: `provider_error: ${(err as Error).message}`,
+      rejection: `provider_error: ${safeErrorMessage(err)}`,
     };
   }
 

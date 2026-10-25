@@ -1,13 +1,25 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import type { RunView } from "@/lib/workbench/read-model";
 import type { CourierQueueItem, CourierWorkspaceView } from "@/lib/workbench/service";
 import { CourierView } from "./courier-view";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/courier" }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+it("shows the saved simulation seed and continuous-history provenance on a courier handoff", async () => {
+  const initial = { ...workspace, items: workspace.items.map((item) => ({ ...item,
+    simulation: { mode: "randomized" as const, seed: "courier-seed", version: "signals-v1" as const,
+      conditions: [], history: { runId: "run-1", priorHandoffs: 24, source: "simulated" as const, snapshotAt: "2026-10-24T02:00:00Z" } },
+  })) };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => initial }));
+  const view = render(createElement(CourierView, { initial }));
+  await waitFor(() => expect(view.getByText("courier-seed")).toBeTruthy());
+  expect(view.getByText("24 prior handoffs")).toBeTruthy();
+});
 const items: CourierQueueItem[] = ["registered", "online", "seeded"].map((source, i) => ({
   handoffId: `${source}:item-${i}`,
   source: source as CourierQueueItem["source"],
@@ -136,5 +148,41 @@ describe("Courier prepared handoff workspace", () => {
     expect(view.getByText("Operator co-signed and sealed")).toBeTruthy();
     expect(view.getByText("OP-01")).toBeTruthy();
     expect(view.getByText("Operator co-signed and sealed").parentElement?.textContent).not.toMatch(/#\s*2/);
+  });
+
+  it("uses the authoritative operator-sealed run for the result and retry button while retaining the courier attempt", () => {
+    const pending: CourierQueueItem["attempts"][number] = {
+      run: { run: 1, eventHash: "same-event", decision: null, halted: { at: "gate", reason: "PENDING_COSIGNATURE" }, sealed: false, ledgerStatus: null, credential: null, trace: [] },
+      outcome: { kind: "signature_insufficient", headline: "Signature valid, but insufficient", detail: "Waiting for an operator.", sealed: false, problems: [] },
+    };
+    const currentRun: RunView = {
+      ...pending.run, run: 2, decision: "accept", halted: null, sealed: true, ledgerStatus: "recorded",
+      credential: { valid: true, courierValid: true, operatorValid: true, cosignRequired: true, problems: [] },
+    };
+    const item: CourierQueueItem = { ...items[0], attempts: [pending], currentRun, state: "resolved_approved",
+      operatorSeal: { operatorId: "OP-01", createdAt: "2026-10-25T02:00:00Z", ledgerStatus: "recorded" } };
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => {})));
+    const view = render(createElement(CourierView, { initial: { ...workspace, items: [item] } }));
+    const selected = within(view.getByRole("region", { name: "Selected handoff" }));
+
+    expect(selected.getByText("Recorded in the ledger.")).toBeTruthy();
+    expect(selected.queryByText("Nothing was written to the ledger.")).toBeNull();
+    expect(selected.getByRole("button", { name: "Submit again" })).toBeTruthy();
+    expect(selected.queryByRole("button", { name: "Sign and submit" })).toBeNull();
+    expect(selected.getByText("Signature valid, but insufficient").closest("li")).toBeTruthy();
+    expect(item.attempts).toEqual([pending]);
+  });
+
+  it("keeps a later failed retry historical when currentRun still owns the sealed result", () => {
+    const sealed: RunView = { run: 1, eventHash: "same-event", decision: "accept", halted: null, sealed: true, ledgerStatus: "recorded", credential: null, trace: [] };
+    const retry: CourierQueueItem["attempts"][number] = {
+      run: { ...sealed, run: 2, sealed: false, ledgerStatus: null, halted: { at: "gate", reason: "PENDING_COSIGNATURE" } },
+      outcome: { kind: "signature_insufficient", headline: "Signature valid, but insufficient", detail: "Historic retry.", sealed: false, problems: [] },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => {})));
+    const view = render(createElement(CourierView, { initial: { ...workspace, items: [{ ...items[0], currentRun: sealed, attempts: [retry], state: "accepted" }] } }));
+    expect(view.getByText("Recorded in the ledger.")).toBeTruthy();
+    expect(view.queryByText("Nothing was written to the ledger.")).toBeNull();
+    expect(view.getByText("Signature valid, but insufficient").closest("li")).toBeTruthy();
   });
 });

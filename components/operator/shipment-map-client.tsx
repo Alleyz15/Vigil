@@ -32,6 +32,9 @@ function Viewport({
 
   useEffect(() => {
     const points = model.locations.map((location) => latLng(location.point));
+    // A submitted scan is context even before the operator reveals risk evidence.
+    const scans = model.overlays.filter((feature) => feature.id === "delivery-reported-scan");
+    for (const scan of scans) if (scan.point) points.push(latLng(scan.point));
     const evidencePoints = revealOverlays
       ? model.overlays.flatMap((feature) =>
           feature.points?.length
@@ -83,7 +86,7 @@ function OverlayFeature({
   if (!feature.point) return null;
   const color = feature.group === "s2-recipients"
     ? ROUTE_COLOR
-    : feature.id === "s1-cell-coverage"
+    : feature.id === "s1-cell-coverage" || (feature.id === "delivery-reported-scan" && feature.evidenceId === null)
       ? CONTEXT_COLOR
       : ALERT_COLOR;
   const eventHandlers = { click: onSelect };
@@ -104,13 +107,12 @@ function OverlayFeature({
           className: selected ? "map-evidence-selected" : undefined,
           color: ALERT_COLOR,
           dashArray: "10 7",
-          // Heavier than the heaviest route segment (5), deliberately. This is
-          // the only line on the map making a claim.
+          // Only evidence connectors are drawn; no navigation path is inferred.
           weight: selected ? 8 : 6,
           opacity: 1,
         }}
       >
-        <Tooltip permanent direction="center">GPS ↔ cell contradiction</Tooltip>
+        <Tooltip permanent direction="center">{feature.label}</Tooltip>
       </Polyline>
     );
   }
@@ -149,7 +151,7 @@ function OverlayFeature({
         fillOpacity: 0.92,
       }}
     >
-      {feature.id.startsWith("s1-") || feature.id.startsWith("s3-") ? (
+      {feature.id.startsWith("s1-") || feature.id.startsWith("s3-") || feature.id === "delivery-reported-scan" ? (
         <Tooltip permanent direction="top">{feature.label}</Tooltip>
       ) : tooltip}
     </CircleMarker>
@@ -187,7 +189,7 @@ export function ShipmentMapClient({
         />
         <Viewport model={model} revealOverlays={revealOverlays} />
         {model.locations.map((location) => <LocationFeature key={location.id} location={location} />)}
-        {revealOverlays && model.overlays.map((feature) => (
+        {model.overlays.filter((feature) => revealOverlays || feature.id === "delivery-reported-scan").map((feature) => (
           <OverlayFeature
             key={feature.id}
             feature={feature}
