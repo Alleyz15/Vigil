@@ -42,20 +42,27 @@ export const ExplainResponse = z.strictObject({
 export type ExplainResponse = z.infer<typeof ExplainResponse>;
 
 /**
- * Pull the first JSON object out of a model response.
+ * Normalise the transport wrapper without changing the structured root.
  *
- * Models wrap JSON in prose and fences no matter what the prompt says. This
- * recovers the object without being lenient about its CONTENTS — whatever comes
- * out still has to satisfy the schema above.
+ * Models wrap JSON in prose and fences no matter what the prompt says.
+ * Plain JSON and fenced contents are parsed WHOLE, even if the root is an array
+ * or a string. The response schema, not this normaliser, decides its validity.
+ * Legacy prose wrappers are allowed, but an array cannot shed its outer members.
  */
 export function extractJson(raw: string): unknown {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = (fenced?.[1] ?? raw).trim();
+  const candidate = raw.trim();
+  // A structured response is never mined for a more convenient inner object,
+  // including when the outer JSON is malformed or contains a fence as data.
+  if (/^[{["]/.test(candidate)) return JSON.parse(candidate);
 
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
+  const start = candidate.search(/[[{]/);
+  const fenced = candidate.match(/```(?:json)?\s*([\s\S]*?)```/);
+  // A fence inside an enclosing array/object is data, not a transport wrapper.
+  if (fenced && (start === -1 || fenced.index! < start)) return JSON.parse(fenced[1].trim());
+
+  const end = Math.max(candidate.lastIndexOf("}"), candidate.lastIndexOf("]"));
   if (start === -1 || end === -1 || end < start) {
-    throw new Error("no JSON object in the model response");
+    throw new Error("no JSON response in the model response");
   }
 
   return JSON.parse(candidate.slice(start, end + 1));
