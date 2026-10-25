@@ -136,8 +136,10 @@ export function acceptanceExplanation(input: {
 
   const measured = `${axisCoverage(input.inconsistencyCoverage, "single-event")} and ${axisCoverage(input.patternCoverage, "pattern")} were evaluable.`;
   const findings = [
-    input.inconsistencyScore === 0 ? "No single-event contradiction was found" : null,
-    input.patternScore === 0 ? "recent courier behaviour was normal" : null,
+    input.inconsistencyScore === 0 ? "No single-event contradiction was found"
+      : input.inconsistencyScore !== null ? `Single-event score was ${input.inconsistencyScore}` : "Single-event score was unavailable",
+    input.patternScore === 0 ? "recent courier behaviour was normal"
+      : input.patternScore !== null ? `pattern score was ${input.patternScore}` : "pattern score was unavailable",
     input.declaredValueSen !== null && input.valueThresholdSen !== null && input.declaredValueSen <= input.valueThresholdSen
       ? `and ${money(input.declaredValueSen)} did not trigger the ${money(input.valueThresholdSen)} value condition`
       : null,

@@ -160,6 +160,16 @@ describe("correlated handoff detail presentation", () => {
     );
   });
 
+  it("explains accepted nonzero scores without empty findings or calling them clean", () => {
+    const text = acceptanceExplanation({ decision: "accept", inconsistencyScore: 15,
+      inconsistencyCoverage: "13 of 16 checks evaluable", patternScore: 25,
+      patternCoverage: "1 of 5 checks evaluable", declaredValueSen: 90_000,
+      valueThresholdSen: 40_000, courierSignatureValid: true, requiresCosign: true });
+    expect(text).toContain("Single-event score was 15, pattern score was 25.");
+    expect(text).not.toContain(". .");
+    expect(text).not.toMatch(/no.*contradiction|behaviour was normal/i);
+  });
+
   it("presents co-signature conditions as status, actual value and trigger", () => {
     expect(cosignConditionPresentation({
       kind: "inconsistency_score_at_least",
