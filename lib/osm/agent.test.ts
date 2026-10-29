@@ -17,6 +17,10 @@ const EXEMPT: Record<string, string> = {
     "the tile URL is handed to Leaflet, and the VIEWER'S BROWSER fetches it with its own agent and the page as referer; this repository's code sends no header there",
   "components/sender/service-area-map-client.tsx":
     "the tile URL is handed to Leaflet, and the VIEWER'S BROWSER fetches it with its own agent and the page as referer; this repository's code sends no header there",
+  "components/sender/registered-address-map-client.tsx":
+    "the tile URL is handed to Leaflet, and the VIEWER'S BROWSER fetches it with its own agent and the page as referer; this repository's code sends no header there",
+  "components/sender/registered-address-map-client.test.ts":
+    "asserts OSM URL and attribution strings against a mocked TileLayer; this fixture makes no OSM network requests",
 };
 
 function sources(dir: string): string[] {
